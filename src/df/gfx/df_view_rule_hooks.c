@@ -381,6 +381,7 @@ DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(slice)
       for (U64 i = 0; i < data_members.count; i++) {
         TG_Member *member = &data_members.v[i];
         if (str8_match(member->name, str8_lit("data"), StringMatchFlag_CaseInsensitive) ||
+            str8_match(member->name, str8_lit("str"), StringMatchFlag_CaseInsensitive) ||
             str8_match(member->name, str8_lit("ptr"), StringMatchFlag_CaseInsensitive)) {
           member_ptr = member;
         } else if (str8_match(member->name, str8_lit("len"), StringMatchFlag_CaseInsensitive) ||
@@ -418,6 +419,8 @@ DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(slice)
   }
   return eval;
 }
+
+
 
 ////////////////////////////////
 //~ rjf: "list"
