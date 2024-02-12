@@ -487,7 +487,6 @@ DF_CoreViewRuleTable:
 {
   {Null       null        ""              -   -   -   -                 ""                            -       ""                                                                                                                                                                           }
   {Array      array       "array"         -   -   x   -                 "Array"                       x       "Specifies that a pointer points to N elements, rather than only 1."                                                                                                         }
-  {Slice      slice       "slice"         -   -   x   -                 "Slice"                       x       "Specifies that a struct to be rendered as a slice."                                                                                                                         }
   {List       list        "list"          -   -   -   x                 "List"                        x       "Specifies that some struct, union, or class forms the top of a linked list, and the member which points at the following element in the list."                              }
   {ByteSwap   bswap       "bswap"         x   -   x   -                 "Byte Swap"                   x       "Specifies that all integer primitives should be byte-swapped, such that their endianness is reversed."                                                                      }
   {BaseDec    base_dec    "dec"           x   -   -   -                 "Decimal Base (Base 10)"      x       "Specifies that all integral evaluations should appear in base-10 form."                                                                                                     }
@@ -502,6 +501,8 @@ DF_CoreViewRuleTable:
   {Disasm     disasm      "disasm"        -   x   -   x                 "Disassembly"                 x       "Displays as disassembled instructions, interpreting the data as raw machine code."                                                                                          }
   {Bitmap     bitmap      "bitmap"        -   x   -   x                 "Bitmap"                      x       "Displays as a bitmap, interpreting the data as raw pixel data."                                                                                                             }
   {Geo        geo         "geo"           -   x   -   x                 "Geometry"                    x       "Displays as geometry, interpreting the data as vertex data."                                                                                                                }
+  {Slice      slice       "slice"         -   -   x   -                 "Slice"                       x       "Specifies that some struct is to be rendered as a slice."                                                                                                                         }
+  {OdinMap    odin_map    "odin_map"      -   -   x   -                 "Odin Map"                    x       "Specifies that a struct to be rendered as an Odin map."                                                                                                                     }
 }
 
 ////////////////////////////////
