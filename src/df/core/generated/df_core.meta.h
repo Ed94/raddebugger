@@ -344,6 +344,7 @@ typedef enum DF_CoreViewRuleKind
 {
 DF_CoreViewRuleKind_Null,
 DF_CoreViewRuleKind_Array,
+DF_CoreViewRuleKind_Slice,
 DF_CoreViewRuleKind_List,
 DF_CoreViewRuleKind_ByteSwap,
 DF_CoreViewRuleKind_BaseDec,
@@ -410,6 +411,7 @@ B32 force_confirm;
 };
 
 DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(array);
+DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(slice);
 DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(bswap);
 DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(list);
 DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(only);

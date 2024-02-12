@@ -352,6 +352,73 @@ DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(array)
   return eval;
 }
 
+
+void dbg_printf(char const *fmt, ...) {
+  va_list argp;
+  va_start(argp, fmt);
+  char buf[4096] = {};
+  vsnprintf_s(buf, 4095, fmt, argp);
+  va_end(argp);
+  OutputDebugStringA(buf);
+}
+
+////////////////////////////////
+//~ bill: "slice"
+
+DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(slice)
+{
+  TG_Key type_key = eval.type_key;
+  TG_Kind type_kind = tg_kind_from_key(type_key);
+
+  if (type_kind == TG_Kind_Struct) {
+    Temp scratch = scratch_begin(&arena, 1);
+    DF_CfgNode *struct_node = val->last;
+    if (struct_node != &df_g_nil_cfg_node) {
+
+      TG_MemberArray data_members = tg_data_members_from_graph_raddbg_key(arena, parse_ctx->type_graph, parse_ctx->rdbg, type_key);
+      TG_Member *member_ptr = NULL;
+      TG_Member *member_len = NULL;
+      for (U64 i = 0; i < data_members.count; i++) {
+        TG_Member *member = &data_members.v[i];
+        if (str8_match(member->name, str8_lit("data"), StringMatchFlag_CaseInsensitive) ||
+            str8_match(member->name, str8_lit("ptr"), StringMatchFlag_CaseInsensitive)) {
+          member_ptr = member;
+        } else if (str8_match(member->name, str8_lit("len"), StringMatchFlag_CaseInsensitive) ||
+                   str8_match(member->name, str8_lit("size"), StringMatchFlag_CaseInsensitive)) {
+          member_len = member;
+        }
+      }
+
+      if (member_ptr && member_len) {
+        U64 slice_len = 0;
+
+        DF_Eval len_eval = zero_struct;
+        len_eval.mode = EVAL_EvalMode_Addr;
+        len_eval.offset = eval.offset + member_len->off;
+        len_eval.type_key = member_len->type_key;
+        len_eval = df_value_mode_eval_from_eval(parse_ctx->type_graph, parse_ctx->rdbg, ctrl_ctx, len_eval);
+        if (len_eval.mode == EVAL_EvalMode_Value) {
+          slice_len = len_eval.imm_u64;
+        }
+
+
+        TG_Key pointee = tg_ptee_from_graph_raddbg_key(parse_ctx->type_graph, parse_ctx->rdbg, member_ptr->type_key);
+        TG_Key array_type = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Array, pointee, slice_len);
+
+        // TODO(bill): How do you make this render with the original name, if possible?
+        DF_Eval new_eval = zero_struct;
+        new_eval.mode = EVAL_EvalMode_Addr;
+        new_eval.offset = eval.offset + member_ptr->off;
+        new_eval.type_key = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Ptr, array_type, 0);
+
+        eval = new_eval;
+      }
+    }
+    scratch_end(scratch);
+  }
+  return eval;
+}
+
 ////////////////////////////////
 //~ rjf: "list"
 
