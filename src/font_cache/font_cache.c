@@ -10,6 +10,8 @@
 #include "third_party/blake2/blake2b.c"
 #endif
 
+#define TAB_STRING "    "
+
 internal F_Hash
 f_hash_from_string(String8 string)
 {
@@ -617,7 +619,7 @@ f_push_run_from_string(Arena *arena, F_Tag tag, F32 size, F_RunFlags flags, Stri
     B32 is_tab = (piece_substring.size == 1 && piece_substring.str[0] == '\t');
     if(is_tab)
     {
-      piece_substring = str8_lit(" ");
+      piece_substring = str8_lit(TAB_STRING);
     }
     
     //- rjf: piece substring -> raster cache info

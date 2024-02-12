@@ -501,6 +501,8 @@ DF_CoreViewRuleTable:
   {Disasm     disasm      "disasm"        -   x   -   x                 "Disassembly"                 x       "Displays as disassembled instructions, interpreting the data as raw machine code."                                                                                          }
   {Bitmap     bitmap      "bitmap"        -   x   -   x                 "Bitmap"                      x       "Displays as a bitmap, interpreting the data as raw pixel data."                                                                                                             }
   {Geo        geo         "geo"           -   x   -   x                 "Geometry"                    x       "Displays as geometry, interpreting the data as vertex data."                                                                                                                }
+  {Slice      slice       "slice"         -   -   x   -                 "Slice"                       x       "Specifies that some struct is to be rendered as a slice."                                                                                                                         }
+  {OdinMap    odin_map    "odin_map"      -   -   x   -                 "Odin Map"                    x       "Specifies that a struct to be rendered as an Odin map."                                                                                                                     }
 }
 
 ////////////////////////////////

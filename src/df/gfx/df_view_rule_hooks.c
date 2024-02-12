@@ -353,6 +353,166 @@ DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(array)
 }
 
 ////////////////////////////////
+//~ bill: utility procedures
+
+internal void dbg_printf(char const *fmt, ...)
+{
+  va_list argp;
+  va_start(argp, fmt);
+  char buf[4096] = {};
+  vsnprintf_s(buf, 4095, fmt, argp);
+  va_end(argp);
+  OutputDebugStringA(buf);
+}
+
+internal TG_Member *tg_member_from_name(TG_MemberArray array, String8 name, StringMatchFlags flags)
+{
+  for (U64 i = 0; i < array.count; i++)
+  {
+    TG_Member *member = &array.v[i];
+    if (str8_match(member->name, name, flags))
+    {
+      return member;
+    }
+  }
+  return NULL;
+}
+
+////////////////////////////////
+//~ bill: "slice"
+
+
+internal U64 df_evaluate_integer_from_eval(EVAL_ParseCtx *parse_ctx, DF_CtrlCtx *ctrl_ctx, DF_Eval eval, TG_Member *member)
+{
+  DF_Eval res = zero_struct;
+  res.mode = EVAL_EvalMode_Addr;
+  res.offset = eval.offset + member->off;
+  res.type_key = member->type_key;
+  res = df_value_mode_eval_from_eval(parse_ctx->type_graph, parse_ctx->rdbg, ctrl_ctx, res);
+  if (res.mode == EVAL_EvalMode_Value)
+  {
+    return res.imm_u64;
+  }
+  return 0;
+}
+
+DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(slice)
+{
+  TG_Key type_key = eval.type_key;
+  TG_Kind type_kind = tg_kind_from_key(type_key);
+
+  if (type_kind == TG_Kind_Struct)
+  {
+    Temp scratch = scratch_begin(&arena, 1);
+    DF_CfgNode *struct_node = val->last;
+    if (struct_node != &df_g_nil_cfg_node)
+    {
+
+      TG_MemberArray data_members = tg_data_members_from_graph_raddbg_key(arena, parse_ctx->type_graph, parse_ctx->rdbg, type_key);
+      TG_Member *member_ptr = NULL;
+      TG_Member *member_len = NULL;
+      member_ptr = member_ptr ? member_ptr : tg_member_from_name(data_members, str8_lit("data"),  StringMatchFlag_CaseInsensitive);
+      member_ptr = member_ptr ? member_ptr : tg_member_from_name(data_members, str8_lit("str"),   StringMatchFlag_CaseInsensitive);
+      member_ptr = member_ptr ? member_ptr : tg_member_from_name(data_members, str8_lit("ptr"),   StringMatchFlag_CaseInsensitive);
+
+      member_len = member_len ? member_len : tg_member_from_name(data_members, str8_lit("len"),   StringMatchFlag_CaseInsensitive);
+      member_len = member_len ? member_len : tg_member_from_name(data_members, str8_lit("size"),  StringMatchFlag_CaseInsensitive);
+      member_len = member_len ? member_len : tg_member_from_name(data_members, str8_lit("count"), StringMatchFlag_CaseInsensitive);
+
+
+      if (member_ptr && member_len)
+      {
+        // NOTE(bill): this assumes little-endian format
+        U64 slice_len = df_evaluate_integer_from_eval(parse_ctx, ctrl_ctx, eval, member_len);
+
+        TG_Key pointee = tg_ptee_from_graph_raddbg_key(parse_ctx->type_graph, parse_ctx->rdbg, member_ptr->type_key);
+        TG_Key array_type = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Array, pointee, slice_len);
+
+        // TODO(bill): How do you make this render with the original name, if possible?
+        DF_Eval new_eval = zero_struct;
+        new_eval.mode = EVAL_EvalMode_Addr;
+        new_eval.offset = eval.offset + member_ptr->off;
+        new_eval.type_key = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Ptr, array_type, 0);
+
+        eval = new_eval;
+      }
+    }
+    scratch_end(scratch);
+  }
+  return eval;
+}
+
+////////////////////////////////
+//~ bill: "odin_map"
+
+DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(odin_map)
+{
+  TG_Key type_key = eval.type_key;
+  TG_Kind type_kind = tg_kind_from_key(type_key);
+
+  if (type_kind == TG_Kind_Struct)
+  {
+    DF_CfgNode *struct_node = val->last;
+    if (struct_node != &df_g_nil_cfg_node)
+    {
+      TG_MemberArray data_members = tg_data_members_from_graph_raddbg_key(arena, parse_ctx->type_graph, parse_ctx->rdbg, type_key);
+      TG_Member *member_data     = tg_member_from_name(data_members, str8_lit("data"),       0);
+      TG_Member *member_len      = tg_member_from_name(data_members, str8_lit("len"),        0);
+      TG_Member *member_metadata = tg_member_from_name(data_members, str8_lit("__metadata"), 0);
+
+      if (member_data && member_len && member_metadata)
+      {
+        TG_Key metadata = member_metadata->type_key;
+        metadata = tg_direct_from_graph_raddbg_key(parse_ctx->type_graph, parse_ctx->rdbg, metadata);
+        metadata = tg_ptee_from_graph_raddbg_key(parse_ctx->type_graph, parse_ctx->rdbg, metadata);
+        Assert(tg_kind_from_key(metadata) == TG_Kind_Struct);
+
+        TG_MemberArray md_members = tg_data_members_from_graph_raddbg_key(arena, parse_ctx->type_graph, parse_ctx->rdbg, metadata);
+        TG_Member *m_key        = tg_member_from_name(md_members, str8_lit("key"),        0);
+        TG_Member *m_value      = tg_member_from_name(md_members, str8_lit("value"),      0);
+        TG_Member *m_hash       = tg_member_from_name(md_members, str8_lit("hash"),       0);
+        TG_Member *m_key_cell   = tg_member_from_name(md_members, str8_lit("key_cell"),   0);
+        TG_Member *m_value_cell = tg_member_from_name(md_members, str8_lit("value_cell"), 0);
+
+        if (m_key == NULL) {
+          return eval;
+        }
+        Assert(m_key && m_value && m_hash && m_key_cell && m_value_cell);
+        TG_Key key        = m_key->type_key;
+        TG_Key value      = m_value->type_key;
+        TG_Key hash       = m_hash->type_key;
+        TG_Key key_cell   = m_key_cell->type_key;
+        TG_Key value_cell = m_value_cell->type_key;
+
+
+        // NOTE(bill): this assumes little-endian format
+        U64 len = df_evaluate_integer_from_eval(parse_ctx, ctrl_ctx, eval, member_len);
+        U64 data = df_evaluate_integer_from_eval(parse_ctx, ctrl_ctx, eval, member_data);
+        U64 cap = data & (U64)63;
+        if (cap)
+        {
+          cap = ((U64)1)<<cap;
+        }
+        data = data &~ (U64)63;
+
+        TG_Key array_type = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Array, key, cap);
+
+        // TODO(bill): How do you make this render with the original name, if possible?
+        DF_Eval new_eval = zero_struct;
+        new_eval.mode = EVAL_EvalMode_Value;
+        new_eval.imm_u64 = data;
+        new_eval.type_key = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Ptr, array_type, 0);
+        eval = new_eval;
+      }
+    }
+  }
+  return eval;
+}
+
+
+
+
+////////////////////////////////
 //~ rjf: "list"
 
 DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(list)
