@@ -352,16 +352,6 @@ DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(array)
   return eval;
 }
 
-
-void dbg_printf(char const *fmt, ...) {
-  va_list argp;
-  va_start(argp, fmt);
-  char buf[4096] = {};
-  vsnprintf_s(buf, 4095, fmt, argp);
-  va_end(argp);
-  OutputDebugStringA(buf);
-}
-
 ////////////////////////////////
 //~ bill: "slice"
 
