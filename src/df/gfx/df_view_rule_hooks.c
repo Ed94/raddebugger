@@ -549,6 +549,22 @@ internal U64 df_odin_map_cell_index(U64 base, DF_OdinMapCellInfo const *info, U6
 //   OutputDebugStringA(buf);
 // }
 
+
+internal U64 df_evaluate_hash_from_offset(EVAL_ParseCtx *parse_ctx, DF_CtrlCtx *ctrl_ctx, U64 offset, TG_Key hash_type)
+{
+  DF_Eval res = zero_struct;
+  res.mode = EVAL_EvalMode_Addr;
+  res.offset = offset;
+  res.type_key = hash_type;
+  res = df_value_mode_eval_from_eval(parse_ctx->type_graph, parse_ctx->rdi, ctrl_ctx, res);
+  if (res.mode == EVAL_EvalMode_Value)
+  {
+    return res.imm_u64;
+  }
+  return 0;
+}
+
+
 DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(odin_map)
 {
   TG_Key type_key = eval.type_key;
@@ -605,6 +621,7 @@ DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(odin_map)
 
         DF_OdinMapCellInfo key_cell_info   = df_odin_map_cell_info(arena, parse_ctx, key,   key_cell);
         DF_OdinMapCellInfo value_cell_info = df_odin_map_cell_info(arena, parse_ctx, value, value_cell);
+        U64 size_of_hash = tg_byte_size_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, hash);
 
         U64 key_ptr   = ptr;
         U64 value_ptr = df_odin_map_cell_index(key_ptr,   &key_cell_info,   cap);
@@ -612,12 +629,32 @@ DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(odin_map)
         (void)value_ptr;
         (void)hash_ptr;
 
-        TG_Key key_array_type   = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Array, key_cell, cap/key_cell_info.elements_per_cell);
-        // TG_Key value_array_type = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Array, value_cell, cap/value_cell_info.elements_per_cell);
-        // TG_Key hash_array_type  = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Array, hash,  cap);
-        // (void)value_array_type;
-        // (void)hash_array_type;
+        U64 TOMBSTONE_MASK = ((U64)1u)<<(size_of_hash*8 - 1);
 
+        for (U64 i = 0; i < cap; i += 1) {
+          U64 offset_hash = hash_ptr + i*size_of_hash;
+
+          U64 h = df_evaluate_hash_from_offset(parse_ctx, ctrl_ctx, offset_hash, hash);
+          if (h != 0 && (h & TOMBSTONE_MASK) == 0) {
+            U64 offset_key   = df_odin_map_cell_index(key_ptr,   &key_cell_info,   i);
+            U64 offset_value = df_odin_map_cell_index(value_ptr, &value_cell_info, i);
+
+
+            DF_Eval addr_key = zero_struct;
+            addr_key.mode = EVAL_EvalMode_Addr;
+            addr_key.offset = offset_key;
+            addr_key.type_key = key;
+
+            DF_Eval addr_value = zero_struct;
+            addr_value.mode = EVAL_EvalMode_Addr;
+            addr_value.offset = offset_value;
+            addr_value.type_key = value;
+
+            // render element
+          }
+        }
+
+        TG_Key key_array_type = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Array, key_cell, cap/key_cell_info.elements_per_cell);
         DF_Eval new_eval = zero_struct;
         new_eval.mode = EVAL_EvalMode_Value;
         new_eval.imm_u64 = key_ptr;
