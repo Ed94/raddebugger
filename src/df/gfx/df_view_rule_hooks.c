@@ -631,11 +631,13 @@ DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(odin_map)
 
         U64 TOMBSTONE_MASK = ((U64)1u)<<(size_of_hash*8 - 1);
 
-        for (U64 i = 0; i < cap; i += 1) {
+        for (U64 i = 0; i < cap; i += 1)
+        {
           U64 offset_hash = hash_ptr + i*size_of_hash;
 
           U64 h = df_evaluate_hash_from_offset(parse_ctx, ctrl_ctx, offset_hash, hash);
-          if (h != 0 && (h & TOMBSTONE_MASK) == 0) {
+          if (h != 0 && (h & TOMBSTONE_MASK) == 0)
+          {
             U64 offset_key   = df_odin_map_cell_index(key_ptr,   &key_cell_info,   i);
             U64 offset_value = df_odin_map_cell_index(value_ptr, &value_cell_info, i);
 
