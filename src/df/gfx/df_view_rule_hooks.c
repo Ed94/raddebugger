@@ -383,6 +383,82 @@ DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(array)
 }
 
 ////////////////////////////////
+//~ bill: "slice"
+
+
+internal TG_Member *tg_member_from_name(TG_MemberArray array, String8 name, StringMatchFlags flags)
+{
+  for (U64 i = 0; i < array.count; i++)
+  {
+    TG_Member *member = &array.v[i];
+    if (str8_match(member->name, name, flags))
+    {
+      return member;
+    }
+  }
+  return NULL;
+}
+
+internal U64 df_evaluate_integer_from_eval(EVAL_ParseCtx *parse_ctx, DF_CtrlCtx *ctrl_ctx, DF_Eval eval, TG_Member *member)
+{
+  DF_Eval res = zero_struct;
+  res.mode = EVAL_EvalMode_Addr;
+  res.offset = eval.offset + member->off;
+  res.type_key = member->type_key;
+  res = df_value_mode_eval_from_eval(parse_ctx->type_graph, parse_ctx->rdi, ctrl_ctx, res);
+  if (res.mode == EVAL_EvalMode_Value)
+  {
+    return res.imm_u64;
+  }
+  return 0;
+}
+
+DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(slice)
+{
+  TG_Key type_key = eval.type_key;
+  TG_Kind type_kind = tg_kind_from_key(type_key);
+
+  if (type_kind == TG_Kind_Struct)
+  {
+    Temp scratch = scratch_begin(&arena, 1);
+    DF_CfgNode *struct_node = val->last;
+    if (struct_node != &df_g_nil_cfg_node)
+    {
+
+      TG_MemberArray data_members = tg_data_members_from_graph_rdi_key(arena, parse_ctx->type_graph, parse_ctx->rdi, type_key);
+      TG_Member *member_ptr = NULL;
+      TG_Member *member_len = NULL;
+      member_ptr = member_ptr ? member_ptr : tg_member_from_name(data_members, str8_lit("data"),   StringMatchFlag_CaseInsensitive);
+      member_ptr = member_ptr ? member_ptr : tg_member_from_name(data_members, str8_lit("str"),    StringMatchFlag_CaseInsensitive);
+      member_ptr = member_ptr ? member_ptr : tg_member_from_name(data_members, str8_lit("ptr"),    StringMatchFlag_CaseInsensitive);
+
+      member_len = member_len ? member_len : tg_member_from_name(data_members, str8_lit("len"),    StringMatchFlag_CaseInsensitive);
+      member_len = member_len ? member_len : tg_member_from_name(data_members, str8_lit("length"), StringMatchFlag_CaseInsensitive);
+      member_len = member_len ? member_len : tg_member_from_name(data_members, str8_lit("count"),  StringMatchFlag_CaseInsensitive);
+      member_len = member_len ? member_len : tg_member_from_name(data_members, str8_lit("size"),   StringMatchFlag_CaseInsensitive);
+
+      if (member_ptr && member_len)
+      {
+        U64 slice_len = df_evaluate_integer_from_eval(parse_ctx, ctrl_ctx, eval, member_len);
+
+        TG_Key pointee = tg_ptee_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, member_ptr->type_key);
+        TG_Key array_type = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Array, pointee, slice_len);
+
+        // TODO(bill): How do you make this render with the original name, if possible?
+        DF_Eval new_eval = zero_struct;
+        new_eval.mode = EVAL_EvalMode_Addr;
+        new_eval.offset = eval.offset + member_ptr->off;
+        new_eval.type_key = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Ptr, array_type, 0);
+
+        eval = new_eval;
+      }
+    }
+    scratch_end(scratch);
+  }
+  return eval;
+}
+
+////////////////////////////////
 //~ rjf: "list"
 
 DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(list)
