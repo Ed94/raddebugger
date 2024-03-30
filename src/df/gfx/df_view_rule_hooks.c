@@ -420,10 +420,10 @@ DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(slice)
 
   if (type_kind == TG_Kind_Struct)
   {
-    Temp scratch = scratch_begin(&arena, 1);
     DF_CfgNode *struct_node = val->last;
     if (struct_node != &df_g_nil_cfg_node)
     {
+      Temp scratch = scratch_begin(&arena, 1);
 
       TG_MemberArray data_members = tg_data_members_from_graph_rdi_key(arena, parse_ctx->type_graph, parse_ctx->rdi, type_key);
       TG_Member *member_ptr = NULL;
@@ -452,11 +452,100 @@ DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(slice)
 
         eval = new_eval;
       }
+
+      scratch_end(scratch);
     }
-    scratch_end(scratch);
   }
   return eval;
 }
+
+
+////////////////////////////////
+//~ bill: "odin_map"
+
+DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(odin_map)
+{
+  TG_Key type_key = eval.type_key;
+  TG_Kind type_kind = tg_kind_from_key(type_key);
+
+  if (type_kind == TG_Kind_Struct)
+  {
+    DF_CfgNode *struct_node = val->last;
+    if (struct_node != &df_g_nil_cfg_node)
+    {
+      TG_MemberArray data_members = tg_data_members_from_graph_rdi_key(arena, parse_ctx->type_graph, parse_ctx->rdi, type_key);
+
+      TG_Member *member_data = tg_member_from_name(data_members, str8_lit("data"), 0);
+      TG_Member *member_len  = tg_member_from_name(data_members, str8_lit("len"),  0);
+
+      if (member_data && member_len)
+      {
+        TG_Key metadata = member_data->type_key;
+        metadata = tg_ptee_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, metadata);
+        if (tg_kind_from_key(metadata) != TG_Kind_Struct)
+        {
+          return eval;
+        }
+
+        TG_MemberArray md_members = tg_data_members_from_graph_rdi_key(arena, parse_ctx->type_graph, parse_ctx->rdi, metadata);
+        TG_Member *m_key        = tg_member_from_name(md_members, str8_lit("key"),        0);
+        TG_Member *m_value      = tg_member_from_name(md_members, str8_lit("value"),      0);
+        TG_Member *m_hash       = tg_member_from_name(md_members, str8_lit("hash"),       0);
+        TG_Member *m_key_cell   = tg_member_from_name(md_members, str8_lit("key_cell"),   0);
+        TG_Member *m_value_cell = tg_member_from_name(md_members, str8_lit("value_cell"), 0);
+
+        if (m_key        == NULL ||
+            m_value      == NULL ||
+            m_hash       == NULL ||
+            m_key_cell   == NULL ||
+            m_value_cell == NULL)
+        {
+          return eval;
+        }
+
+        TG_Key key        = m_key->type_key;
+        TG_Key value      = m_value->type_key;
+        TG_Key hash       = m_hash->type_key;
+        TG_Key key_cell   = m_key_cell->type_key;
+        TG_Key value_cell = m_value_cell->type_key;
+
+        U64 size_key        = tg_byte_size_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, key);
+        U64 size_value      = tg_byte_size_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, value);
+        U64 size_hash       = tg_byte_size_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, hash);
+        U64 size_key_cell   = tg_byte_size_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, key_cell);
+        U64 size_value_cell = tg_byte_size_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, value_cell);
+
+        U64 raw_data = df_evaluate_integer_from_eval(parse_ctx, ctrl_ctx, eval, member_data);
+        U64 ptr = raw_data & ~(U64)63;
+        U64 len  = df_evaluate_integer_from_eval(parse_ctx, ctrl_ctx, eval, member_len);
+        U64 cap_log2 = raw_data & 63;
+        U64 cap = cap_log2 ? ((U64)1)<<cap_log2 : 0;
+
+        TG_Key array_type = zero_struct;
+
+        if (size_key == size_key_cell)
+        {
+          array_type = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Array, key, cap);
+        }
+        else
+        {
+          U64 cap_key_cell = (size_key * cap) / size_key_cell;
+          array_type = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Array, key_cell, cap_key_cell);
+        }
+
+        DF_Eval new_eval = zero_struct;
+        new_eval.mode = EVAL_EvalMode_Value;
+        new_eval.imm_u64 = ptr;
+        new_eval.type_key = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Ptr, array_type, 0);
+        eval = new_eval;
+
+      }
+    }
+  }
+
+  return eval;
+}
+
 
 ////////////////////////////////
 //~ rjf: "list"

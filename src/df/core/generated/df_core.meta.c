@@ -419,7 +419,7 @@ DF_CmdSpecInfo df_g_core_cmd_kind_spec_info_table[206] =
 { str8_lit_comp("toggle_dev_menu"), str8_lit_comp("Opens and closes the developer menu."), str8_lit_comp(""), str8_lit_comp("Toggle Developer Menu"), (DF_CmdSpecFlag_OmitFromLists*0), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_Null},
 };
 
-DF_CoreViewRuleSpecInfo df_g_core_view_rule_spec_info_table[17] =
+DF_CoreViewRuleSpecInfo df_g_core_view_rule_spec_info_table[18] =
 {
 {str8_lit_comp(""), str8_lit_comp(""), str8_lit_comp(""), (DF_CoreViewRuleSpecInfoFlag_Inherited*0)|(DF_CoreViewRuleSpecInfoFlag_Expandable*0)|(DF_CoreViewRuleSpecInfoFlag_EvalResolution*0)|(DF_CoreViewRuleSpecInfoFlag_VizBlockProd*0),  0,  0, },
 {str8_lit_comp("array"), str8_lit_comp("Array"), str8_lit_comp("Specifies that a pointer points to N elements, rather than only 1."), (DF_CoreViewRuleSpecInfoFlag_Inherited*0)|(DF_CoreViewRuleSpecInfoFlag_Expandable*0)|(DF_CoreViewRuleSpecInfoFlag_EvalResolution*1)|(DF_CoreViewRuleSpecInfoFlag_VizBlockProd*0), DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_NAME(array) ,  0, },
@@ -438,6 +438,7 @@ DF_CoreViewRuleSpecInfo df_g_core_view_rule_spec_info_table[17] =
 {str8_lit_comp("disasm"), str8_lit_comp("Disassembly"), str8_lit_comp("Displays as disassembled instructions, interpreting the data as raw machine code."), (DF_CoreViewRuleSpecInfoFlag_Inherited*0)|(DF_CoreViewRuleSpecInfoFlag_Expandable*1)|(DF_CoreViewRuleSpecInfoFlag_EvalResolution*0)|(DF_CoreViewRuleSpecInfoFlag_VizBlockProd*1),  0, DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_NAME(disasm) , },
 {str8_lit_comp("bitmap"), str8_lit_comp("Bitmap"), str8_lit_comp("Displays as a bitmap, interpreting the data as raw pixel data."), (DF_CoreViewRuleSpecInfoFlag_Inherited*0)|(DF_CoreViewRuleSpecInfoFlag_Expandable*1)|(DF_CoreViewRuleSpecInfoFlag_EvalResolution*0)|(DF_CoreViewRuleSpecInfoFlag_VizBlockProd*1),  0, DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_NAME(bitmap) , },
 {str8_lit_comp("geo"), str8_lit_comp("Geometry"), str8_lit_comp("Displays as geometry, interpreting the data as vertex data."), (DF_CoreViewRuleSpecInfoFlag_Inherited*0)|(DF_CoreViewRuleSpecInfoFlag_Expandable*1)|(DF_CoreViewRuleSpecInfoFlag_EvalResolution*0)|(DF_CoreViewRuleSpecInfoFlag_VizBlockProd*1),  0, DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_NAME(geo) , },
+{str8_lit_comp("odin_map"), str8_lit_comp("Odin map"), str8_lit_comp("Specifies that a struct to be rendered as an Odin map type."), (DF_CoreViewRuleSpecInfoFlag_Inherited*0)|(DF_CoreViewRuleSpecInfoFlag_Expandable*0)|(DF_CoreViewRuleSpecInfoFlag_EvalResolution*1)|(DF_CoreViewRuleSpecInfoFlag_VizBlockProd*0), DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_NAME(odin_map) ,  0, },
 };
 
 String8 df_g_icon_kind_text_table[69] =
