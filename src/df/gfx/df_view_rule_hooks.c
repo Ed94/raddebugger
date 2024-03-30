@@ -425,7 +425,7 @@ DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(slice)
     {
       Temp scratch = scratch_begin(&arena, 1);
 
-      TG_MemberArray data_members = tg_data_members_from_graph_rdi_key(arena, parse_ctx->type_graph, parse_ctx->rdi, type_key);
+      TG_MemberArray data_members = tg_data_members_from_graph_rdi_key(scratch.arena, parse_ctx->type_graph, parse_ctx->rdi, type_key);
       TG_Member *member_ptr = NULL;
       TG_Member *member_len = NULL;
       member_ptr = member_ptr ? member_ptr : tg_member_from_name(data_members, str8_lit("data"),   StringMatchFlag_CaseInsensitive);
@@ -462,6 +462,92 @@ DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(slice)
 
 ////////////////////////////////
 //~ bill: "odin_map"
+
+
+typedef struct DF_OdinMapCellInfo DF_OdinMapCellInfo;
+struct DF_OdinMapCellInfo {
+  U64 size_of_type;
+  U64 size_of_cell;
+  U64 elements_per_cell;
+};
+
+internal DF_OdinMapCellInfo df_odin_map_cell_info(Arena *arena, EVAL_ParseCtx *parse_ctx, TG_Key type, TG_Key cell_type)
+{
+  DF_OdinMapCellInfo info = zero_struct;
+  info.size_of_type = tg_byte_size_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, type);
+  info.size_of_cell = tg_byte_size_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, cell_type);
+
+  if (info.size_of_type != info.size_of_cell) {
+      Temp scratch = scratch_begin(&arena, 1);
+
+      TG_Kind kind = tg_kind_from_key(cell_type);
+      Assert(kind == TG_Kind_Struct);
+
+      TG_MemberArray data_members = tg_data_members_from_graph_rdi_key(scratch.arena, parse_ctx->type_graph, parse_ctx->rdi, cell_type);
+      Assert(data_members.count >= 1);
+      TG_Key array_type = data_members.v[0].type_key;
+      U64 size_of_array = tg_byte_size_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, array_type);
+      if (size_of_array > 0 && info.size_of_type > 0) {
+        info.elements_per_cell = size_of_array / info.size_of_type;
+      }
+
+      scratch_end(scratch);
+
+  }
+  if (info.elements_per_cell == 0) {
+    info.elements_per_cell = 1;
+  }
+
+  return info;
+}
+
+
+internal U64 df_odin_map_cell_index(U64 base, DF_OdinMapCellInfo const *info, U64 index)
+{
+  U64 elements_per_cell = info->elements_per_cell;
+  U64 size_of_cell = info->size_of_cell;
+  U64 size_of_type = info->size_of_type;
+  U64 cell_index = 0;
+  U64 data_index = 0;
+  switch (elements_per_cell) {
+  case 1:
+    return base + (index * size_of_cell);
+  case 2:
+    cell_index = index >> 1;
+    data_index = index & 1;
+    break;
+  case 4:
+    cell_index = index >> 2;
+    data_index = index & 3;
+    break;
+  case 8:
+    cell_index = index >> 3;
+    data_index = index & 7;
+    break;
+  case 16:
+    cell_index = index >> 4;
+    data_index = index & 15;
+    break;
+  case 32:
+    cell_index = index >> 5;
+    data_index = index & 31;
+    break;
+  default:
+    cell_index = index / elements_per_cell;
+    data_index = index % elements_per_cell;
+    break;
+  }
+  return base + (cell_index * size_of_cell) + (data_index * size_of_type);
+}
+
+// internal void dbg_printf(char const *fmt, ...) {
+//   va_list argp;
+//   va_start(argp, fmt);
+//   char buf[4096] = {};
+//   vsnprintf_s(buf, 4095, fmt, argp);
+//   va_end(argp);
+//   OutputDebugStringA(buf);
+// }
 
 DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(odin_map)
 {
@@ -509,12 +595,6 @@ DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(odin_map)
         TG_Key key_cell   = m_key_cell->type_key;
         TG_Key value_cell = m_value_cell->type_key;
 
-        U64 size_key        = tg_byte_size_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, key);
-        U64 size_value      = tg_byte_size_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, value);
-        U64 size_hash       = tg_byte_size_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, hash);
-        U64 size_key_cell   = tg_byte_size_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, key_cell);
-        U64 size_value_cell = tg_byte_size_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, value_cell);
-
         U64 raw_data = df_evaluate_integer_from_eval(parse_ctx, ctrl_ctx, eval, member_data);
         U64 ptr = raw_data & ~(U64)63;
         U64 len  = df_evaluate_integer_from_eval(parse_ctx, ctrl_ctx, eval, member_len);
@@ -523,20 +603,25 @@ DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(odin_map)
 
         TG_Key array_type = zero_struct;
 
-        if (size_key == size_key_cell)
-        {
-          array_type = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Array, key, cap);
-        }
-        else
-        {
-          U64 cap_key_cell = (size_key * cap) / size_key_cell;
-          array_type = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Array, key_cell, cap_key_cell);
-        }
+        DF_OdinMapCellInfo key_cell_info   = df_odin_map_cell_info(arena, parse_ctx, key,   key_cell);
+        DF_OdinMapCellInfo value_cell_info = df_odin_map_cell_info(arena, parse_ctx, value, value_cell);
+
+        U64 key_ptr   = ptr;
+        U64 value_ptr = df_odin_map_cell_index(key_ptr,   &key_cell_info,   cap);
+        U64 hash_ptr  = df_odin_map_cell_index(value_ptr, &value_cell_info, cap);
+        (void)value_ptr;
+        (void)hash_ptr;
+
+        TG_Key key_array_type   = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Array, key_cell, cap/key_cell_info.elements_per_cell);
+        // TG_Key value_array_type = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Array, value_cell, cap/value_cell_info.elements_per_cell);
+        // TG_Key hash_array_type  = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Array, hash,  cap);
+        // (void)value_array_type;
+        // (void)hash_array_type;
 
         DF_Eval new_eval = zero_struct;
         new_eval.mode = EVAL_EvalMode_Value;
-        new_eval.imm_u64 = ptr;
-        new_eval.type_key = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Ptr, array_type, 0);
+        new_eval.imm_u64 = key_ptr;
+        new_eval.type_key = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Ptr, key_array_type, 0);
         eval = new_eval;
 
       }
