@@ -48,71 +48,6 @@ struct DF_StringBindingPair
 };
 
 ////////////////////////////////
-//~ rjf: Text Searching Types
-
-typedef struct DF_TextSearchMatch DF_TextSearchMatch;
-struct DF_TextSearchMatch
-{
-  TxtPt pt;
-};
-
-typedef struct DF_TextSearchMatchChunkNode DF_TextSearchMatchChunkNode;
-struct DF_TextSearchMatchChunkNode
-{
-  DF_TextSearchMatchChunkNode *next;
-  DF_TextSearchMatch *v;
-  U64 count;
-  U64 cap;
-};
-
-typedef struct DF_TextSearchMatchChunkList DF_TextSearchMatchChunkList;
-struct DF_TextSearchMatchChunkList
-{
-  DF_TextSearchMatchChunkNode *first;
-  DF_TextSearchMatchChunkNode *last;
-  U64 node_count;
-  U64 total_count;
-};
-
-typedef struct DF_TextSearchMatchArray DF_TextSearchMatchArray;
-struct DF_TextSearchMatchArray
-{
-  DF_TextSearchMatch *v;
-  U64 count;
-};
-
-typedef struct DF_TextSearchCacheNode DF_TextSearchCacheNode;
-struct DF_TextSearchCacheNode
-{
-  // rjf: links
-  DF_TextSearchCacheNode *next;
-  DF_TextSearchCacheNode *prev;
-  
-  // rjf: allocation
-  Arena *arena;
-  
-  // rjf: search parameters
-  U128 hash;
-  String8 needle;
-  DF_TextSliceFlags flags;
-  TxtPt start_pt;
-  
-  // rjf: search results
-  B32 good;
-  DF_TextSearchMatchChunkList search_matches;
-  
-  // rjf: last time touched
-  U64 last_time_touched_us;
-};
-
-typedef struct DF_TextSearchCacheSlot DF_TextSearchCacheSlot;
-struct DF_TextSearchCacheSlot
-{
-  DF_TextSearchCacheNode *first;
-  DF_TextSearchCacheNode *last;
-};
-
-////////////////////////////////
 //~ rjf: Key Map Types
 
 typedef struct DF_KeyMapNode DF_KeyMapNode;
@@ -178,7 +113,7 @@ struct DF_ViewSpecInfo
   DF_ViewSpecFlags flags;
   String8 name;
   String8 display_string;
-  DF_NameKind name_kind;
+  enum DF_NameKind name_kind;
   DF_IconKind icon_kind;
   DF_ViewSetupFunctionType *setup_hook;
   DF_ViewStringFromStateFunctionType *string_from_state_hook;
@@ -346,6 +281,7 @@ enum
   DF_GfxViewRuleSpecInfoFlag_LineStringize  = (1<<1),
   DF_GfxViewRuleSpecInfoFlag_RowUI          = (1<<2),
   DF_GfxViewRuleSpecInfoFlag_BlockUI        = (1<<3),
+  DF_GfxViewRuleSpecInfoFlag_WholeUI        = (1<<4),
 };
 
 #define DF_GFX_VIEW_RULE_VIZ_ROW_PROD_FUNCTION_SIG(name) void name(void)
@@ -364,10 +300,15 @@ enum
 #define DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_NAME(name) df_gfx_view_rule_block_ui__##name
 #define DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_DEF(name) DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_SIG(DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_NAME(name))
 
+#define DF_GFX_VIEW_RULE_WHOLE_UI_FUNCTION_SIG(name) void name(struct DF_Window *ws, struct DF_Panel *panel, struct DF_View *view, Rng2F32 rect, DBGI_Scope *dbgi_scope, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, EVAL_String2ExprMap *macro_map, struct DF_CfgNode *cfg)
+#define DF_GFX_VIEW_RULE_WHOLE_UI_FUNCTION_NAME(name) df_gfx_view_rule_whole_ui__##name
+#define DF_GFX_VIEW_RULE_WHOLE_UI_FUNCTION_DEF(name) DF_GFX_VIEW_RULE_WHOLE_UI_FUNCTION_SIG(DF_GFX_VIEW_RULE_WHOLE_UI_FUNCTION_NAME(name))
+
 typedef DF_GFX_VIEW_RULE_VIZ_ROW_PROD_FUNCTION_SIG(DF_GfxViewRuleVizRowProdHookFunctionType);
 typedef DF_GFX_VIEW_RULE_LINE_STRINGIZE_FUNCTION_SIG(DF_GfxViewRuleLineStringizeHookFunctionType);
 typedef DF_GFX_VIEW_RULE_ROW_UI_FUNCTION_SIG(DF_GfxViewRuleRowUIFunctionType);
 typedef DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_SIG(DF_GfxViewRuleBlockUIFunctionType);
+typedef DF_GFX_VIEW_RULE_WHOLE_UI_FUNCTION_SIG(DF_GfxViewRuleWholeUIFunctionType);
 
 typedef struct DF_GfxViewRuleSpecInfo DF_GfxViewRuleSpecInfo;
 struct DF_GfxViewRuleSpecInfo
@@ -378,6 +319,7 @@ struct DF_GfxViewRuleSpecInfo
   DF_GfxViewRuleLineStringizeHookFunctionType *line_stringize;
   DF_GfxViewRuleRowUIFunctionType *row_ui;
   DF_GfxViewRuleBlockUIFunctionType *block_ui;
+  DF_GfxViewRuleWholeUIFunctionType *whole_ui;
 };
 
 typedef struct DF_GfxViewRuleSpecInfoArray DF_GfxViewRuleSpecInfoArray;
@@ -441,8 +383,9 @@ enum
 typedef U32 DF_CodeSliceFlags;
 enum
 {
-  DF_CodeSliceFlag_Margin   = (1<<0),
-  DF_CodeSliceFlag_LineNums = (1<<1),
+  DF_CodeSliceFlag_Clickable = (1<<0),
+  DF_CodeSliceFlag_Margin    = (1<<1),
+  DF_CodeSliceFlag_LineNums  = (1<<2),
 };
 
 typedef struct DF_CodeSliceParams DF_CodeSliceParams;
@@ -453,7 +396,7 @@ struct DF_CodeSliceParams
   Rng1S64 line_num_range;
   String8 *line_text;
   Rng1U64 *line_ranges;
-  TXTI_TokenArray *line_tokens;
+  TXT_TokenArray *line_tokens;
   DF_EntityList *line_bps;
   DF_EntityList *line_ips;
   DF_EntityList *line_pins;
@@ -961,7 +904,7 @@ internal void df_window_update_and_render(Arena *arena, OS_EventList *events, DF
 //~ rjf: Eval Viz
 
 internal String8 df_eval_escaped_from_raw_string(Arena *arena, String8 raw);
-internal String8List df_single_line_eval_value_strings_from_eval(Arena *arena, DF_EvalVizStringFlags flags, TG_Graph *graph, RADDBG_Parsed *rdbg, DF_CtrlCtx *ctrl_ctx, U32 default_radix, F_Tag font, F32 font_size, F32 max_size, S32 depth, DF_Eval eval, TG_Member *opt_member, DF_CfgTable *cfg_table);
+internal String8List df_single_line_eval_value_strings_from_eval(Arena *arena, DF_EvalVizStringFlags flags, TG_Graph *graph, RDI_Parsed *rdi, DF_CtrlCtx *ctrl_ctx, U32 default_radix, F_Tag font, F32 font_size, F32 max_size, S32 depth, DF_Eval eval, TG_Member *opt_member, DF_CfgTable *cfg_table);
 internal DF_EvalVizWindowedRowList df_eval_viz_windowed_row_list_from_viz_block_list(Arena *arena, DBGI_Scope *scope, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, EVAL_String2ExprMap *macro_map, DF_EvalView *eval_view, U32 default_radix, F_Tag font, F32 font_size, Rng1S64 visible_range, DF_EvalVizBlockList *blocks);
 
 ////////////////////////////////
@@ -986,17 +929,6 @@ internal void df_set_search_string(String8 string);
 internal String8 df_push_search_string(Arena *arena);
 
 ////////////////////////////////
-//~ rjf: Text Searching
-
-internal void df_text_search_match_chunk_list_push(Arena *arena, DF_TextSearchMatchChunkList *list, U64 cap, DF_TextSearchMatch *match);
-internal DF_TextSearchMatchArray df_text_search_match_array_from_chunk_list(Arena *arena, DF_TextSearchMatchChunkList *chunks);
-internal U64 df_text_search_little_hash_from_hash(U128 hash);
-internal void df_text_search_thread_entry_point(void *p);
-internal int df_text_search_match_array_qsort_compare(TxtPt *a, TxtPt *b);
-internal void df_text_search_match_array_sort_in_place(DF_TextSearchMatchArray *array);
-internal DF_TextSearchMatch df_text_search_match_array_find_nearest__linear_scan(DF_TextSearchMatchArray *array, TxtPt pt, Side side);
-
-////////////////////////////////
 //~ rjf: Colors, Fonts, Config
 
 //- rjf: keybindings
@@ -1010,7 +942,7 @@ internal DF_CmdSpecList df_cmd_spec_list_from_event_flags(Arena *arena, OS_Event
 
 //- rjf: colors
 internal Vec4F32 df_rgba_from_theme_color(DF_ThemeColor color);
-internal DF_ThemeColor df_theme_color_from_txti_token_kind(TXTI_TokenKind kind);
+internal DF_ThemeColor df_theme_color_from_txt_token_kind(TXT_TokenKind kind);
 
 //- rjf: fonts/sizes
 internal F_Tag df_font_from_slot(DF_FontSlot slot);
@@ -1018,6 +950,12 @@ internal F32 df_font_size_from_slot(DF_Window *ws, DF_FontSlot slot);
 
 //- rjf: config serialization
 internal String8List df_cfg_strings_from_gfx(Arena *arena, String8 root_path, DF_CfgSrc source);
+
+////////////////////////////////
+//~ rjf: Process Control Info Stringification
+
+internal String8 df_string_from_exception_code(U32 code);
+internal String8 df_stop_explanation_string_icon_from_ctrl_event(Arena *arena, CTRL_Event *event, DF_IconKind *icon_out);
 
 ////////////////////////////////
 //~ rjf: UI Widgets: Fancy Buttons
@@ -1040,8 +978,8 @@ internal UI_BOX_CUSTOM_DRAW(df_bp_box_draw_extensions);
 internal DF_CodeSliceSignal df_code_slice(DF_Window *ws, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, DF_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *preferred_column, String8 string);
 internal DF_CodeSliceSignal df_code_slicef(DF_Window *ws, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, DF_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *preferred_column, char *fmt, ...);
 
+internal B32 df_do_txt_controls(TXT_TextInfo *info, String8 data, U64 line_count_per_page, TxtPt *cursor, TxtPt *mark, S64 *preferred_column);
 internal B32 df_do_txti_controls(TXTI_Handle handle, U64 line_count_per_page, TxtPt *cursor, TxtPt *mark, S64 *preferred_column);
-internal B32 df_do_dasm_controls(DASM_Handle handle, U64 line_count_per_page, TxtPt *cursor, TxtPt *mark, S64 *preferred_column);
 
 ////////////////////////////////
 //~ rjf: UI Widgets: Fancy Labels

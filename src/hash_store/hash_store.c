@@ -28,7 +28,7 @@ hs_init(void)
   hs_shared = push_array(arena, HS_Shared, 1);
   hs_shared->arena = arena;
   hs_shared->slots_count = 4096;
-  hs_shared->stripes_count = 64;
+  hs_shared->stripes_count = Min(hs_shared->slots_count, os_logical_core_count());
   hs_shared->slots = push_array(arena, HS_Slot, hs_shared->slots_count);
   hs_shared->stripes = push_array(arena, HS_Stripe, hs_shared->stripes_count);
   hs_shared->stripes_free_nodes = push_array(arena, HS_Node *, hs_shared->stripes_count);
@@ -40,7 +40,7 @@ hs_init(void)
     stripe->cv = os_condition_variable_alloc();
   }
   hs_shared->key_slots_count = 4096;
-  hs_shared->key_stripes_count = 64;
+  hs_shared->key_stripes_count = Min(hs_shared->key_slots_count, os_logical_core_count());
   hs_shared->key_slots = push_array(arena, HS_KeySlot, hs_shared->key_slots_count);
   hs_shared->key_stripes = push_array(arena, HS_Stripe, hs_shared->key_stripes_count);
   for(U64 idx = 0; idx < hs_shared->key_stripes_count; idx += 1)
@@ -84,7 +84,7 @@ hs_submit_data(U128 key, Arena **data_arena, String8 data)
   HS_Stripe *stripe = &hs_shared->stripes[stripe_idx];
   
   //- rjf: commit data to cache - if already there, just bump key refcount
-  OS_MutexScopeW(stripe->rw_mutex)
+  ProfScope("commit data to cache - if already there, just bump key refcount") OS_MutexScopeW(stripe->rw_mutex)
   {
     HS_Node *existing_node = 0;
     for(HS_Node *n = slot->first; n != 0; n = n->next)
@@ -123,7 +123,7 @@ hs_submit_data(U128 key, Arena **data_arena, String8 data)
   
   //- rjf: commit this hash to key cache
   U128 key_expired_hash = {0};
-  OS_MutexScopeW(key_stripe->rw_mutex)
+  ProfScope("commit this hash to key cache") OS_MutexScopeW(key_stripe->rw_mutex)
   {
     HS_KeyNode *key_node = 0;
     for(HS_KeyNode *n = key_slot->first; n != 0; n = n->next)
@@ -152,7 +152,8 @@ hs_submit_data(U128 key, Arena **data_arena, String8 data)
   }
   
   //- rjf: if this key's history cache was full, dec key ref count of oldest hash
-  if(!u128_match(key_expired_hash, u128_zero()))
+  ProfScope("if this key's history cache was full, dec key ref count of oldest hash")
+    if(!u128_match(key_expired_hash, u128_zero()))
   {
     U64 old_hash_slot_idx = key_expired_hash.u64[1]%hs_shared->slots_count;
     U64 old_hash_stripe_idx = old_hash_slot_idx%hs_shared->stripes_count;

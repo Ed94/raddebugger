@@ -142,7 +142,7 @@ r_init(CmdLine *cmdln)
   
   //- rjf: create base device
   UINT creation_flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
-#if !defined(NDEBUG)
+#if BUILD_DEBUG
   if(cmd_line_has_flag(cmdln, str8_lit("d3d11_debug")))
   {
     creation_flags |= D3D11_CREATE_DEVICE_DEBUG;
@@ -182,7 +182,7 @@ r_init(CmdLine *cmdln)
   }
   
   //- rjf: enable break-on-error
-#if !defined(NDEBUG)
+#if BUILD_DEBUG
   if(cmd_line_has_flag(cmdln, str8_lit("d3d11_debug")))
   {
     ID3D11InfoQueue *info = 0;
@@ -496,6 +496,8 @@ r_window_equip(OS_Handle handle)
       os_graphical_message(1, str8_lit("Fatal Error"), str8_cstring(buffer));
       os_exit_process(1);
     }
+
+    r_d3d11_state->dxgi_factory->MakeWindowAssociation(hwnd, DXGI_MWA_NO_ALT_ENTER);
     
     //- rjf: create framebuffer & view
     window->swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void **)(&window->framebuffer));

@@ -29,13 +29,21 @@ struct DF_TxtTopologyInfo
   U64 size_cap;
 };
 
+typedef struct DF_DisasmTopologyInfo DF_DisasmTopologyInfo;
+struct DF_DisasmTopologyInfo
+{
+  Architecture arch;
+  U64 size_cap;
+};
+
 ////////////////////////////////
 //~ rjf: Helpers
 
-internal Vec4F32 df_view_rule_hooks__rgba_from_eval(DF_Eval eval, TG_Graph *graph, RADDBG_Parsed *raddbg, DF_Entity *process);
-internal void df_view_rule_hooks__eval_commit_rgba(DF_Eval eval, TG_Graph *graph, RADDBG_Parsed *raddbg, DF_CtrlCtx *ctrl_ctx, Vec4F32 rgba);
+internal Vec4F32 df_view_rule_hooks__rgba_from_eval(DF_Eval eval, TG_Graph *graph, RDI_Parsed *raddbg, DF_Entity *process);
+internal void df_view_rule_hooks__eval_commit_rgba(DF_Eval eval, TG_Graph *graph, RDI_Parsed *raddbg, DF_CtrlCtx *ctrl_ctx, Vec4F32 rgba);
 internal DF_BitmapTopologyInfo df_view_rule_hooks__bitmap_topology_info_from_cfg(DBGI_Scope *scope, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, EVAL_String2ExprMap *macro_map, DF_CfgNode *cfg);
 internal DF_GeoTopologyInfo df_view_rule_hooks__geo_topology_info_from_cfg(DBGI_Scope *scope, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, EVAL_String2ExprMap *macro_map, DF_CfgNode *cfg);
 internal DF_TxtTopologyInfo df_view_rule_hooks__txt_topology_info_from_cfg(DBGI_Scope *scope, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, EVAL_String2ExprMap *macro_map, DF_CfgNode *cfg);
+internal DF_DisasmTopologyInfo df_view_rule_hooks__disasm_topology_info_from_cfg(DBGI_Scope *scope, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, EVAL_String2ExprMap *macro_map, DF_CfgNode *cfg);
 
 #endif //DF_VIEW_RULE_HOOKS_H
