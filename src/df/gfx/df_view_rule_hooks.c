@@ -709,31 +709,37 @@ DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(odin_map)
 
       DF_ExpandKey row_key = df_expand_key_make(df_hash_from_expand_key(vb->key), i);
 
+      B32 row_expanded = df_expand_key_is_set(&eval_view->expand_tree_table, row_key);
+
       DF_EvalVizBlock *block = df_eval_viz_block_begin(arena, DF_EvalVizBlockKind_Root, vb->key, row_key, depth+1);
       block->eval                        = addr_key;
       block->cfg_table                   = child_cfg;
-      block->string                      = push_str8f(arena, "key", i);
+      block->string                      = row_expanded ? push_str8f(arena, "key") : push_str8f(arena, "key (hash: %I64x)", h);
       block->visual_idx_range            = r1u64(0, 1);
       block->semantic_idx_range          = r1u64(0, 1);
-
-      B32 row_expanded = df_expand_key_is_set(&eval_view->expand_tree_table, row_key);
-
-      DF_EvalVizBlock *nested_block = NULL;
-      if (row_expanded)
-      {
-        nested_block = df_eval_viz_block_begin(arena, DF_EvalVizBlockKind_Root, row_key, zero_struct, depth+2);
-        nested_block->eval                        = addr_value;
-        nested_block->cfg_table                   = child_cfg;
-        nested_block->string                      = push_str8f(arena, "value", i);
-        nested_block->visual_idx_range            = r1u64(0, 1);
-        nested_block->semantic_idx_range          = r1u64(0, 1);
-      }
-
       df_eval_viz_block_end(out, block);
 
       if (row_expanded)
       {
-        df_eval_viz_block_end(out, nested_block);
+        DF_EvalVizBlock * value_block = df_eval_viz_block_begin(arena, DF_EvalVizBlockKind_Root, row_key, zero_struct, depth+2);
+        value_block->eval                        = addr_value;
+        value_block->cfg_table                   = child_cfg;
+        value_block->string                      = push_str8f(arena, "value");
+        value_block->visual_idx_range            = r1u64(0, 1);
+        value_block->semantic_idx_range          = r1u64(0, 1);
+        df_eval_viz_block_end(out, value_block);
+
+        DF_Eval eval_hash = zero_struct;
+        eval_hash.type_key = md.hash;
+        eval_hash.mode = EVAL_EvalMode_Value;
+        eval_hash.imm_u64 = h;
+        DF_EvalVizBlock * hash_block = df_eval_viz_block_begin(arena, DF_EvalVizBlockKind_Root, row_key, zero_struct, depth+2);
+        hash_block->eval                        = eval_hash;
+        hash_block->cfg_table                   = child_cfg;
+        hash_block->string                      = push_str8f(arena, "hash");
+        hash_block->visual_idx_range            = r1u64(0, 1);
+        hash_block->semantic_idx_range          = r1u64(0, 1);
+        df_eval_viz_block_end(out, hash_block);
       }
 
       key_index += 1;
