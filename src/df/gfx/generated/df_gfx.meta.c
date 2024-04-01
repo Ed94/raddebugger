@@ -713,9 +713,10 @@ str8_lit_comp("open_user"),
 str8_lit_comp("open_profile"),
 };
 
-DF_GfxViewRuleSpecInfo df_g_gfx_view_rule_spec_info_table[14] =
+DF_GfxViewRuleSpecInfo df_g_gfx_view_rule_spec_info_table[16] =
 {
 { str8_lit_comp("array"), (DF_GfxViewRuleSpecInfoFlag_VizRowProd*0)|(DF_GfxViewRuleSpecInfoFlag_LineStringize*0)|(DF_GfxViewRuleSpecInfoFlag_RowUI*0)|(DF_GfxViewRuleSpecInfoFlag_BlockUI*0),  0,  0,  0,  0,  0 },
+{ str8_lit_comp("slice"), (DF_GfxViewRuleSpecInfoFlag_VizRowProd*0)|(DF_GfxViewRuleSpecInfoFlag_LineStringize*0)|(DF_GfxViewRuleSpecInfoFlag_RowUI*0)|(DF_GfxViewRuleSpecInfoFlag_BlockUI*0),  0,  0,  0,  0,  0 },
 { str8_lit_comp("list"), (DF_GfxViewRuleSpecInfoFlag_VizRowProd*1)|(DF_GfxViewRuleSpecInfoFlag_LineStringize*0)|(DF_GfxViewRuleSpecInfoFlag_RowUI*0)|(DF_GfxViewRuleSpecInfoFlag_BlockUI*0), DF_GFX_VIEW_RULE_VIZ_ROW_PROD_FUNCTION_NAME(list) ,  0,  0,  0,  0 },
 { str8_lit_comp("dec"), (DF_GfxViewRuleSpecInfoFlag_VizRowProd*0)|(DF_GfxViewRuleSpecInfoFlag_LineStringize*1)|(DF_GfxViewRuleSpecInfoFlag_RowUI*0)|(DF_GfxViewRuleSpecInfoFlag_BlockUI*0),  0, DF_GFX_VIEW_RULE_LINE_STRINGIZE_FUNCTION_NAME(dec) ,  0,  0,  0 },
 { str8_lit_comp("bin"), (DF_GfxViewRuleSpecInfoFlag_VizRowProd*0)|(DF_GfxViewRuleSpecInfoFlag_LineStringize*1)|(DF_GfxViewRuleSpecInfoFlag_RowUI*0)|(DF_GfxViewRuleSpecInfoFlag_BlockUI*0),  0, DF_GFX_VIEW_RULE_LINE_STRINGIZE_FUNCTION_NAME(bin) ,  0,  0,  0 },
@@ -728,6 +729,7 @@ DF_GfxViewRuleSpecInfo df_g_gfx_view_rule_spec_info_table[14] =
 { str8_lit_comp("text"), (DF_GfxViewRuleSpecInfoFlag_VizRowProd*0)|(DF_GfxViewRuleSpecInfoFlag_LineStringize*0)|(DF_GfxViewRuleSpecInfoFlag_RowUI*0)|(DF_GfxViewRuleSpecInfoFlag_BlockUI*1),  0,  0,  0, DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_NAME(text) ,  0 },
 { str8_lit_comp("disasm"), (DF_GfxViewRuleSpecInfoFlag_VizRowProd*0)|(DF_GfxViewRuleSpecInfoFlag_LineStringize*0)|(DF_GfxViewRuleSpecInfoFlag_RowUI*0)|(DF_GfxViewRuleSpecInfoFlag_BlockUI*1),  0,  0,  0, DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_NAME(disasm) ,  0 },
 { str8_lit_comp("bitmap"), (DF_GfxViewRuleSpecInfoFlag_VizRowProd*0)|(DF_GfxViewRuleSpecInfoFlag_LineStringize*0)|(DF_GfxViewRuleSpecInfoFlag_RowUI*1)|(DF_GfxViewRuleSpecInfoFlag_BlockUI*1),  0,  0, DF_GFX_VIEW_RULE_ROW_UI_FUNCTION_NAME(bitmap) , DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_NAME(bitmap) , DF_GFX_VIEW_RULE_WHOLE_UI_FUNCTION_NAME(bitmap)  },
+{ str8_lit_comp("odin_map"), (DF_GfxViewRuleSpecInfoFlag_VizRowProd*0)|(DF_GfxViewRuleSpecInfoFlag_LineStringize*0)|(DF_GfxViewRuleSpecInfoFlag_RowUI*1)|(DF_GfxViewRuleSpecInfoFlag_BlockUI*1),  0,  0, DF_GFX_VIEW_RULE_ROW_UI_FUNCTION_NAME(odin_map) , DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_NAME(odin_map) , DF_GFX_VIEW_RULE_WHOLE_UI_FUNCTION_NAME(odin_map)  },
 { str8_lit_comp("geo"), (DF_GfxViewRuleSpecInfoFlag_VizRowProd*0)|(DF_GfxViewRuleSpecInfoFlag_LineStringize*0)|(DF_GfxViewRuleSpecInfoFlag_RowUI*1)|(DF_GfxViewRuleSpecInfoFlag_BlockUI*1),  0,  0, DF_GFX_VIEW_RULE_ROW_UI_FUNCTION_NAME(geo) , DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_NAME(geo) ,  0 },
 };
 

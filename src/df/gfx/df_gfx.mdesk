@@ -244,6 +244,7 @@ DF_CmdParamSlot2ViewSpecMap:
 DF_GfxViewRuleTable:
 {
   {"array"         -   -   -   -   -  }
+  {"slice"         -   -   -   -   -  }
   {"list"          x   -   -   -   -  }
   {"dec"           -   x   -   -   -  }
   {"bin"           -   x   -   -   -  }
@@ -256,6 +257,7 @@ DF_GfxViewRuleTable:
   {"text"          -   -   -   x   -  }
   {"disasm"        -   -   -   x   -  }
   {"bitmap"        -   -   x   x   x  }
+  {"odin_map"      -   -   x   x   x  }
   {"geo"           -   -   x   x   -  }
 }
 
