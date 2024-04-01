@@ -577,6 +577,8 @@ struct DF_OdinMapData
   TG_Key key_cell;
   TG_Key value_cell;
 
+  DF_Eval allocator_eval;
+
   U64 key_ptr;
   U64 value_ptr;
   U64 hash_ptr;
@@ -599,10 +601,11 @@ internal B32 df_odin_map_data(Arena *arena, EVAL_ParseCtx *parse_ctx, DF_CtrlCtx
   {
     TG_MemberArray data_members = tg_data_members_from_graph_rdi_key(arena, parse_ctx->type_graph, parse_ctx->rdi, type_key);
 
-    TG_Member *member_data = tg_member_from_name(data_members, str8_lit("data"), 0);
-    TG_Member *member_len  = tg_member_from_name(data_members, str8_lit("len"),  0);
+    TG_Member *member_data      = tg_member_from_name(data_members, str8_lit("data"), 0);
+    TG_Member *member_len       = tg_member_from_name(data_members, str8_lit("len"),  0);
+    TG_Member *member_allocator = tg_member_from_name(data_members, str8_lit("allocator"), 0);
 
-    if (member_data && member_len)
+    if (member_data && member_len && member_allocator)
     {
       TG_Key metadata = member_data->type_key;
       metadata = tg_ptee_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, metadata);
@@ -610,6 +613,10 @@ internal B32 df_odin_map_data(Arena *arena, EVAL_ParseCtx *parse_ctx, DF_CtrlCtx
       {
         goto end;
       }
+
+      md->allocator_eval = eval;
+      md->allocator_eval.offset += member_allocator->off;
+      md->allocator_eval.type_key = member_allocator->type_key;
 
       TG_MemberArray md_members = tg_data_members_from_graph_rdi_key(arena, parse_ctx->type_graph, parse_ctx->rdi, metadata);
       TG_Member *m_key        = tg_member_from_name(md_members, str8_lit("key"),        0);
@@ -667,9 +674,6 @@ DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(odin_map)
   vb->eval = eval;
   vb->cfg_table = *cfg_table;
 
-  U64 row_length = 0;
-  U64 row_capacity = 0;
-
   DF_OdinMapData md = zero_struct;
   if (df_odin_map_data(scratch.arena, parse_ctx, ctrl_ctx, eval, &md))
   {
@@ -703,9 +707,9 @@ DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(odin_map)
       DF_CfgTable child_cfg = *cfg_table;
       child_cfg = df_cfg_table_from_inheritance(arena, cfg_table);
 
-      DF_ExpandKey row_key = df_expand_key_make(df_hash_from_expand_key(vb->parent_key), i);
+      DF_ExpandKey row_key = df_expand_key_make(df_hash_from_expand_key(vb->key), i);
 
-      DF_EvalVizBlock *block = df_eval_viz_block_begin(arena, DF_EvalVizBlockKind_Root, vb->parent_key, row_key, depth+1);
+      DF_EvalVizBlock *block = df_eval_viz_block_begin(arena, DF_EvalVizBlockKind_Root, vb->key, row_key, depth+1);
       block->eval                        = addr_key;
       block->cfg_table                   = child_cfg;
       block->string                      = push_str8f(arena, "key", i);
