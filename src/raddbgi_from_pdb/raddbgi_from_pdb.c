@@ -1257,7 +1257,7 @@ internal TS_TASK_FUNCTION_DEF(p2r_udt_convert_task__entry_point)
                 CV_LeafKind field_kind = *(CV_LeafKind *)read_ptr;
                 U64 field_leaf_header_size = cv_header_struct_size_from_leaf_kind(field_kind);
                 U8 *field_leaf_first = read_ptr+2;
-                U8 *field_leaf_opl   = field_leaf_first+range->hdr.size-2;
+                U8 *field_leaf_opl   = field_list_opl;
                 next_read_ptr = field_leaf_opl;
                 
                 // rjf: skip out-of-bounds fields
@@ -1281,6 +1281,9 @@ internal TS_TASK_FUNCTION_DEF(p2r_udt_convert_task__entry_point)
                     // rjf: unpack leaf
                     CV_LeafIndex *lf = (CV_LeafIndex *)field_leaf_first;
                     CV_TypeId new_itype = lf->itype;
+                    
+                    // rjf: bump next read pointer past header
+                    next_read_ptr = (U8 *)(lf+1);
                     
                     // rjf: determine if index itype is new
                     B32 is_new = 1;
@@ -1573,6 +1576,9 @@ internal TS_TASK_FUNCTION_DEF(p2r_udt_convert_task__entry_point)
                     U8 *num2_ptr = num1_ptr + num1.encoded_size;
                     CV_NumericParsed num2 = cv_numeric_from_data_range(num2_ptr, field_leaf_opl);
                     
+                    // rjf: bump next read pointer past header
+                    next_read_ptr = (U8 *)(lf+1);
+                    
                     // rjf: emit member
                     RDIM_UDTMember *mem = rdim_udt_push_member(arena, udts, dst_udt);
                     mem->kind = RDI_MemberKind_VirtualBase;
@@ -1583,6 +1589,10 @@ internal TS_TASK_FUNCTION_DEF(p2r_udt_convert_task__entry_point)
                   case CV_LeafKind_VFUNCTAB:
                   {
                     CV_LeafVFuncTab *lf = (CV_LeafVFuncTab *)field_leaf_first;
+                    
+                    // rjf: bump next read pointer past header
+                    next_read_ptr = (U8 *)(lf+1);
+                    
                     // NOTE(rjf): currently no-op this case
                     (void)lf;
                   }break;
@@ -1970,7 +1980,7 @@ internal TS_TASK_FUNCTION_DEF(p2r_symbol_stream_convert_task__entry_point)
             if(container_name_opl > 2)
             {
               String8 container_name = str8(name.str, container_name_opl - 2);
-              CV_TypeId cv_type_id = pdb_tpi_first_itype_from_name(in->tpi_hash, in->tpi_leaf, name, 0);
+              CV_TypeId cv_type_id = pdb_tpi_first_itype_from_name(in->tpi_hash, in->tpi_leaf, container_name, 0);
               container_type = p2r_type_ptr_from_itype(cv_type_id);
             }
             
@@ -2007,7 +2017,7 @@ internal TS_TASK_FUNCTION_DEF(p2r_symbol_stream_convert_task__entry_point)
           if(container_name_opl > 2)
           {
             String8 container_name = str8(name.str, container_name_opl - 2);
-            CV_TypeId cv_type_id = pdb_tpi_first_itype_from_name(in->tpi_hash, in->tpi_leaf, name, 0);
+            CV_TypeId cv_type_id = pdb_tpi_first_itype_from_name(in->tpi_hash, in->tpi_leaf, container_name, 0);
             container_type = p2r_type_ptr_from_itype(cv_type_id);
           }
           
@@ -2182,7 +2192,7 @@ internal TS_TASK_FUNCTION_DEF(p2r_symbol_stream_convert_task__entry_point)
           if(container_name_opl > 2)
           {
             String8 container_name = str8(name.str, container_name_opl - 2);
-            CV_TypeId cv_type_id = pdb_tpi_first_itype_from_name(in->tpi_hash, in->tpi_leaf, name, 0);
+            CV_TypeId cv_type_id = pdb_tpi_first_itype_from_name(in->tpi_hash, in->tpi_leaf, container_name, 0);
             container_type = p2r_type_ptr_from_itype(cv_type_id);
           }
           
@@ -3026,11 +3036,18 @@ p2r_convert(Arena *arena, P2R_User2Convert *in)
                 if(lf->flags & CV_ModifierFlag_Volatile) {flags |= RDI_TypeModifierFlag_Volatile;}
                 
                 // rjf: fill type
-                dst_type = rdim_type_chunk_list_push(arena, &all_types, (U64)itype_opl);
-                dst_type->kind        = RDI_TypeKind_Modifier;
-                dst_type->flags       = flags;
-                dst_type->direct_type = p2r_type_ptr_from_itype(lf->itype);
-                dst_type->byte_size   = dst_type->direct_type ? dst_type->direct_type->byte_size : 0;
+                if(flags == 0)
+                {
+                  dst_type = p2r_type_ptr_from_itype(lf->itype);
+                }
+                else
+                {
+                  dst_type = rdim_type_chunk_list_push(arena, &all_types, (U64)itype_opl);
+                  dst_type->kind        = RDI_TypeKind_Modifier;
+                  dst_type->flags       = flags;
+                  dst_type->direct_type = p2r_type_ptr_from_itype(lf->itype);
+                  dst_type->byte_size   = dst_type->direct_type ? dst_type->direct_type->byte_size : 0;
+                }
               }break;
               
               //- rjf: POINTER
@@ -3072,10 +3089,10 @@ p2r_convert(Arena *arena, P2R_User2Convert *in)
                 }
                 
                 // rjf: fill type
-                dst_type = rdim_type_chunk_list_push(arena, &all_types, (U64)itype_opl);
                 if(modifier_flags != 0)
                 {
                   RDIM_Type *pointer_type = rdim_type_chunk_list_push(arena, &all_types, (U64)itype_opl);
+                  dst_type = rdim_type_chunk_list_push(arena, &all_types, (U64)itype_opl);
                   dst_type->kind             = RDI_TypeKind_Modifier;
                   dst_type->flags            = modifier_flags;
                   dst_type->direct_type      = pointer_type;
@@ -3086,6 +3103,7 @@ p2r_convert(Arena *arena, P2R_User2Convert *in)
                 }
                 else
                 {
+                  dst_type = rdim_type_chunk_list_push(arena, &all_types, (U64)itype_opl);
                   dst_type->kind        = type_kind;
                   dst_type->byte_size   = arch_addr_size;
                   dst_type->direct_type = direct_type;
