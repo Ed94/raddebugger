@@ -463,9 +463,9 @@ DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(slice)
 ////////////////////////////////
 //~ bill: "odin_map"
 
-
 typedef struct DF_OdinMapCellInfo DF_OdinMapCellInfo;
-struct DF_OdinMapCellInfo {
+struct DF_OdinMapCellInfo
+{
   U64 size_of_type;
   U64 size_of_cell;
   U64 elements_per_cell;
@@ -565,110 +565,219 @@ internal U64 df_evaluate_hash_from_offset(EVAL_ParseCtx *parse_ctx, DF_CtrlCtx *
 }
 
 
-DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(odin_map)
+typedef struct DF_OdinMapData DF_OdinMapData;
+struct DF_OdinMapData
 {
+  U64 len;
+  U64 cap;
+
+  TG_Key key;
+  TG_Key value;
+  TG_Key hash;
+  TG_Key key_cell;
+  TG_Key value_cell;
+
+  DF_Eval allocator_eval;
+
+  U64 key_ptr;
+  U64 value_ptr;
+  U64 hash_ptr;
+
+  DF_OdinMapCellInfo key_cell_info;
+  DF_OdinMapCellInfo value_cell_info;
+  U64                size_of_hash;
+};
+
+
+internal B32 df_odin_map_data(Arena *arena, EVAL_ParseCtx *parse_ctx, DF_CtrlCtx *ctrl_ctx, DF_Eval eval, DF_OdinMapData *md)
+{
+  B32 ok = false;
+  *md = zero_struct;
+
   TG_Key type_key = eval.type_key;
   TG_Kind type_kind = tg_kind_from_key(type_key);
 
   if (type_kind == TG_Kind_Struct)
   {
-    DF_CfgNode *struct_node = val->last;
-    if (struct_node != &df_g_nil_cfg_node)
+    TG_MemberArray data_members = tg_data_members_from_graph_rdi_key(arena, parse_ctx->type_graph, parse_ctx->rdi, type_key);
+
+    TG_Member *member_data      = tg_member_from_name(data_members, str8_lit("data"), 0);
+    TG_Member *member_len       = tg_member_from_name(data_members, str8_lit("len"),  0);
+    TG_Member *member_allocator = tg_member_from_name(data_members, str8_lit("allocator"), 0);
+
+    if (member_data && member_len && member_allocator)
     {
-      TG_MemberArray data_members = tg_data_members_from_graph_rdi_key(arena, parse_ctx->type_graph, parse_ctx->rdi, type_key);
-
-      TG_Member *member_data = tg_member_from_name(data_members, str8_lit("data"), 0);
-      TG_Member *member_len  = tg_member_from_name(data_members, str8_lit("len"),  0);
-
-      if (member_data && member_len)
+      TG_Key metadata = member_data->type_key;
+      metadata = tg_ptee_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, metadata);
+      if (tg_kind_from_key(metadata) != TG_Kind_Struct)
       {
-        TG_Key metadata = member_data->type_key;
-        metadata = tg_ptee_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, metadata);
-        if (tg_kind_from_key(metadata) != TG_Kind_Struct)
-        {
-          return eval;
-        }
-
-        TG_MemberArray md_members = tg_data_members_from_graph_rdi_key(arena, parse_ctx->type_graph, parse_ctx->rdi, metadata);
-        TG_Member *m_key        = tg_member_from_name(md_members, str8_lit("key"),        0);
-        TG_Member *m_value      = tg_member_from_name(md_members, str8_lit("value"),      0);
-        TG_Member *m_hash       = tg_member_from_name(md_members, str8_lit("hash"),       0);
-        TG_Member *m_key_cell   = tg_member_from_name(md_members, str8_lit("key_cell"),   0);
-        TG_Member *m_value_cell = tg_member_from_name(md_members, str8_lit("value_cell"), 0);
-
-        if (m_key        == NULL ||
-            m_value      == NULL ||
-            m_hash       == NULL ||
-            m_key_cell   == NULL ||
-            m_value_cell == NULL)
-        {
-          return eval;
-        }
-
-        TG_Key key        = m_key->type_key;
-        TG_Key value      = m_value->type_key;
-        TG_Key hash       = m_hash->type_key;
-        TG_Key key_cell   = m_key_cell->type_key;
-        TG_Key value_cell = m_value_cell->type_key;
-
-        U64 raw_data = df_evaluate_integer_from_eval(parse_ctx, ctrl_ctx, eval, member_data);
-        U64 ptr = raw_data & ~(U64)63;
-        U64 len  = df_evaluate_integer_from_eval(parse_ctx, ctrl_ctx, eval, member_len);
-        U64 cap_log2 = raw_data & 63;
-        U64 cap = cap_log2 ? ((U64)1)<<cap_log2 : 0;
-
-        TG_Key array_type = zero_struct;
-
-        DF_OdinMapCellInfo key_cell_info   = df_odin_map_cell_info(arena, parse_ctx, key,   key_cell);
-        DF_OdinMapCellInfo value_cell_info = df_odin_map_cell_info(arena, parse_ctx, value, value_cell);
-        U64 size_of_hash = tg_byte_size_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, hash);
-
-        U64 key_ptr   = ptr;
-        U64 value_ptr = df_odin_map_cell_index(key_ptr,   &key_cell_info,   cap);
-        U64 hash_ptr  = df_odin_map_cell_index(value_ptr, &value_cell_info, cap);
-        (void)value_ptr;
-        (void)hash_ptr;
-
-        U64 TOMBSTONE_MASK = ((U64)1u)<<(size_of_hash*8 - 1);
-
-        for (U64 i = 0; i < cap; i += 1)
-        {
-          U64 offset_hash = hash_ptr + i*size_of_hash;
-
-          U64 h = df_evaluate_hash_from_offset(parse_ctx, ctrl_ctx, offset_hash, hash);
-          if (h != 0 && (h & TOMBSTONE_MASK) == 0)
-          {
-            U64 offset_key   = df_odin_map_cell_index(key_ptr,   &key_cell_info,   i);
-            U64 offset_value = df_odin_map_cell_index(value_ptr, &value_cell_info, i);
-
-
-            DF_Eval addr_key = zero_struct;
-            addr_key.mode = EVAL_EvalMode_Addr;
-            addr_key.offset = offset_key;
-            addr_key.type_key = key;
-
-            DF_Eval addr_value = zero_struct;
-            addr_value.mode = EVAL_EvalMode_Addr;
-            addr_value.offset = offset_value;
-            addr_value.type_key = value;
-
-            // render element
-          }
-        }
-
-        TG_Key key_array_type = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Array, key_cell, cap/key_cell_info.elements_per_cell);
-        DF_Eval new_eval = zero_struct;
-        new_eval.mode = EVAL_EvalMode_Value;
-        new_eval.imm_u64 = key_ptr;
-        new_eval.type_key = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Ptr, key_array_type, 0);
-        eval = new_eval;
-
+        goto end;
       }
+
+      md->allocator_eval = eval;
+      md->allocator_eval.offset += member_allocator->off;
+      md->allocator_eval.type_key = member_allocator->type_key;
+
+      TG_MemberArray md_members = tg_data_members_from_graph_rdi_key(arena, parse_ctx->type_graph, parse_ctx->rdi, metadata);
+      TG_Member *m_key        = tg_member_from_name(md_members, str8_lit("key"),        0);
+      TG_Member *m_value      = tg_member_from_name(md_members, str8_lit("value"),      0);
+      TG_Member *m_hash       = tg_member_from_name(md_members, str8_lit("hash"),       0);
+      TG_Member *m_key_cell   = tg_member_from_name(md_members, str8_lit("key_cell"),   0);
+      TG_Member *m_value_cell = tg_member_from_name(md_members, str8_lit("value_cell"), 0);
+
+      if (m_key        == NULL ||
+          m_value      == NULL ||
+          m_hash       == NULL ||
+          m_key_cell   == NULL ||
+          m_value_cell == NULL)
+      {
+        goto end;
+      }
+
+      md->key        = m_key->type_key;
+      md->value      = m_value->type_key;
+      md->hash       = m_hash->type_key;
+      md->key_cell   = m_key_cell->type_key;
+      md->value_cell = m_value_cell->type_key;
+
+      U64 raw_data = df_evaluate_integer_from_eval(parse_ctx, ctrl_ctx, eval, member_data);
+      U64 ptr = raw_data & ~(U64)63;
+      md->len  = df_evaluate_integer_from_eval(parse_ctx, ctrl_ctx, eval, member_len);
+      U64 cap_log2 = raw_data & 63;
+      md->cap = cap_log2 ? ((U64)1)<<cap_log2 : 0;
+      TG_Key array_type = zero_struct;
+
+      md->key_cell_info   = df_odin_map_cell_info(arena, parse_ctx, md->key,   md->key_cell);
+      md->value_cell_info = df_odin_map_cell_info(arena, parse_ctx, md->value, md->value_cell);
+      md->size_of_hash    = tg_byte_size_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, md->hash);
+
+      md->key_ptr   = ptr;
+      md->value_ptr = df_odin_map_cell_index(md->key_ptr,   &md->key_cell_info,   md->cap);
+      md->hash_ptr  = df_odin_map_cell_index(md->value_ptr, &md->value_cell_info, md->cap);
+
+      ok = true;
     }
   }
 
-  return eval;
+
+end:;
+
+  return ok;
 }
+
+
+DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(odin_map)
+{
+  Temp scratch = scratch_begin(&arena, 1);
+
+  DF_EvalVizBlock *vb = df_eval_viz_block_begin(arena, DF_EvalVizBlockKind_Canvas, key, df_expand_key_make(df_hash_from_expand_key(key), 1), depth);
+  vb->eval = eval;
+  vb->cfg_table = *cfg_table;
+
+  DF_OdinMapData md = zero_struct;
+  if (df_odin_map_data(scratch.arena, parse_ctx, ctrl_ctx, eval, &md))
+  {
+    U64 const TOMBSTONE_MASK = ((U64)1u)<<(md.size_of_hash*8 - 1);
+
+    U64 key_index = 0;
+    for (U64 i = 0; i < md.cap; i += 1)
+    {
+      U64 offset_hash = md.hash_ptr + i*md.size_of_hash;
+
+      U64 h = df_evaluate_hash_from_offset(parse_ctx, ctrl_ctx, offset_hash, md.hash);
+      if (h == 0 || (h & TOMBSTONE_MASK) != 0)
+      {
+        continue;
+      }
+      U64 offset_key   = df_odin_map_cell_index(md.key_ptr,   &md.key_cell_info,   i);
+      U64 offset_value = df_odin_map_cell_index(md.value_ptr, &md.value_cell_info, i);
+
+      DF_Eval addr_key = zero_struct;
+      addr_key.mode = EVAL_EvalMode_Addr;
+      addr_key.offset = offset_key;
+      addr_key.type_key = md.key;
+
+      DF_Eval addr_value = zero_struct;
+      addr_value.mode = EVAL_EvalMode_Addr;
+      addr_value.offset = offset_value;
+      addr_value.type_key = md.value;
+
+      // render element
+
+      DF_CfgTable child_cfg = *cfg_table;
+      child_cfg = df_cfg_table_from_inheritance(arena, cfg_table);
+
+      DF_ExpandKey row_key = df_expand_key_make(df_hash_from_expand_key(vb->key), i);
+
+      B32 row_expanded = df_expand_key_is_set(&eval_view->expand_tree_table, row_key);
+
+      DF_EvalVizBlock *block = df_eval_viz_block_begin(arena, DF_EvalVizBlockKind_Root, vb->key, row_key, depth+1);
+      block->eval                        = addr_key;
+      block->cfg_table                   = child_cfg;
+      block->string                      = row_expanded ? push_str8f(arena, "key") : push_str8f(arena, "key (hash: %I64x)", h);
+      block->visual_idx_range            = r1u64(0, 1);
+      block->semantic_idx_range          = r1u64(0, 1);
+      df_eval_viz_block_end(out, block);
+
+      if (row_expanded)
+      {
+        DF_EvalVizBlock * value_block = df_eval_viz_block_begin(arena, DF_EvalVizBlockKind_Root, row_key, zero_struct, depth+2);
+        value_block->eval                        = addr_value;
+        value_block->cfg_table                   = child_cfg;
+        value_block->string                      = push_str8f(arena, "value");
+        value_block->visual_idx_range            = r1u64(0, 1);
+        value_block->semantic_idx_range          = r1u64(0, 1);
+        df_eval_viz_block_end(out, value_block);
+
+        DF_Eval eval_hash = zero_struct;
+        eval_hash.type_key = md.hash;
+        eval_hash.mode = EVAL_EvalMode_Value;
+        eval_hash.imm_u64 = h;
+        DF_EvalVizBlock * hash_block = df_eval_viz_block_begin(arena, DF_EvalVizBlockKind_Root, row_key, zero_struct, depth+2);
+        hash_block->eval                        = eval_hash;
+        hash_block->cfg_table                   = child_cfg;
+        hash_block->string                      = push_str8f(arena, "hash");
+        hash_block->visual_idx_range            = r1u64(0, 1);
+        hash_block->semantic_idx_range          = r1u64(0, 1);
+        df_eval_viz_block_end(out, hash_block);
+      }
+
+      key_index += 1;
+    }
+  }
+
+  df_eval_viz_block_end(out, vb);
+
+  scratch_end(scratch);
+}
+
+DF_GFX_VIEW_RULE_ROW_UI_FUNCTION_DEF(odin_map)
+{
+  Temp scratch = scratch_begin(0, 0);
+
+  DF_Eval value_eval = df_value_mode_eval_from_eval(parse_ctx->type_graph, parse_ctx->rdi, ctrl_ctx, eval);
+  U64 base_vaddr = value_eval.imm_u64 ? value_eval.imm_u64 : value_eval.offset;
+
+  DF_OdinMapData md = zero_struct;
+  df_odin_map_data(scratch.arena, parse_ctx, ctrl_ctx, eval, &md);
+
+  UI_Font(df_font_from_slot(DF_FontSlot_Code)) UI_TextColor(df_rgba_from_theme_color(DF_ThemeColor_WeakText))
+    ui_labelf("0x%I64x -> Odin map len: %I64u cap: %I64u", base_vaddr, md.len, md.cap);
+
+  scratch_end(scratch);
+}
+
+DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_DEF(odin_map)
+{
+
+}
+
+
+DF_GFX_VIEW_RULE_WHOLE_UI_FUNCTION_DEF(odin_map)
+{
+
+}
+
 
 
 ////////////////////////////////
