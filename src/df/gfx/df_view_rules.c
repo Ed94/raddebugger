@@ -459,44 +459,6 @@ df_view_rule_hooks__disasm_topology_info_from_cfg(DBGI_Scope *scope, DF_CtrlCtx 
 }
 
 ////////////////////////////////
-//~ rjf: "array"
-
-DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(array)
-{
-  Temp scratch = scratch_begin(&arena, 1);
-  TG_Key type_key = eval.type_key;
-  TG_Kind type_kind = tg_kind_from_key(type_key);
-  if(type_kind == TG_Kind_Ptr || type_kind == TG_Kind_LRef || type_kind == TG_Kind_RRef)
-  {
-    DF_CfgNode *array_node = val->last;
-    if(array_node != &df_g_nil_cfg_node)
-    {
-      // rjf: determine array size
-      U64 array_size = 0;
-      {
-        String8List array_size_expr_strs = {0};
-        for(DF_CfgNode *child = array_node->first; child != &df_g_nil_cfg_node; child = child->next)
-        {
-          str8_list_push(scratch.arena, &array_size_expr_strs, child->string);
-        }
-        String8 array_size_expr = str8_list_join(scratch.arena, &array_size_expr_strs, 0);
-        DF_Eval array_size_eval = df_eval_from_string(arena, dbgi_scope, ctrl_ctx, parse_ctx, macro_map, array_size_expr);
-        DF_Eval array_size_eval_value = df_value_mode_eval_from_eval(parse_ctx->type_graph, parse_ctx->rdi, ctrl_ctx, array_size_eval);
-        eval_error_list_concat_in_place(&eval.errors, &array_size_eval.errors);
-        array_size = array_size_eval_value.imm_u64;
-      }
-      
-      // rjf: apply array size to type
-      TG_Key pointee = tg_ptee_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, type_key);
-      TG_Key array_type = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Array, pointee, array_size);
-      eval.type_key = tg_cons_type_make(parse_ctx->type_graph, TG_Kind_Ptr, array_type, 0);
-    }
-  }
-  scratch_end(scratch);
-  return eval;
-}
-
-////////////////////////////////
 //~ bill: "slice"
 
 
@@ -886,131 +848,25 @@ DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_DEF(odin_map)
 
 }
 
-
-DF_GFX_VIEW_RULE_WHOLE_UI_FUNCTION_DEF(odin_map)
+DF_VIEW_SETUP_FUNCTION_DEF(odin_map)
 {
 
 }
 
-
-
-////////////////////////////////
-//~ rjf: "list"
-
-DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(list)
+DF_VIEW_STRING_FROM_STATE_FUNCTION_DEF(odin_map)
 {
-  
+  String8 result {};
+  return result;
 }
 
-DF_GFX_VIEW_RULE_VIZ_ROW_PROD_FUNCTION_DEF(list)
+DF_VIEW_CMD_FUNCTION_DEF(odin_map)
 {
-  
+
 }
 
-////////////////////////////////
-//~ rjf: "bswap"
-
-DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(bswap)
+DF_VIEW_UI_FUNCTION_DEF(odin_map)
 {
-  Temp scratch = scratch_begin(&arena, 1);
-  TG_Key type_key = eval.type_key;
-  TG_Kind type_kind = tg_kind_from_key(type_key);
-  U64 type_size_bytes = tg_byte_size_from_graph_rdi_key(parse_ctx->type_graph, parse_ctx->rdi, type_key);
-  if(TG_Kind_Char8 <= type_kind && type_kind <= TG_Kind_S256 &&
-     (type_size_bytes == 2 ||
-      type_size_bytes == 4 ||
-      type_size_bytes == 8))
-  {
-    DF_Eval value_eval = df_value_mode_eval_from_eval(parse_ctx->type_graph, parse_ctx->rdi, ctrl_ctx, eval);
-    if(value_eval.mode == EVAL_EvalMode_Value)
-    {
-      switch(type_size_bytes)
-      {
-        default:{}break;
-        case 2:{U16 v = (U16)value_eval.imm_u64; v = bswap_u16(v); value_eval.imm_u64 = (U64)v;}break;
-        case 4:{U32 v = (U32)value_eval.imm_u64; v = bswap_u32(v); value_eval.imm_u64 = (U64)v;}break;
-        case 8:{U64 v =      value_eval.imm_u64; v = bswap_u64(v); value_eval.imm_u64 =      v;}break;
-      }
-    }
-    eval = value_eval;
-  }
-  scratch_end(scratch);
-  return eval;
-}
 
-////////////////////////////////
-//~ rjf: "dec"
-
-DF_GFX_VIEW_RULE_LINE_STRINGIZE_FUNCTION_DEF(dec)
-{
-  
-}
-
-////////////////////////////////
-//~ rjf: "bin"
-
-DF_GFX_VIEW_RULE_LINE_STRINGIZE_FUNCTION_DEF(bin)
-{
-  
-}
-
-////////////////////////////////
-//~ rjf: "oct"
-
-DF_GFX_VIEW_RULE_LINE_STRINGIZE_FUNCTION_DEF(oct)
-{
-  
-}
-
-////////////////////////////////
-//~ rjf: "hex"
-
-DF_GFX_VIEW_RULE_LINE_STRINGIZE_FUNCTION_DEF(hex)
-{
-  
-}
-
-////////////////////////////////
-//~ rjf: "only"
-
-DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(only)
-{
-  
-}
-
-DF_GFX_VIEW_RULE_VIZ_ROW_PROD_FUNCTION_DEF(only)
-{
-  
-}
-
-DF_GFX_VIEW_RULE_LINE_STRINGIZE_FUNCTION_DEF(only)
-{
-  
-}
-
-////////////////////////////////
-//~ rjf: "omit"
-
-DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(omit)
-{
-  
-}
-
-DF_GFX_VIEW_RULE_VIZ_ROW_PROD_FUNCTION_DEF(omit)
-{
-  
-}
-
-DF_GFX_VIEW_RULE_LINE_STRINGIZE_FUNCTION_DEF(omit)
-{
-  
-}
-
-////////////////////////////////
-//~ rjf: "no_addr"
-
-DF_GFX_VIEW_RULE_LINE_STRINGIZE_FUNCTION_DEF(no_addr)
-{
 }
 
 ////////////////////////////////
