@@ -73,7 +73,7 @@ struct DF_View;
 struct DF_Panel;
 struct DF_Window;
 
-#define DF_VIEW_SETUP_FUNCTION_SIG(name) void name(struct DF_View *view, DF_CfgNode *cfg_root)
+#define DF_VIEW_SETUP_FUNCTION_SIG(name) void name(DF_Window *ws, struct DF_View *view, DF_CfgNode *cfg_root)
 #define DF_VIEW_SETUP_FUNCTION_NAME(name) df_view_setup_##name
 #define DF_VIEW_SETUP_FUNCTION_DEF(name) internal DF_VIEW_SETUP_FUNCTION_SIG(DF_VIEW_SETUP_FUNCTION_NAME(name))
 typedef DF_VIEW_SETUP_FUNCTION_SIG(DF_ViewSetupFunctionType);
@@ -102,9 +102,10 @@ enum
   DF_ViewSpecFlag_ParameterizedByEntity      = (1<<0),
   DF_ViewSpecFlag_CanSerialize               = (1<<1),
   DF_ViewSpecFlag_CanSerializeEntityPath     = (1<<2),
-  DF_ViewSpecFlag_CanFilter                  = (1<<3),
-  DF_ViewSpecFlag_FilterIsCode               = (1<<4),
-  DF_ViewSpecFlag_TypingAutomaticallyFilters = (1<<5),
+  DF_ViewSpecFlag_CanSerializeQuery          = (1<<3),
+  DF_ViewSpecFlag_CanFilter                  = (1<<4),
+  DF_ViewSpecFlag_FilterIsCode               = (1<<5),
+  DF_ViewSpecFlag_TypingAutomaticallyFilters = (1<<6),
 };
 
 typedef struct DF_ViewSpecInfo DF_ViewSpecInfo;
@@ -226,10 +227,10 @@ struct DF_Panel
   
   // rjf: split data
   Axis2 split_axis;
-  Vec2F32 off_pct_of_parent;
-  Vec2F32 off_pct_of_parent_target;
-  Vec2F32 size_pct_of_parent;
-  Vec2F32 size_pct_of_parent_target;
+  F32 pct_of_parent;
+  
+  // rjf: animated rectangle data
+  Rng2F32 animated_rect_pct;
   
   // rjf: tab params
   Side tab_side;
@@ -281,7 +282,6 @@ enum
   DF_GfxViewRuleSpecInfoFlag_LineStringize  = (1<<1),
   DF_GfxViewRuleSpecInfoFlag_RowUI          = (1<<2),
   DF_GfxViewRuleSpecInfoFlag_BlockUI        = (1<<3),
-  DF_GfxViewRuleSpecInfoFlag_WholeUI        = (1<<4),
 };
 
 #define DF_GFX_VIEW_RULE_VIZ_ROW_PROD_FUNCTION_SIG(name) void name(void)
@@ -296,19 +296,14 @@ enum
 #define DF_GFX_VIEW_RULE_ROW_UI_FUNCTION_NAME(name) df_gfx_view_rule_row_ui__##name
 #define DF_GFX_VIEW_RULE_ROW_UI_FUNCTION_DEF(name) DF_GFX_VIEW_RULE_ROW_UI_FUNCTION_SIG(DF_GFX_VIEW_RULE_ROW_UI_FUNCTION_NAME(name))
 
-#define DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_SIG(name) void name(struct DF_Window *ws, DF_ExpandKey key, DF_Eval eval, DBGI_Scope *dbgi_scope, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, EVAL_String2ExprMap *macro_map, struct DF_CfgNode *cfg, Vec2F32 dim)
+#define DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_SIG(name) void name(struct DF_Window *ws, DF_ExpandKey key, DF_Eval eval, String8 string, DBGI_Scope *dbgi_scope, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, EVAL_String2ExprMap *macro_map, struct DF_CfgNode *cfg, Vec2F32 dim)
 #define DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_NAME(name) df_gfx_view_rule_block_ui__##name
 #define DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_DEF(name) DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_SIG(DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_NAME(name))
-
-#define DF_GFX_VIEW_RULE_WHOLE_UI_FUNCTION_SIG(name) void name(struct DF_Window *ws, struct DF_Panel *panel, struct DF_View *view, Rng2F32 rect, DBGI_Scope *dbgi_scope, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, EVAL_String2ExprMap *macro_map, struct DF_CfgNode *cfg)
-#define DF_GFX_VIEW_RULE_WHOLE_UI_FUNCTION_NAME(name) df_gfx_view_rule_whole_ui__##name
-#define DF_GFX_VIEW_RULE_WHOLE_UI_FUNCTION_DEF(name) DF_GFX_VIEW_RULE_WHOLE_UI_FUNCTION_SIG(DF_GFX_VIEW_RULE_WHOLE_UI_FUNCTION_NAME(name))
 
 typedef DF_GFX_VIEW_RULE_VIZ_ROW_PROD_FUNCTION_SIG(DF_GfxViewRuleVizRowProdHookFunctionType);
 typedef DF_GFX_VIEW_RULE_LINE_STRINGIZE_FUNCTION_SIG(DF_GfxViewRuleLineStringizeHookFunctionType);
 typedef DF_GFX_VIEW_RULE_ROW_UI_FUNCTION_SIG(DF_GfxViewRuleRowUIFunctionType);
 typedef DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_SIG(DF_GfxViewRuleBlockUIFunctionType);
-typedef DF_GFX_VIEW_RULE_WHOLE_UI_FUNCTION_SIG(DF_GfxViewRuleWholeUIFunctionType);
 
 typedef struct DF_GfxViewRuleSpecInfo DF_GfxViewRuleSpecInfo;
 struct DF_GfxViewRuleSpecInfo
@@ -319,7 +314,7 @@ struct DF_GfxViewRuleSpecInfo
   DF_GfxViewRuleLineStringizeHookFunctionType *line_stringize;
   DF_GfxViewRuleRowUIFunctionType *row_ui;
   DF_GfxViewRuleBlockUIFunctionType *block_ui;
-  DF_GfxViewRuleWholeUIFunctionType *whole_ui;
+  String8 tab_view_spec_name;
 };
 
 typedef struct DF_GfxViewRuleSpecInfoArray DF_GfxViewRuleSpecInfoArray;
@@ -707,6 +702,9 @@ struct DF_GfxState
   String8 cfg_main_font_path;
   String8 cfg_code_font_path;
   F_Tag cfg_font_tags[DF_FontSlot_COUNT];
+  
+  // rjf: icon texture
+  R_Handle icon_texture;
 };
 
 ////////////////////////////////
@@ -765,6 +763,8 @@ read_only global DF_Panel df_g_nil_panel =
 
 global DF_GfxState *df_gfx_state = 0;
 global DF_DragDropPayload df_g_drag_drop_payload = {0};
+global DF_Handle df_g_last_drag_drop_panel = {0};
+global DF_Handle df_g_last_drag_drop_prev_tab = {0};
 
 ////////////////////////////////
 //~ rjf: Basic Helpers
@@ -805,8 +805,8 @@ internal DF_PanelRec df_panel_rec_df(DF_Panel *panel, U64 sib_off, U64 child_off
 #define df_panel_rec_df_post(panel) df_panel_rec_df(panel, OffsetOf(DF_Panel, prev), OffsetOf(DF_Panel, last))
 
 //- rjf: panel -> rect calculations
-internal Rng2F32 df_rect_from_panel_child(Rng2F32 parent_rect, DF_Panel *parent, DF_Panel *panel);
-internal Rng2F32 df_rect_from_panel(Rng2F32 root_rect, DF_Panel *root, DF_Panel *panel);
+internal Rng2F32 df_target_rect_from_panel_child(Rng2F32 parent_rect, DF_Panel *parent, DF_Panel *panel);
+internal Rng2F32 df_target_rect_from_panel(Rng2F32 root_rect, DF_Panel *root, DF_Panel *panel);
 
 //- rjf: view ownership insertion/removal
 internal void df_panel_insert_tab_view(DF_Panel *panel, DF_View *prev_view, DF_View *view);
@@ -864,13 +864,14 @@ internal DF_ViewSpec *df_view_spec_from_cmd_param_slot_spec(DF_CmdParamSlot slot
 
 internal void df_register_gfx_view_rule_specs(DF_GfxViewRuleSpecInfoArray specs);
 internal DF_GfxViewRuleSpec *df_gfx_view_rule_spec_from_string(String8 string);
+internal DF_ViewSpec *df_tab_view_spec_from_gfx_view_rule_spec(DF_GfxViewRuleSpec *spec);
 
 ////////////////////////////////
 //~ rjf: View State Functions
 
 internal DF_View *df_view_alloc(void);
 internal void df_view_release(DF_View *view);
-internal void df_view_equip_spec(DF_View *view, DF_ViewSpec *spec, DF_Entity *entity, String8 default_query, DF_CfgNode *cfg_root);
+internal void df_view_equip_spec(DF_Window *window, DF_View *view, DF_ViewSpec *spec, DF_Entity *entity, String8 default_query, DF_CfgNode *cfg_root);
 internal void df_view_equip_loading_info(DF_View *view, B32 is_loading, U64 progress_v, U64 progress_target);
 internal void df_view_clear_user_state(DF_View *view);
 internal void *df_view_get_or_push_user_state(DF_View *view, U64 size);

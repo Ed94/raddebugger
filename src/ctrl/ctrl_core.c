@@ -851,6 +851,15 @@ ctrl_init(void)
   ctrl_state->c2u_ring_base = push_array_no_zero(arena, U8, ctrl_state->c2u_ring_size);
   ctrl_state->c2u_ring_mutex = os_mutex_alloc();
   ctrl_state->c2u_ring_cv = os_condition_variable_alloc();
+  {
+    Temp scratch = scratch_begin(0, 0);
+    String8 user_program_data_path = os_string_from_system_path(scratch.arena, OS_SystemPath_UserProgramData);
+    String8 user_data_folder = push_str8f(scratch.arena, "%S/raddbg/logs", user_program_data_path);
+    os_make_directory(user_data_folder);
+    ctrl_state->ctrl_thread_log_path = push_str8f(ctrl_state->arena, "%S/ctrl_thread.raddbg_log", user_data_folder);
+    os_write_data_to_file_path(ctrl_state->ctrl_thread_log_path, str8_zero());
+    scratch_end(scratch);
+  }
   ctrl_state->ctrl_thread_entity_store = ctrl_entity_store_alloc();
   ctrl_state->dmn_event_arena = arena_alloc();
   ctrl_state->user_entry_point_arena = arena_alloc();
@@ -865,6 +874,7 @@ ctrl_init(void)
   ctrl_state->u2ms_ring_base = push_array(arena, U8, ctrl_state->u2ms_ring_size);
   ctrl_state->u2ms_ring_mutex = os_mutex_alloc();
   ctrl_state->u2ms_ring_cv = os_condition_variable_alloc();
+  ctrl_state->ctrl_thread_log = log_alloc();
   ctrl_state->ctrl_thread = os_launch_thread(ctrl_thread__entry_point, 0, 0);
   ctrl_state->ms_thread_count = Clamp(1, os_logical_core_count()-1, 4);
   ctrl_state->ms_threads = push_array(arena, OS_Handle, ctrl_state->ms_thread_count);
@@ -1737,12 +1747,14 @@ ctrl_thread__entry_point(void *p)
   ThreadNameF("[ctrl] thread");
   ProfBeginFunction();
   DMN_CtrlCtx *ctrl_ctx = dmn_ctrl_begin();
+  log_select(ctrl_state->ctrl_thread_log);
   
   //- rjf: loop
   Temp scratch = scratch_begin(0, 0);
   for(;;)
   {
     temp_end(scratch);
+    log_scope_begin();
     
     //- rjf: get next messages
     CTRL_MsgList msgs = ctrl_u2c_pop_msgs(scratch.arena);
@@ -1781,6 +1793,9 @@ ctrl_thread__entry_point(void *p)
         }
       }
     }
+    
+    String8 log = log_scope_end(scratch.arena);
+    ctrl_thread__flush_log(log);
   }
   
   scratch_end(scratch);
@@ -1922,6 +1937,22 @@ ctrl_thread__next_dmn_event(Arena *arena, DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg, 
     {
       // rjf: grab first event
       DMN_EventNode *next_event_node = ctrl_state->first_dmn_event_node;
+      
+      // rjf: log event
+      if(next_event_node != 0) CTRL_CtrlThreadLogScope
+      {
+        DMN_Event *ev = &next_event_node->v;
+        log_msgf("--- event ---\n");
+        log_msgf("kind:           %S\n",       dmn_event_kind_string_table[ev->kind]);
+        log_msgf("exception_kind: %S\n",       dmn_exception_kind_string_table[ev->exception_kind]);
+        log_msgf("process:        [%I64u]\n",  ev->process.u64[0]);
+        log_msgf("thread:         [%I64u]\n",  ev->thread.u64[0]);
+        log_msgf("module:         [%I64u]\n",  ev->module.u64[0]);
+        log_msgf("arch:           %S\n",       string_from_architecture(ev->arch));
+        log_msgf("address:        0x%I64x\n",  ev->address);
+        log_msgf("string:         \"%S\"\n",   ev->string);
+        log_msgf("ip_vaddr:       0x%I64x\n",  ev->instruction_pointer);
+      }
       
       // rjf: determine if we should filter
       B32 should_filter_event = 0;
@@ -2073,7 +2104,9 @@ ctrl_thread__next_dmn_event(Arena *arena, DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg, 
       // rjf: run for new events
       ProfScope("run for new events")
       {
+        CTRL_CtrlThreadLogScope log_msgf("{dmn_ctrl_run ...");
         DMN_EventList events = dmn_ctrl_run(scratch.arena, ctrl_ctx, run_ctrls);
+        CTRL_CtrlThreadLogScope log_msgf("}\n");
         for(DMN_EventNode *src_n = events.first; src_n != 0; src_n = src_n->next)
         {
           DMN_EventNode *dst_n = ctrl_state->free_dmn_event_node;
@@ -2258,6 +2291,23 @@ ctrl_eval_memory_read(void *u, void *out, U64 addr, U64 size)
   U64 read_size = dmn_process_read(process, r1u64(addr, addr+size), out);
   B32 result = (read_size == size);
   return result;
+}
+
+//- rjf: log flusher
+
+internal void
+ctrl_thread__flush_log(String8 string)
+{
+  os_append_data_to_file_path(ctrl_state->ctrl_thread_log_path, string);
+}
+
+internal void
+ctrl_thread__end_and_flush_log(void)
+{
+  Temp scratch = scratch_begin(0, 0);
+  String8 log = log_scope_end(scratch.arena);
+  ctrl_thread__flush_log(log);
+  scratch_end(scratch);
 }
 
 //- rjf: msg kind implementations
@@ -2693,7 +2743,7 @@ ctrl_thread__run(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg)
       B32 hard_stop = 0;
       CTRL_EventCause hard_stop_cause = ctrl_event_cause_from_dmn_event_kind(event->kind);
       B32 use_stepping_logic = 0;
-      switch(event->kind)
+      CTRL_CtrlThreadLogScope switch(event->kind)
       {
         default:{}break;
         case DMN_EventKind_Error:
@@ -2702,17 +2752,29 @@ ctrl_thread__run(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg)
         case DMN_EventKind_Trap:
         {
           hard_stop = 1;
+          log_msgf(">>> stepping >>> hard stop\n");
         }break;
         case DMN_EventKind_Exception:
         case DMN_EventKind_Breakpoint:
         {
           use_stepping_logic = 1;
+          log_msgf(">>> stepping >>> exception or breakpoint - begin stepping logic\n");
         }break;
         case DMN_EventKind_CreateProcess:
         {
           DMN_TrapChunkList new_traps = {0};
           ctrl_thread__append_resolved_process_user_bp_traps(scratch.arena, CTRL_MachineID_Local, event->process, &msg->user_bps, &new_traps);
+          log_msgf(">>> stepping >>> create process -> resolve new BPs\n");
+          for(DMN_TrapChunkNode *n = new_traps.first; n != 0; n = n->next)
+          {
+            for(U64 idx = 0; idx < n->count; idx += 1)
+            {
+              DMN_Trap *trap = &n->v[idx];
+              log_msgf("  trap: {process:%I64d, vaddr:0x%I64x}\n", trap->process.u64[0], trap->vaddr);
+            }
+          }
           dmn_trap_chunk_list_concat_shallow_copy(scratch.arena, &joined_traps, &new_traps);
+          dmn_trap_chunk_list_concat_shallow_copy(scratch.arena, &user_traps, &new_traps);
         }break;
         case DMN_EventKind_LoadModule:
         {
@@ -2720,6 +2782,7 @@ ctrl_thread__run(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg)
           ctrl_thread__append_resolved_module_user_bp_traps(scratch.arena, CTRL_MachineID_Local, event->process, event->module, &msg->user_bps, &new_traps);
           dmn_trap_chunk_list_concat_shallow_copy(scratch.arena, &joined_traps, &new_traps);
           dmn_trap_chunk_list_concat_shallow_copy(scratch.arena, &user_traps, &new_traps);
+          log_msgf(">>> stepping >>> load module -> resolve new BPs\n");
         }break;
       }
       
@@ -2923,7 +2986,7 @@ ctrl_thread__run(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg)
       //
       CTRL_Entity *thread = ctrl_entity_from_machine_id_handle(ctrl_state->ctrl_thread_entity_store, CTRL_MachineID_Local, event->thread);
       Architecture arch = thread->arch;
-      U64 thread_rip_vaddr = dmn_rsp_from_thread(event->thread);
+      U64 thread_rip_vaddr = dmn_rip_from_thread(event->thread);
       DMN_Handle module = {0};
       String8 module_name = {0};
       U64 module_base_vaddr = 0;
@@ -2991,7 +3054,7 @@ ctrl_thread__run(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg)
       B32 hit_trap_net_bp = 0;
       B32 hit_conditional_bp_but_filtered = 0;
       CTRL_TrapFlags hit_trap_flags = 0;
-      if(!hard_stop && use_stepping_logic)
+      if(!hard_stop && use_stepping_logic) CTRL_CtrlThreadLogScope
       {
         if(event->kind == DMN_EventKind_Breakpoint)
         {
@@ -3093,11 +3156,13 @@ ctrl_thread__run(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg)
               {
                 hit_user_bp = 0;
                 hit_conditional_bp_but_filtered = 1;
+                log_msgf(">>> stepping >>> conditional breakpoint hit, but condition eval'd to 0, and so filtered\n");
               }
               else
               {
                 hit_user_bp = 1;
                 hit_conditional_bp_but_filtered = 0;
+                log_msgf(">>> stepping >>> conditional breakpoint hit\n");
                 break;
               }
             }
@@ -3118,6 +3183,8 @@ ctrl_thread__run(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg)
             }
           }
           
+          log_msgf(">>> stepping >>> stepping logic - BP event -> hit_user_bp: %i\n", hit_user_bp);
+          log_msgf(">>> stepping >>> stepping logic - BP event -> hit_entry:   %i\n", hit_entry);
           temp_end(temp);
         }
       }
@@ -3351,6 +3418,7 @@ ctrl_thread__run(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg)
       {
         stage_stop_cause = CTRL_EventCause_Finished;
       }
+      log_msgf(">>> stepping >>> stage stop cause -> %i\n", stage_stop_cause);
       if(stage_stop_cause != CTRL_EventCause_Null)
       {
         stop_event = event;

@@ -268,7 +268,7 @@ struct DF_Eval
 #define DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_SIG(name) DF_Eval name(Arena *arena, DBGI_Scope *dbgi_scope, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, EVAL_String2ExprMap *macro_map, DF_Eval eval, struct DF_CfgVal *val)
 #define DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_NAME(name) df_core_view_rule_eval_resolution__##name
 #define DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(name) internal DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_SIG(DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_NAME(name))
-#define DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_SIG(name) void name(Arena *arena, DBGI_Scope *dbgi_scope, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, EVAL_String2ExprMap *macro_map, struct DF_EvalView *eval_view, DF_Eval eval, struct DF_CfgTable *cfg_table, DF_ExpandKey parent_key, DF_ExpandKey key, S32 depth, struct DF_CfgNode *cfg, struct DF_EvalVizBlockList *out)
+#define DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_SIG(name) void name(Arena *arena, DBGI_Scope *dbgi_scope, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, EVAL_String2ExprMap *macro_map, struct DF_EvalView *eval_view, DF_Eval eval, String8 string, struct DF_CfgTable *cfg_table, DF_ExpandKey parent_key, DF_ExpandKey key, S32 depth, struct DF_CfgNode *cfg, struct DF_EvalVizBlockList *out)
 #define DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_NAME(name) df_core_view_rule_viz_block_prod__##name
 #define DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(name) internal DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_SIG(DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_NAME(name))
 typedef DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_SIG(DF_CoreViewRuleEvalResolutionHookFunctionType);
@@ -774,7 +774,8 @@ struct DF_EvalVizRow
   DF_Eval eval;
   
   // rjf: basic visualization contents
-  String8 expr;
+  String8 display_expr;
+  String8 edit_expr;
   String8 display_value;
   String8 edit_value;
   TG_KeyList inherited_type_key_chain;
@@ -917,6 +918,31 @@ struct DF_EntityListCache
   Arena *arena;
   U64 alloc_gen;
   DF_EntityList list;
+};
+
+//- rjf: auto view rules hash table cache
+
+typedef struct DF_AutoViewRuleNode DF_AutoViewRuleNode;
+struct DF_AutoViewRuleNode
+{
+  DF_AutoViewRuleNode *next;
+  String8 type;
+  String8 view_rule;
+};
+
+typedef struct DF_AutoViewRuleSlot DF_AutoViewRuleSlot;
+struct DF_AutoViewRuleSlot
+{
+  DF_AutoViewRuleNode *first;
+  DF_AutoViewRuleNode *last;
+};
+
+typedef struct DF_AutoViewRuleMapCache DF_AutoViewRuleMapCache;
+struct DF_AutoViewRuleMapCache
+{
+  Arena *arena;
+  U64 slots_count;
+  DF_AutoViewRuleSlot *slots;
 };
 
 //- rjf: per-run unwind cache
@@ -1116,8 +1142,7 @@ struct DF_State
   // rjf: entity query caches
   U64 kind_alloc_gens[DF_EntityKind_COUNT];
   DF_EntityListCache kind_caches[DF_EntityKind_COUNT];
-  DF_EntityListCache dbg_info_cache;
-  DF_EntityListCache bin_file_cache;
+  DF_AutoViewRuleMapCache auto_view_rule_cache;
   
   // rjf: per-run caches
   U64 unwind_cache_reggen_idx;

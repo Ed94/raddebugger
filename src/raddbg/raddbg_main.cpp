@@ -16,14 +16,17 @@
 
 //- rjf: [lib]
 #include "lib_raddbgi_format/raddbgi_format.h"
-#include "lib_raddbgi_format/raddbgi_format_parse.h"
 #include "lib_raddbgi_format/raddbgi_format.c"
+#include "lib_raddbgi_format/raddbgi_format_parse.h"
 #include "lib_raddbgi_format/raddbgi_format_parse.c"
+#include "third_party/rad_lzb_simple/rad_lzb_simple.h"
+#include "third_party/rad_lzb_simple/rad_lzb_simple.c"
 
 //- rjf: [h]
 #include "base/base_inc.h"
 #include "os/os_inc.h"
 #include "task_system/task_system.h"
+#include "ico/ico.h"
 #include "raddbgi_make_local/raddbgi_make_local.h"
 #include "mdesk/mdesk.h"
 #include "hash_store/hash_store.h"
@@ -62,6 +65,7 @@
 #include "base/base_inc.c"
 #include "os/os_inc.c"
 #include "task_system/task_system.c"
+#include "ico/ico.c"
 #include "raddbgi_make_local/raddbgi_make_local.c"
 #include "mdesk/mdesk.c"
 #include "hash_store/hash_store.c"
@@ -389,8 +393,15 @@ entry_point(CmdLine *cmd_line)
         bake2srlz = p2r_bake(scratch.arena, convert2bake);
       }
       
+      //- rjf: compress
+      P2R_Bake2Serialize *bake2srlz_compressed = bake2srlz;
+      if(cmd_line_has_flag(cmd_line, str8_lit("compress"))) ProfScope("compress")
+      {
+        bake2srlz_compressed = p2r_compress(scratch.arena, bake2srlz);
+      }
+      
       //- rjf: serialize
-      String8List serialize_out = rdim_serialized_strings_from_params_bake_section_list(scratch.arena, &convert2bake->bake_params, &bake2srlz->sections);
+      String8List serialize_out = rdim_serialized_strings_from_params_bake_section_list(scratch.arena, &convert2bake->bake_params, &bake2srlz_compressed->sections);
       
       //- rjf: write
       if(out_file_is_good)

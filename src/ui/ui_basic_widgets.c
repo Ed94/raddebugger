@@ -331,6 +331,75 @@ ui_line_editf(TxtPt *cursor, TxtPt *mark, U8 *edit_buffer, U64 edit_buffer_size,
 }
 
 ////////////////////////////////
+//~ rjf: Images
+
+typedef struct UI_ImageDrawData UI_ImageDrawData;
+struct UI_ImageDrawData
+{
+  R_Handle texture;
+  R_Tex2DSampleKind sample_kind;
+  Rng2F32 region;
+  Vec4F32 tint;
+  F32 blur;
+};
+
+internal UI_BOX_CUSTOM_DRAW(ui_image_draw)
+{
+  UI_ImageDrawData *draw_data = (UI_ImageDrawData *)user_data;
+  if(r_handle_match(draw_data->texture, r_handle_zero()))
+  {
+    R_Rect2DInst *inst = d_rect(box->rect, v4f32(0, 0, 0, 0), 0, 0, 1.f);
+    MemoryCopyArray(inst->corner_radii, box->corner_radii);
+  }
+  else D_Tex2DSampleKindScope(draw_data->sample_kind)
+  {
+    R_Rect2DInst *inst = d_img(box->rect, draw_data->region, draw_data->texture, draw_data->tint, 0, 0, 0);
+    MemoryCopyArray(inst->corner_radii, box->corner_radii);
+  }
+  if(draw_data->blur > 0.01f)
+  {
+    Rng2F32 clip = box->rect;
+    for(UI_Box *b = box->parent; !ui_box_is_nil(b); b = b->parent)
+    {
+      if(b->flags & UI_BoxFlag_Clip)
+      {
+        clip = intersect_2f32(b->rect, clip);
+      }
+    }
+    R_PassParams_Blur *blur = d_blur(intersect_2f32(clip, box->rect), draw_data->blur, 0);
+    MemoryCopyArray(blur->corner_radii, box->corner_radii);
+  }
+}
+
+internal UI_Signal
+ui_image(R_Handle texture, R_Tex2DSampleKind sample_kind, Rng2F32 region, Vec4F32 tint, F32 blur, String8 string)
+{
+  UI_Box *box = ui_build_box_from_string(0, string);
+  UI_ImageDrawData *draw_data = push_array(ui_build_arena(), UI_ImageDrawData, 1);
+  draw_data->texture = texture;
+  draw_data->sample_kind = sample_kind;
+  draw_data->region = region;
+  draw_data->tint = tint;
+  draw_data->blur = blur;
+  ui_box_equip_custom_draw(box, ui_image_draw, draw_data);
+  UI_Signal sig = ui_signal_from_box(box);
+  return sig;
+}
+
+internal UI_Signal
+ui_imagef(R_Handle texture, R_Tex2DSampleKind sample_kind, Rng2F32 region, Vec4F32 tint, F32 blur, char *fmt, ...)
+{
+  Temp scratch = scratch_begin(0, 0);
+  va_list args;
+  va_start(args, fmt);
+  String8 string = push_str8fv(scratch.arena, fmt, args);
+  va_end(args);
+  UI_Signal result = ui_image(texture, sample_kind, region, tint, blur, string);
+  scratch_end(scratch);
+  return result;
+}
+
+////////////////////////////////
 //~ rjf: Special Buttons
 
 internal UI_Signal

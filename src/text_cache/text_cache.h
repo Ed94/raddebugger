@@ -113,6 +113,8 @@ typedef enum TXT_LangKind
   TXT_LangKind_C,
   TXT_LangKind_CPlusPlus,
   TXT_LangKind_Odin,
+  TXT_LangKind_Jai,
+  TXT_LangKind_Zig,
   TXT_LangKind_DisasmX64Intel,
   TXT_LangKind_COUNT
 }
@@ -234,6 +236,7 @@ global TXT_Shared *txt_shared = 0;
 //~ rjf: Basic Helpers
 
 internal TXT_LangKind txt_lang_kind_from_extension(String8 extension);
+internal String8 txt_extension_from_lang_kind(TXT_LangKind kind);
 internal TXT_LangKind txt_lang_kind_from_architecture(Architecture arch);
 internal TXT_LangLexFunctionType *txt_lex_function_from_lang_kind(TXT_LangKind kind);
 
@@ -250,6 +253,8 @@ internal TXT_TokenArray txt_token_array_from_list(Arena *arena, TXT_TokenList *l
 
 internal TXT_TokenArray txt_token_array_from_string__c_cpp(Arena *arena, U64 *bytes_processed_counter, String8 string);
 internal TXT_TokenArray txt_token_array_from_string__odin(Arena *arena, U64 *bytes_processed_counter, String8 string);
+internal TXT_TokenArray txt_token_array_from_string__jai(Arena *arena, U64 *bytes_processed_counter, String8 string);
+internal TXT_TokenArray txt_token_array_from_string__zig(Arena *arena, U64 *bytes_processed_counter, String8 string);
 internal TXT_TokenArray txt_token_array_from_string__disasm_x64_intel(Arena *arena, U64 *bytes_processed_counter, String8 string);
 
 ////////////////////////////////

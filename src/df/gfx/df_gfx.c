@@ -216,7 +216,7 @@ df_panel_rec_df(DF_Panel *panel, U64 sib_off, U64 child_off)
 //- rjf: panel -> rect calculations
 
 internal Rng2F32
-df_rect_from_panel_child(Rng2F32 parent_rect, DF_Panel *parent, DF_Panel *panel)
+df_target_rect_from_panel_child(Rng2F32 parent_rect, DF_Panel *parent, DF_Panel *panel)
 {
   Rng2F32 rect = parent_rect;
   if(!df_panel_is_nil(parent))
@@ -226,26 +226,25 @@ df_rect_from_panel_child(Rng2F32 parent_rect, DF_Panel *parent, DF_Panel *panel)
     rect.p1.v[axis] = rect.p0.v[axis];
     for(DF_Panel *child = parent->first; !df_panel_is_nil(child); child = child->next)
     {
-      rect.p1.v[axis] += parent_rect_size.v[axis] * child->size_pct_of_parent.v[axis];
-      rect.p1.v[axis2_flip(axis)] = rect.p0.v[axis2_flip(axis)] + parent_rect_size.v[axis2_flip(axis)] * child->size_pct_of_parent.v[axis2_flip(axis)];
+      rect.p1.v[axis] += parent_rect_size.v[axis] * child->pct_of_parent;
       if(child == panel)
       {
         break;
       }
       rect.p0.v[axis] = rect.p1.v[axis];
     }
-    rect.p0.v[axis] += parent_rect_size.v[axis] * panel->off_pct_of_parent.v[axis];
-    rect.p0.v[axis2_flip(axis)] += parent_rect_size.v[axis2_flip(axis)] * panel->off_pct_of_parent.v[axis2_flip(axis)];
+    //rect.p0.v[axis] += parent_rect_size.v[axis] * panel->off_pct_of_parent.v[axis];
+    //rect.p0.v[axis2_flip(axis)] += parent_rect_size.v[axis2_flip(axis)] * panel->off_pct_of_parent.v[axis2_flip(axis)];
   }
-  rect.x0 = roundf(rect.x0);
-  rect.x1 = roundf(rect.x1);
-  rect.y0 = roundf(rect.y0);
-  rect.y1 = roundf(rect.y1);
+  rect.x0 = round_f32(rect.x0);
+  rect.x1 = round_f32(rect.x1);
+  rect.y0 = round_f32(rect.y0);
+  rect.y1 = round_f32(rect.y1);
   return rect;
 }
 
 internal Rng2F32
-df_rect_from_panel(Rng2F32 root_rect, DF_Panel *root, DF_Panel *panel)
+df_target_rect_from_panel(Rng2F32 root_rect, DF_Panel *root, DF_Panel *panel)
 {
   Temp scratch = scratch_begin(0, 0);
   
@@ -277,12 +276,12 @@ df_rect_from_panel(Rng2F32 root_rect, DF_Panel *root, DF_Panel *panel)
     DF_Panel *parent = ancestor->parent;
     if(!df_panel_is_nil(parent))
     {
-      parent_rect = df_rect_from_panel_child(parent_rect, parent, ancestor);
+      parent_rect = df_target_rect_from_panel_child(parent_rect, parent, ancestor);
     }
   }
   
   // rjf: calculate final rect
-  Rng2F32 rect = df_rect_from_panel_child(parent_rect, panel->parent, panel);
+  Rng2F32 rect = df_target_rect_from_panel_child(parent_rect, panel->parent, panel);
   
   scratch_end(scratch);
   return rect;
@@ -529,8 +528,10 @@ df_cmd_params_copy(Arena *arena, DF_CmdParams *src)
   dst.entity_list = df_push_handle_list_copy(arena, src->entity_list);
   dst.string = push_str8_copy(arena, src->string);
   dst.file_path = push_str8_copy(arena, src->file_path);
+  if(src->cfg_node != 0) {dst.cfg_node = df_cfg_tree_copy(arena, src->cfg_node);}
   if(dst.cmd_spec == 0)  {dst.cmd_spec = &df_g_nil_cmd_spec;}
   if(dst.view_spec == 0) {dst.view_spec = &df_g_nil_view_spec;}
+  if(dst.cfg_node == 0)  {dst.cfg_node = &df_g_nil_cfg_node;}
   return dst;
 }
 
@@ -717,6 +718,17 @@ df_gfx_view_rule_spec_from_string(String8 string)
   return spec;
 }
 
+internal DF_ViewSpec *
+df_tab_view_spec_from_gfx_view_rule_spec(DF_GfxViewRuleSpec *spec)
+{
+  DF_ViewSpec *result = &df_g_nil_view_spec;
+  if(spec->info.tab_view_spec_name.size != 0)
+  {
+    result = df_view_spec_from_string(spec->info.tab_view_spec_name);
+  }
+  return result;
+}
+
 ////////////////////////////////
 //~ rjf: View State Functions
 
@@ -768,7 +780,7 @@ df_view_release(DF_View *view)
 }
 
 internal void
-df_view_equip_spec(DF_View *view, DF_ViewSpec *spec, DF_Entity *entity, String8 default_query, DF_CfgNode *cfg_root)
+df_view_equip_spec(DF_Window *window, DF_View *view, DF_ViewSpec *spec, DF_Entity *entity, String8 default_query, DF_CfgNode *cfg_root)
 {
   // rjf: fill arguments buffer
   view->query_string_size = Min(sizeof(view->query_buffer), default_query.size);
@@ -785,7 +797,7 @@ df_view_equip_spec(DF_View *view, DF_ViewSpec *spec, DF_Entity *entity, String8 
     view->entity = df_handle_from_entity(entity);
     view->is_filtering = 0;
     view->is_filtering_t = 0;
-    view_setup(view, cfg_root);
+    view_setup(window, view, cfg_root);
   }
 }
 
@@ -900,6 +912,7 @@ df_panel_alloc(DF_Window *ws)
   panel->first = panel->last = panel->next = panel->prev = panel->parent = &df_g_nil_panel;
   panel->first_tab_view = panel->last_tab_view = &df_g_nil_view;
   panel->generation += 1;
+  MemoryZeroStruct(&panel->animated_rect_pct);
   return panel;
 }
 
@@ -946,7 +959,7 @@ df_window_open(Vec2F32 size, OS_Handle preferred_monitor, DF_CfgSrc cfg_src)
   window->arena = arena_alloc();
   {
     String8 title = str8_lit_comp(BUILD_TITLE_STRING_LITERAL);
-    window->os = os_window_open(size, title);
+    window->os = os_window_open(size, OS_WindowFlag_CustomBorder, title);
   }
   window->r = r_window_equip(window->os);
   window->ui = ui_state_alloc();
@@ -1082,7 +1095,8 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
       }
       
       // rjf: set up data for cases
-      Axis2 split_axis = Axis2_X;
+      Dir2 split_dir = Dir2_Invalid;
+      DF_Panel *split_panel = ws->focused_panel;
       U64 panel_sib_off = 0;
       U64 panel_child_off = 0;
       Vec2S32 panel_change_dir = {0};
@@ -1185,35 +1199,44 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
         }break;
         
         //- rjf: panel creation
-        case DF_CoreCmdKind_NewPanelRight: split_axis = Axis2_X; goto split;
-        case DF_CoreCmdKind_NewPanelDown:  split_axis = Axis2_Y; goto split;
-        split:;
+        case DF_CoreCmdKind_NewPanelLeft: {split_dir = Dir2_Left;}goto split;
+        case DF_CoreCmdKind_NewPanelUp:   {split_dir = Dir2_Up;}goto split;
+        case DF_CoreCmdKind_NewPanelRight:{split_dir = Dir2_Right;}goto split;
+        case DF_CoreCmdKind_NewPanelDown: {split_dir = Dir2_Down;}goto split;
+        case DF_CoreCmdKind_SplitPanel:
         {
-          DF_Panel *panel = ws->focused_panel;
+          split_dir = params.dir2;
+          split_panel = df_panel_from_handle(params.dest_panel);
+        }goto split;
+        split:;
+        if(split_dir != Dir2_Invalid && !df_panel_is_nil(split_panel))
+        {
+          DF_Panel *new_panel = &df_g_nil_panel;
+          Axis2 split_axis = axis2_from_dir2(split_dir);
+          Side split_side = side_from_dir2(split_dir);
+          DF_Panel *panel = split_panel;
           DF_Panel *parent = panel->parent;
           if(!df_panel_is_nil(parent) && parent->split_axis == split_axis)
           {
             DF_Panel *next = df_panel_alloc(ws);
-            df_panel_insert(parent, panel, next);
-            next->size_pct_of_parent_target.v[split_axis] = 1.f / parent->child_count;
-            next->size_pct_of_parent.v[axis2_flip(split_axis)] = next->size_pct_of_parent_target.v[axis2_flip(split_axis)] = 1.f;
+            df_panel_insert(parent, split_side == Side_Max ? panel : panel->prev, next);
+            next->pct_of_parent = 1.f/parent->child_count;
             for(DF_Panel *child = parent->first; !df_panel_is_nil(child); child = child->next)
             {
               if(child != next)
               {
-                child->size_pct_of_parent_target.v[split_axis] *= (F32)(parent->child_count-1) / (parent->child_count);
+                child->pct_of_parent *= (F32)(parent->child_count-1) / (parent->child_count);
               }
             }
             ws->focused_panel = next;
+            new_panel = next;
           }
           else
           {
             DF_Panel *pre_prev = panel->prev;
             DF_Panel *pre_parent = parent;
             DF_Panel *new_parent = df_panel_alloc(ws);
-            new_parent->size_pct_of_parent.v[split_axis] = panel->size_pct_of_parent.v[split_axis];
-            new_parent->size_pct_of_parent_target.v[split_axis] = panel->size_pct_of_parent_target.v[split_axis];
-            new_parent->size_pct_of_parent.v[axis2_flip(split_axis)] = new_parent->size_pct_of_parent_target.v[axis2_flip(split_axis)] = panel->size_pct_of_parent_target.v[axis2_flip(split_axis)];
+            new_parent->pct_of_parent = panel->pct_of_parent;
             if(!df_panel_is_nil(pre_parent))
             {
               df_panel_remove(pre_parent, panel);
@@ -1225,18 +1248,44 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
             }
             DF_Panel *left = panel;
             DF_Panel *right = df_panel_alloc(ws);
+            new_panel = right;
+            if(split_side == Side_Min)
+            {
+              Swap(DF_Panel *, left, right);
+            }
             df_panel_insert(new_parent, &df_g_nil_panel, left);
             df_panel_insert(new_parent, left, right);
             new_parent->split_axis = split_axis;
-            left->size_pct_of_parent.v[split_axis] = 1.f;
-            left->size_pct_of_parent_target.v[split_axis] = 0.5f;
-            right->size_pct_of_parent.v[split_axis] = 0.f;
-            right->size_pct_of_parent_target.v[split_axis] = 0.5f;
-            left->size_pct_of_parent.v[axis2_flip(split_axis)] = 1.f;
-            left->size_pct_of_parent_target.v[axis2_flip(split_axis)] = 1.f;
-            right->size_pct_of_parent.v[axis2_flip(split_axis)] = 1.f;
-            right->size_pct_of_parent_target.v[axis2_flip(split_axis)] = 1.f;
-            ws->focused_panel = right;
+            left->pct_of_parent = 0.5f;
+            right->pct_of_parent = 0.5f;
+            ws->focused_panel = new_panel;
+          }
+          if(!df_panel_is_nil(new_panel->prev))
+          {
+            Rng2F32 prev_rect_pct = new_panel->prev->animated_rect_pct;
+            new_panel->animated_rect_pct = prev_rect_pct;
+            new_panel->animated_rect_pct.p0.v[split_axis] = new_panel->animated_rect_pct.p1.v[split_axis];
+          }
+          if(!df_panel_is_nil(new_panel->next))
+          {
+            Rng2F32 next_rect_pct = new_panel->next->animated_rect_pct;
+            new_panel->animated_rect_pct = next_rect_pct;
+            new_panel->animated_rect_pct.p1.v[split_axis] = new_panel->animated_rect_pct.p0.v[split_axis];
+          }
+          DF_Panel *move_tab_panel = df_panel_from_handle(params.panel);
+          DF_View *move_tab = df_view_from_handle(params.view);
+          if(!df_panel_is_nil(new_panel) && !df_view_is_nil(move_tab) && !df_panel_is_nil(move_tab_panel) &&
+             core_cmd_kind == DF_CoreCmdKind_SplitPanel)
+          {
+            df_panel_remove_tab_view(move_tab_panel, move_tab);
+            df_panel_insert_tab_view(new_panel, new_panel->last_tab_view, move_tab);
+            new_panel->selected_tab_view = df_handle_from_view(move_tab);
+            if(df_view_is_nil(move_tab_panel->first_tab_view) && move_tab_panel != ws->root_panel &&
+               move_tab_panel != new_panel->prev && move_tab_panel != new_panel->next)
+            {
+              DF_CmdParams p = df_cmd_params_from_panel(ws, move_tab_panel);
+              df_cmd_list_push(arena, cmds, &p, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_ClosePanel));
+            }
           }
           df_panel_notify_mutation(ws, panel);
         }break;
@@ -1324,82 +1373,82 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
           if(df_view_is_nil(watch))
           {
             watch = df_view_alloc();
-            df_view_equip_spec(watch, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Watch), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
+            df_view_equip_spec(ws, watch, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Watch), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
           }
           if(df_view_is_nil(locals))
           {
             locals = df_view_alloc();
-            df_view_equip_spec(locals, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Locals), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
+            df_view_equip_spec(ws, locals, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Locals), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
           }
           if(df_view_is_nil(regs))
           {
             regs = df_view_alloc();
-            df_view_equip_spec(regs, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Registers), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
+            df_view_equip_spec(ws, regs, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Registers), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
           }
           if(df_view_is_nil(globals))
           {
             globals = df_view_alloc();
-            df_view_equip_spec(globals, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Globals), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
+            df_view_equip_spec(ws, globals, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Globals), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
           }
           if(df_view_is_nil(tlocals))
           {
             tlocals = df_view_alloc();
-            df_view_equip_spec(tlocals, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_ThreadLocals), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
+            df_view_equip_spec(ws, tlocals, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_ThreadLocals), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
           }
           if(df_view_is_nil(types))
           {
             types = df_view_alloc();
-            df_view_equip_spec(types, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Types), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
+            df_view_equip_spec(ws, types, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Types), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
           }
           if(df_view_is_nil(procs))
           {
             procs = df_view_alloc();
-            df_view_equip_spec(procs, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Procedures), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
+            df_view_equip_spec(ws, procs, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Procedures), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
           }
           if(df_view_is_nil(callstack))
           {
             callstack = df_view_alloc();
-            df_view_equip_spec(callstack, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_CallStack), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
+            df_view_equip_spec(ws, callstack, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_CallStack), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
           }
           if(df_view_is_nil(breakpoints))
           {
             breakpoints = df_view_alloc();
-            df_view_equip_spec(breakpoints, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Breakpoints), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
+            df_view_equip_spec(ws, breakpoints, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Breakpoints), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
           }
           if(df_view_is_nil(watch_pins))
           {
             watch_pins = df_view_alloc();
-            df_view_equip_spec(watch_pins, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_WatchPins), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
+            df_view_equip_spec(ws, watch_pins, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_WatchPins), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
           }
           if(df_view_is_nil(output))
           {
             output = df_view_alloc();
-            df_view_equip_spec(output, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Output), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
+            df_view_equip_spec(ws, output, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Output), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
           }
           if(df_view_is_nil(targets))
           {
             targets = df_view_alloc();
-            df_view_equip_spec(targets, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Targets), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
+            df_view_equip_spec(ws, targets, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Targets), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
           }
           if(df_view_is_nil(scheduler))
           {
             scheduler = df_view_alloc();
-            df_view_equip_spec(scheduler, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Scheduler), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
+            df_view_equip_spec(ws, scheduler, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Scheduler), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
           }
           if(df_view_is_nil(modules))
           {
             modules = df_view_alloc();
-            df_view_equip_spec(modules, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Modules), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
+            df_view_equip_spec(ws, modules, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Modules), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
           }
           if(df_view_is_nil(disasm))
           {
             disasm = df_view_alloc();
-            df_view_equip_spec(disasm, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Disassembly), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
+            df_view_equip_spec(ws, disasm, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Disassembly), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
           }
           if(df_view_is_nil(memory))
           {
             memory = df_view_alloc();
-            df_view_equip_spec(memory, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Memory), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
+            df_view_equip_spec(ws, memory, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Memory), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
           }
           
           // rjf: root split
@@ -1408,8 +1457,8 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
           DF_Panel *root_1 = df_panel_alloc(ws);
           df_panel_insert(ws->root_panel, ws->root_panel->last, root_0);
           df_panel_insert(ws->root_panel, ws->root_panel->last, root_1);
-          root_0->size_pct_of_parent = root_0->size_pct_of_parent_target = v2f32(0.85f, 1.f);
-          root_1->size_pct_of_parent = root_1->size_pct_of_parent_target = v2f32(0.15f, 1.f);
+          root_0->pct_of_parent = 0.85f;
+          root_1->pct_of_parent = 0.15f;
           
           // rjf: root_0 split
           root_0->split_axis = Axis2_Y;
@@ -1417,8 +1466,8 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
           DF_Panel *root_0_1 = df_panel_alloc(ws);
           df_panel_insert(root_0, root_0->last, root_0_0);
           df_panel_insert(root_0, root_0->last, root_0_1);
-          root_0_0->size_pct_of_parent = root_0_0->size_pct_of_parent_target = v2f32(1.f, 0.80f);
-          root_0_1->size_pct_of_parent = root_0_1->size_pct_of_parent_target = v2f32(1.f, 0.20f);
+          root_0_0->pct_of_parent = 0.80f;
+          root_0_1->pct_of_parent = 0.20f;
           
           // rjf: root_1 split
           root_1->split_axis = Axis2_Y;
@@ -1426,8 +1475,8 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
           DF_Panel *root_1_1 = df_panel_alloc(ws);
           df_panel_insert(root_1, root_1->last, root_1_0);
           df_panel_insert(root_1, root_1->last, root_1_1);
-          root_1_0->size_pct_of_parent = root_1_0->size_pct_of_parent_target = v2f32(1.f, 0.50f);
-          root_1_1->size_pct_of_parent = root_1_1->size_pct_of_parent_target = v2f32(1.f, 0.50f);
+          root_1_0->pct_of_parent = 0.50f;
+          root_1_1->pct_of_parent = 0.50f;
           df_panel_insert_tab_view(root_1_0, root_1_0->last_tab_view, targets);
           df_panel_insert_tab_view(root_1_1, root_1_1->last_tab_view, scheduler);
           root_1_0->selected_tab_view = df_handle_from_view(targets);
@@ -1440,8 +1489,8 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
           DF_Panel *root_0_0_1 = df_panel_alloc(ws);
           df_panel_insert(root_0_0, root_0_0->last, root_0_0_0);
           df_panel_insert(root_0_0, root_0_0->last, root_0_0_1);
-          root_0_0_0->size_pct_of_parent = root_0_0_0->size_pct_of_parent_target = v2f32(0.25f, 1.f);
-          root_0_0_1->size_pct_of_parent = root_0_0_1->size_pct_of_parent_target = v2f32(0.75f, 1.f);
+          root_0_0_0->pct_of_parent = 0.25f;
+          root_0_0_1->pct_of_parent = 0.75f;
           
           // rjf: root_0_0_0 split
           root_0_0_0->split_axis = Axis2_Y;
@@ -1449,8 +1498,8 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
           DF_Panel *root_0_0_0_1 = df_panel_alloc(ws);
           df_panel_insert(root_0_0_0, root_0_0_0->last, root_0_0_0_0);
           df_panel_insert(root_0_0_0, root_0_0_0->last, root_0_0_0_1);
-          root_0_0_0_0->size_pct_of_parent = root_0_0_0_0->size_pct_of_parent_target = v2f32(1.f, 0.5f);
-          root_0_0_0_1->size_pct_of_parent = root_0_0_0_1->size_pct_of_parent_target = v2f32(1.f, 0.5f);
+          root_0_0_0_0->pct_of_parent = 0.5f;
+          root_0_0_0_1->pct_of_parent = 0.5f;
           df_panel_insert_tab_view(root_0_0_0_0, root_0_0_0_0->last_tab_view, disasm);
           root_0_0_0_0->selected_tab_view = df_handle_from_view(disasm);
           df_panel_insert_tab_view(root_0_0_0_1, root_0_0_0_1->last_tab_view, breakpoints);
@@ -1465,8 +1514,8 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
           DF_Panel *root_0_1_1 = df_panel_alloc(ws);
           df_panel_insert(root_0_1, root_0_1->last, root_0_1_0);
           df_panel_insert(root_0_1, root_0_1->last, root_0_1_1);
-          root_0_1_0->size_pct_of_parent = root_0_1_0->size_pct_of_parent_target = v2f32(0.60f, 1.f);
-          root_0_1_1->size_pct_of_parent = root_0_1_1->size_pct_of_parent_target = v2f32(0.40f, 1.f);
+          root_0_1_0->pct_of_parent = 0.60f;
+          root_0_1_1->pct_of_parent = 0.40f;
           df_panel_insert_tab_view(root_0_1_0, root_0_1_0->last_tab_view, watch);
           df_panel_insert_tab_view(root_0_1_0, root_0_1_0->last_tab_view, locals);
           df_panel_insert_tab_view(root_0_1_0, root_0_1_0->last_tab_view, regs);
@@ -1573,7 +1622,7 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
         focus_panel_dir:;
         {
           DF_Panel *src_panel = ws->focused_panel;
-          Rng2F32 src_panel_rect = df_rect_from_panel(r2f32(v2f32(0, 0), v2f32(1000, 1000)), ws->root_panel, src_panel);
+          Rng2F32 src_panel_rect = df_target_rect_from_panel(r2f32(v2f32(0, 0), v2f32(1000, 1000)), ws->root_panel, src_panel);
           Vec2F32 src_panel_center = center_2f32(src_panel_rect);
           Vec2F32 src_panel_half_dim = scale_2f32(dim_2f32(src_panel_rect), 0.5f);
           Vec2F32 travel_dim = add_2f32(src_panel_half_dim, v2f32(10.f, 10.f));
@@ -1585,7 +1634,7 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
             {
               continue;
             }
-            Rng2F32 p_rect = df_rect_from_panel(r2f32(v2f32(0, 0), v2f32(1000, 1000)), ws->root_panel, p);
+            Rng2F32 p_rect = df_target_rect_from_panel(r2f32(v2f32(0, 0), v2f32(1000, 1000)), ws->root_panel, p);
             if(contains_2f32(p_rect, travel_dst))
             {
               dst_root = p;
@@ -1637,7 +1686,7 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
               DF_Panel *keep_child = panel == parent->first ? parent->last : parent->first;
               DF_Panel *grandparent = parent->parent;
               DF_Panel *parent_prev = parent->prev;
-              Vec2F32 size_pct_of_parent = parent->size_pct_of_parent_target;
+              F32 pct_of_parent = parent->pct_of_parent;
               
               // rjf: unhook kept child
               df_panel_remove(parent, keep_child);
@@ -1663,9 +1712,7 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
               {
                 df_panel_insert(grandparent, parent_prev, keep_child);
               }
-              keep_child->size_pct_of_parent_target = size_pct_of_parent;
-              keep_child->size_pct_of_parent.v[split_axis] *= size_pct_of_parent.v[split_axis];
-              keep_child->size_pct_of_parent.v[axis2_flip(split_axis)] *= size_pct_of_parent.v[axis2_flip(split_axis)];
+              keep_child->pct_of_parent = pct_of_parent;
               
               // rjf: reset focus, if needed
               if(ws->focused_panel == discard_child)
@@ -1688,8 +1735,7 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
                   df_panel_remove(keep_child, child);
                   df_panel_insert(grandparent, prev, child);
                   prev = child;
-                  child->size_pct_of_parent_target.v[keep_child->split_axis] *= keep_child->size_pct_of_parent_target.v[grandparent->split_axis];
-                  child->size_pct_of_parent.v[keep_child->split_axis]        *= keep_child->size_pct_of_parent_target.v[grandparent->split_axis];
+                  child->pct_of_parent *= keep_child->pct_of_parent;
                 }
                 df_panel_release(ws, keep_child);
               }
@@ -1698,7 +1744,7 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
             else
             {
               DF_Panel *next = &df_g_nil_panel;
-              F32 removed_size_pct = panel->size_pct_of_parent_target.v[parent->split_axis];
+              F32 removed_size_pct = panel->pct_of_parent;
               if(df_panel_is_nil(next)) { next = panel->prev; }
               if(df_panel_is_nil(next)) { next = panel->next; }
               df_panel_remove(parent, panel);
@@ -1709,7 +1755,7 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
               }
               for(DF_Panel *child = parent->first; !df_panel_is_nil(child); child = child->next)
               {
-                child->size_pct_of_parent_target.v[parent->split_axis] /= 1.f-removed_size_pct;
+                child->pct_of_parent /= 1.f-removed_size_pct;
               }
             }
           }
@@ -1766,7 +1812,7 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
           if(!df_panel_is_nil(panel) && spec != &df_g_nil_view_spec)
           {
             DF_View *view = df_view_alloc();
-            df_view_equip_spec(view, spec, entity, str8_lit(""), &df_g_nil_cfg_node);
+            df_view_equip_spec(ws, view, spec, entity, params.string, params.cfg_node);
             df_panel_insert_tab_view(panel, panel->last_tab_view, view);
             df_panel_notify_mutation(ws, panel);
           }
@@ -1795,6 +1841,11 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
             df_panel_remove_tab_view(src_panel, view);
             df_panel_insert_tab_view(dst_panel, prev_view, view);
             ws->focused_panel = dst_panel;
+            if(df_view_is_nil(src_panel->first_tab_view) && src_panel != ws->root_panel)
+            {
+              DF_CmdParams p = df_cmd_params_from_panel(ws, src_panel);
+              df_cmd_list_push(arena, cmds, &p, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_ClosePanel));
+            }
             df_panel_notify_mutation(ws, dst_panel);
           }
         }break;
@@ -2637,7 +2688,7 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
               {
                 continue;
               }
-              Rng2F32 panel_rect = df_rect_from_panel(root_rect, ws->root_panel, panel);
+              Rng2F32 panel_rect = df_target_rect_from_panel(root_rect, ws->root_panel, panel);
               Vec2F32 panel_rect_dim = dim_2f32(panel_rect);
               F32 area = panel_rect_dim.x * panel_rect_dim.y;
               if((best_panel_area == 0 || area > best_panel_area))
@@ -2659,7 +2710,7 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
               {
                 continue;
               }
-              Rng2F32 panel_rect = df_rect_from_panel(root_rect, ws->root_panel, panel);
+              Rng2F32 panel_rect = df_target_rect_from_panel(root_rect, ws->root_panel, panel);
               Vec2F32 panel_rect_dim = dim_2f32(panel_rect);
               F32 area = panel_rect_dim.x * panel_rect_dim.y;
               if(df_view_is_nil(panel->first_tab_view) && (best_panel_area == 0 || area > best_panel_area))
@@ -2689,7 +2740,7 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
             if(!df_panel_is_nil(dst_panel) && df_view_is_nil(view_w_this_src_code))
             {
               DF_View *view = df_view_alloc();
-              df_view_equip_spec(view, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Code), src_code, str8_lit(""), &df_g_nil_cfg_node);
+              df_view_equip_spec(ws, view, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Code), src_code, str8_lit(""), &df_g_nil_cfg_node);
               df_panel_insert_tab_view(dst_panel, dst_panel->last_tab_view, view);
               dst_view = view;
             }
@@ -2737,7 +2788,7 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
             if(!df_panel_is_nil(dst_panel) && df_view_is_nil(view_w_disasm))
             {
               DF_View *view = df_view_alloc();
-              df_view_equip_spec(view, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Disassembly), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
+              df_view_equip_spec(ws, view, df_view_spec_from_gfx_view_kind(DF_GfxViewKind_Disassembly), &df_g_nil_entity, str8_lit(""), &df_g_nil_cfg_node);
               df_panel_insert_tab_view(dst_panel, dst_panel->last_tab_view, view);
               dst_view = view;
             }
@@ -2939,6 +2990,8 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
     Rng2F32 top_bar_rect = r2f32p(window_rect.x0, window_rect.y0, window_rect.x0+window_rect_dim.x, window_rect.y0+ui_top_pref_height().value);
     Rng2F32 bottom_bar_rect = r2f32p(window_rect.x0, window_rect_dim.y - ui_top_pref_height().value, window_rect.x0+window_rect_dim.x, window_rect.y0+window_rect_dim.y);
     Rng2F32 content_rect = r2f32p(window_rect.x0, top_bar_rect.y1, window_rect.x0+window_rect_dim.x, bottom_bar_rect.y0);
+    F32 window_edge_px = os_dpi_from_window(ws->os)*0.035f;
+    content_rect = pad_2f32(content_rect, -window_edge_px);
     
     ////////////////////////////
     //- rjf: truncated string hover
@@ -2964,26 +3017,50 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
       DF_Panel *panel = df_panel_from_handle(payload->panel);
       DF_Entity *entity = df_entity_from_handle(payload->entity);
       DF_View *view = df_view_from_handle(payload->view);
-      UI_Tooltip
       {
-        UI_Box *tooltip = ui_top_parent();
+        //- rjf: tab dragging
         if(!df_view_is_nil(view))
         {
-          ui_set_next_pref_width(ui_children_sum(1));
-          UI_Row UI_HeightFill
+          UI_Size main_width = ui_top_pref_width();
+          UI_Size main_height = ui_top_pref_height();
+          UI_TextAlign main_text_align = ui_top_text_alignment();
+          ui_set_next_background_color(df_rgba_from_theme_color(DF_ThemeColor_TabActive));
+          UI_Tooltip UI_PrefWidth(main_width) UI_PrefHeight(main_height) UI_TextAlignment(main_text_align)
           {
-            DF_CtrlCtx ctrl_ctx = df_ctrl_ctx_from_view(ws, view);
-            String8 display_name = df_display_string_from_view(scratch.arena, ctrl_ctx, view);
-            DF_IconKind icon_kind = df_icon_kind_from_view(view);
-            UI_TextColor(df_rgba_from_theme_color(DF_ThemeColor_WeakText))
-              UI_Font(df_font_from_slot(DF_FontSlot_Icons))
-              UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Icons))
-              ui_label(df_g_icon_kind_text_table[icon_kind]);
-            ui_label(display_name);
-            tooltip->background_color = df_rgba_from_theme_color(DF_ThemeColor_TabActive);
+            ui_set_next_pref_width(ui_em(60.f, 1.f));
+            ui_set_next_pref_height(ui_em(40.f, 1.f));
+            ui_set_next_child_layout_axis(Axis2_Y);
+            UI_Box *container = ui_build_box_from_key(0, ui_key_zero());
+            UI_Parent(container)
+            {
+              UI_Row
+              {
+                DF_CtrlCtx ctrl_ctx = df_ctrl_ctx_from_view(ws, view);
+                String8 display_name = df_display_string_from_view(scratch.arena, ctrl_ctx, view);
+                DF_IconKind icon_kind = df_icon_kind_from_view(view);
+                UI_TextColor(df_rgba_from_theme_color(DF_ThemeColor_WeakText))
+                  UI_Font(df_font_from_slot(DF_FontSlot_Icons))
+                  UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Icons))
+                  UI_PrefWidth(ui_em(2.5f, 1.f))
+                  ui_label(df_g_icon_kind_text_table[icon_kind]);
+                ui_label(display_name);
+              }
+              ui_set_next_pref_width(ui_pct(1, 0));
+              ui_set_next_pref_height(ui_pct(1, 0));
+              ui_set_next_child_layout_axis(Axis2_Y);
+              UI_Box *view_preview_container = ui_build_box_from_stringf(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_Clip, "###view_preview_container");
+              UI_Parent(view_preview_container) UI_Focus(UI_FocusKind_Off) UI_WidthFill
+              {
+                DF_ViewSpec *view_spec = view->spec;
+                DF_ViewUIFunctionType *build_view_ui_function = view_spec->info.ui_hook;
+                build_view_ui_function(ws, &df_g_nil_panel, view, view_preview_container->rect);
+              }
+            }
           }
         }
-        if(!df_entity_is_nil(entity))
+        
+        //- rjf: entity dragging
+        else if(!df_entity_is_nil(entity)) UI_Tooltip
         {
           ui_set_next_pref_width(ui_children_sum(1));
           UI_Row UI_HeightFill
@@ -2995,7 +3072,6 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
               UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Icons))
               ui_label(df_g_icon_kind_text_table[icon_kind]);
             ui_label(display_name);
-            tooltip->background_color = df_rgba_from_theme_color(DF_ThemeColor_EntityBackground);
           }
         }
       }
@@ -3801,11 +3877,11 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
     //- rjf: confirmation popup
     //
     {
-      if(df_gfx_state->confirm_t > 0.005f) UI_TextAlignment(UI_TextAlign_Center)
+      if(df_gfx_state->confirm_t > 0.005f) UI_TextAlignment(UI_TextAlign_Center) UI_Focus(df_gfx_state->confirm_active ? UI_FocusKind_Root : UI_FocusKind_Off)
       {
         Vec2F32 window_dim = dim_2f32(window_rect);
         UI_Box *bg_box = &ui_g_nil_box;
-        UI_Rect(window_rect) UI_ChildLayoutAxis(Axis2_X)
+        UI_Rect(window_rect) UI_ChildLayoutAxis(Axis2_X) UI_Focus(UI_FocusKind_On)
         {
           Vec4F32 bg_color = ui_top_background_color();
           bg_color.w *= df_gfx_state->confirm_t;
@@ -3828,7 +3904,7 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
                 UI_BackgroundColor(df_rgba_from_theme_color(DF_ThemeColor_ActionBackground))
                 UI_TextColor(df_rgba_from_theme_color(DF_ThemeColor_ActionText))
                 UI_BorderColor(df_rgba_from_theme_color(DF_ThemeColor_ActionBorder))
-                if(ui_clicked(ui_buttonf("OK")) || os_key_press(ui_events(), ui_window(), 0, OS_Key_Return))
+                if(ui_clicked(ui_buttonf("OK")) || (ui_key_match(bg_box->default_nav_focus_hot_key, ui_key_zero()) && os_key_press(ui_events(), ui_window(), 0, OS_Key_Return)))
               {
                 DF_CmdParams p = df_cmd_params_zero();
                 df_push_cmd__root(&p, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_ConfirmAccept));
@@ -4039,6 +4115,9 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
     //
     ProfScope("build top bar")
     {
+      os_window_clear_custom_border_data(ws->os);
+      os_window_push_custom_edges(ws->os, window_edge_px);
+      os_window_push_custom_title_bar(ws->os, dim_2f32(top_bar_rect).y);
       ui_set_next_flags(UI_BoxFlag_DefaultFocusNav);
       UI_BackgroundColor(df_rgba_from_theme_color(DF_ThemeColor_AltBackground))
         UI_TextColor(df_rgba_from_theme_color(DF_ThemeColor_AltText))
@@ -4050,577 +4129,767 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
       {
         MemoryZeroArray(ui_top_parent()->parent->corner_radii);
         
-        // rjf: menu items
-        UI_PrefWidth(ui_text_dim(20, 1))
+        //- rjf: left column
+        ui_set_next_flags(UI_BoxFlag_Clip|UI_BoxFlag_ViewScrollX|UI_BoxFlag_ViewClamp);
+        UI_WidthFill UI_NamedRow(str8_lit("###menu_bar"))
         {
-          // rjf: file menu
-          UI_Key file_menu_key = ui_key_from_string(ui_key_zero(), str8_lit("_file_menu_key_"));
-          UI_CtxMenu(file_menu_key) UI_PrefWidth(ui_em(30.f, 1.f))
+          //- rjf: icon
+          UI_Padding(ui_em(0.5f, 1.f)) UI_PrefWidth(ui_px(dim_2f32(top_bar_rect).y, 1.f))
           {
-            DF_CoreCmdKind cmds[] =
-            {
-              DF_CoreCmdKind_Open,
-              DF_CoreCmdKind_OpenUser,
-              DF_CoreCmdKind_OpenProfile,
-              DF_CoreCmdKind_Exit,
-            };
-            U32 codepoints[] =
-            {
-              'o',
-              'u',
-              'p',
-              'x',
-            };
-            Assert(ArrayCount(codepoints) == ArrayCount(cmds));
-            df_cmd_list_menu_buttons(ws, ArrayCount(cmds), cmds, codepoints);
+            R_Handle texture = df_gfx_state->icon_texture;
+            Vec2S32 texture_dim = r_size_from_tex2d(texture);
+            ui_image(texture, R_Tex2DSampleKind_Linear, r2f32p(0, 0, texture_dim.x, texture_dim.y), v4f32(1, 1, 1, 1), 0, str8_lit(""));
           }
           
-          // rjf: window menu
-          UI_Key window_menu_key = ui_key_from_string(ui_key_zero(), str8_lit("_window_menu_key_"));
-          UI_CtxMenu(window_menu_key) UI_PrefWidth(ui_em(30.f, 1.f))
+          //- rjf: menu items
+          ui_set_next_flags(UI_BoxFlag_DrawBackground);
+          UI_PrefWidth(ui_children_sum(1)) UI_Row UI_PrefWidth(ui_text_dim(20, 1))
           {
-            DF_CoreCmdKind cmds[] =
+            // rjf: file menu
+            UI_Key file_menu_key = ui_key_from_string(ui_key_zero(), str8_lit("_file_menu_key_"));
+            UI_CtxMenu(file_menu_key) UI_PrefWidth(ui_em(30.f, 1.f))
             {
-              DF_CoreCmdKind_OpenWindow,
-              DF_CoreCmdKind_CloseWindow,
-              DF_CoreCmdKind_ToggleFullscreen,
-            };
-            U32 codepoints[] =
+              DF_CoreCmdKind cmds[] =
+              {
+                DF_CoreCmdKind_Open,
+                DF_CoreCmdKind_OpenUser,
+                DF_CoreCmdKind_OpenProfile,
+                DF_CoreCmdKind_Exit,
+              };
+              U32 codepoints[] =
+              {
+                'o',
+                'u',
+                'p',
+                'x',
+              };
+              Assert(ArrayCount(codepoints) == ArrayCount(cmds));
+              df_cmd_list_menu_buttons(ws, ArrayCount(cmds), cmds, codepoints);
+            }
+            
+            // rjf: window menu
+            UI_Key window_menu_key = ui_key_from_string(ui_key_zero(), str8_lit("_window_menu_key_"));
+            UI_CtxMenu(window_menu_key) UI_PrefWidth(ui_em(30.f, 1.f))
             {
-              'w',
-              'c',
-              'f',
-            };
-            Assert(ArrayCount(codepoints) == ArrayCount(cmds));
-            df_cmd_list_menu_buttons(ws, ArrayCount(cmds), cmds, codepoints);
+              DF_CoreCmdKind cmds[] =
+              {
+                DF_CoreCmdKind_OpenWindow,
+                DF_CoreCmdKind_CloseWindow,
+                DF_CoreCmdKind_ToggleFullscreen,
+              };
+              U32 codepoints[] =
+              {
+                'w',
+                'c',
+                'f',
+              };
+              Assert(ArrayCount(codepoints) == ArrayCount(cmds));
+              df_cmd_list_menu_buttons(ws, ArrayCount(cmds), cmds, codepoints);
+            }
+            
+            // rjf: panel menu
+            UI_Key panel_menu_key = ui_key_from_string(ui_key_zero(), str8_lit("_panel_menu_key_"));
+            UI_CtxMenu(panel_menu_key) UI_PrefWidth(ui_em(30.f, 1.f))
+            {
+              DF_CoreCmdKind cmds[] =
+              {
+                DF_CoreCmdKind_NewPanelRight,
+                DF_CoreCmdKind_NewPanelDown,
+                DF_CoreCmdKind_ClosePanel,
+                DF_CoreCmdKind_RotatePanelColumns,
+                DF_CoreCmdKind_NextPanel,
+                DF_CoreCmdKind_PrevPanel,
+                DF_CoreCmdKind_CloseTab,
+                DF_CoreCmdKind_NextTab,
+                DF_CoreCmdKind_PrevTab,
+                DF_CoreCmdKind_TabBarTop,
+                DF_CoreCmdKind_TabBarBottom,
+                DF_CoreCmdKind_ResetToDefaultPanels,
+              };
+              U32 codepoints[] =
+              {
+                'r',
+                'd',
+                'x',
+                'c',
+                'n',
+                'p',
+                't',
+                'b',
+                'v',
+                0,
+                0,
+                0,
+              };
+              Assert(ArrayCount(codepoints) == ArrayCount(cmds));
+              df_cmd_list_menu_buttons(ws, ArrayCount(cmds), cmds, codepoints);
+            }
+            
+            // rjf: view menu
+            UI_Key view_menu_key = ui_key_from_string(ui_key_zero(), str8_lit("_view_menu_key_"));
+            UI_CtxMenu(view_menu_key) UI_PrefWidth(ui_em(30.f, 1.f))
+            {
+              DF_CoreCmdKind cmds[] =
+              {
+                DF_CoreCmdKind_Targets,
+                DF_CoreCmdKind_Scheduler,
+                DF_CoreCmdKind_CallStack,
+                DF_CoreCmdKind_Modules,
+                DF_CoreCmdKind_Output,
+                DF_CoreCmdKind_Memory,
+                DF_CoreCmdKind_Disassembly,
+                DF_CoreCmdKind_Watch,
+                DF_CoreCmdKind_Locals,
+                DF_CoreCmdKind_Registers,
+                DF_CoreCmdKind_Globals,
+                DF_CoreCmdKind_ThreadLocals,
+                DF_CoreCmdKind_Types,
+                DF_CoreCmdKind_Procedures,
+                DF_CoreCmdKind_Breakpoints,
+                DF_CoreCmdKind_WatchPins,
+                DF_CoreCmdKind_FilePathMap,
+                DF_CoreCmdKind_Theme,
+                DF_CoreCmdKind_ExceptionFilters,
+              };
+              U32 codepoints[] =
+              {
+                't',
+                's',
+                'k',
+                'd',
+                'o',
+                'm',
+                'y',
+                'w',
+                'l',
+                'r',
+                0,
+                0,
+                0,
+                0,
+                'b',
+                'h',
+                'p',
+                'e',
+                'g',
+              };
+              Assert(ArrayCount(codepoints) == ArrayCount(cmds));
+              df_cmd_list_menu_buttons(ws, ArrayCount(cmds), cmds, codepoints);
+            }
+            
+            // rjf: targets menu
+            UI_Key targets_menu_key = ui_key_from_string(ui_key_zero(), str8_lit("_targets_menu_key_"));
+            UI_CtxMenu(targets_menu_key) UI_PrefWidth(ui_em(30.f, 1.f))
+            {
+              Temp scratch = scratch_begin(&arena, 1);
+              DF_CoreCmdKind cmds[] =
+              {
+                DF_CoreCmdKind_AddTarget,
+                DF_CoreCmdKind_EditTarget,
+                DF_CoreCmdKind_RemoveTarget,
+              };
+              U32 codepoints[] =
+              {
+                'a',
+                'e',
+                'r',
+              };
+              Assert(ArrayCount(codepoints) == ArrayCount(cmds));
+              df_cmd_list_menu_buttons(ws, ArrayCount(cmds), cmds, codepoints);
+              DF_EntityList targets_list = df_query_cached_entity_list_with_kind(DF_EntityKind_Target);
+              for(DF_EntityNode *n = targets_list.first; n != 0; n = n->next)
+              {
+                DF_Entity *target = n->entity;
+                Vec4F32 color = ui_top_text_color();
+                if(target->flags & DF_EntityFlag_HasColor)
+                {
+                  color = df_rgba_from_entity(target);
+                }
+                String8 target_name = df_display_string_from_entity(scratch.arena, target);
+                UI_Signal sig = {0};
+                UI_TextColor(color)
+                  sig = df_icon_buttonf(DF_IconKind_Target, 0, "%S##%p", target_name, target);
+                if(ui_clicked(sig))
+                {
+                  DF_CmdParams params = df_cmd_params_from_window(ws);
+                  params.entity = df_handle_from_entity(target);
+                  df_cmd_params_mark_slot(&params, DF_CmdParamSlot_Entity);
+                  df_push_cmd__root(&params, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_EditTarget));
+                  ui_ctx_menu_close();
+                  ws->menu_bar_focused = 0;
+                }
+              }
+              scratch_end(scratch);
+            }
+            
+            // rjf: ctrl menu
+            UI_Key ctrl_menu_key = ui_key_from_string(ui_key_zero(), str8_lit("_ctrl_menu_key_"));
+            UI_CtxMenu(ctrl_menu_key) UI_PrefWidth(ui_em(30.f, 1.f))
+            {
+              DF_CoreCmdKind cmds[] =
+              {
+                DF_CoreCmdKind_Run,
+                DF_CoreCmdKind_KillAll,
+                DF_CoreCmdKind_Restart,
+                DF_CoreCmdKind_Halt,
+                DF_CoreCmdKind_SoftHaltRefresh,
+                DF_CoreCmdKind_StepInto,
+                DF_CoreCmdKind_StepOver,
+                DF_CoreCmdKind_StepOut,
+                DF_CoreCmdKind_Attach,
+              };
+              U32 codepoints[] =
+              {
+                'r',
+                'k',
+                's',
+                'h',
+                'f',
+                'i',
+                'o',
+                't',
+                'a',
+              };
+              Assert(ArrayCount(codepoints) == ArrayCount(cmds));
+              df_cmd_list_menu_buttons(ws, ArrayCount(cmds), cmds, codepoints);
+            }
+            
+            // rjf: help menu
+            UI_Key help_menu_key = ui_key_from_string(ui_key_zero(), str8_lit("_help_menu_key_"));
+            UI_CtxMenu(help_menu_key) UI_PrefWidth(ui_em(60.f, 1.f))
+            {
+              UI_Row UI_TextAlignment(UI_TextAlign_Center) UI_TextColor(df_rgba_from_theme_color(DF_ThemeColor_WeakText))
+                ui_label(str8_lit(BUILD_TITLE_STRING_LITERAL));
+              UI_PrefHeight(ui_children_sum(1)) UI_Row UI_Padding(ui_pct(1, 0))
+              {
+                R_Handle texture = df_gfx_state->icon_texture;
+                Vec2S32 texture_dim = r_size_from_tex2d(texture);
+                UI_PrefWidth(ui_px(ui_top_font_size()*10.f, 1.f))
+                  UI_PrefHeight(ui_px(ui_top_font_size()*10.f, 1.f))
+                  ui_image(texture, R_Tex2DSampleKind_Linear, r2f32p(0, 0, texture_dim.x, texture_dim.y), v4f32(1, 1, 1, 1), 0, str8_lit(""));
+              }
+              ui_spacer(ui_em(0.25f, 1.f));
+              UI_Row
+                UI_PrefWidth(ui_text_dim(10, 1))
+                UI_TextAlignment(UI_TextAlign_Center)
+                UI_Padding(ui_pct(1, 0))
+              {
+                ui_labelf("Search for commands by pressing ");
+                DF_CmdSpec *spec = df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_RunCommand);
+                UI_TextColor(df_rgba_from_theme_color(DF_ThemeColor_PlainText))
+                  UI_Flags(UI_BoxFlag_DrawBorder)
+                  UI_TextAlignment(UI_TextAlign_Center)
+                  df_cmd_binding_button(spec);
+              }
+              ui_spacer(ui_em(0.25f, 1.f));
+              UI_Row UI_TextAlignment(UI_TextAlign_Center) ui_label(str8_lit("Submit issues to the GitHub at:"));
+              UI_TextAlignment(UI_TextAlign_Center)
+              {
+                UI_Signal url_sig = ui_buttonf("github.com/EpicGames/raddebugger");
+                if(ui_hovering(url_sig)) UI_Tooltip
+                {
+                  ui_labelf("Copy To Clipboard");
+                }
+                if(ui_clicked(url_sig))
+                {
+                  os_set_clipboard_text(str8_lit("https://github.com/EpicGames/raddebugger"));
+                }
+              }
+            }
+            
+            // rjf: buttons
+            UI_TextAlignment(UI_TextAlign_Center) UI_HeightFill
+            {
+              // rjf: set up table
+              struct
+              {
+                String8 name;
+                U32 codepoint;
+                OS_Key key;
+                UI_Key menu_key;
+              }
+              items[] =
+              {
+                {str8_lit("File"),     'f', OS_Key_F, file_menu_key},
+                {str8_lit("Window"),   'w', OS_Key_W, window_menu_key},
+                {str8_lit("Panel"),    'p', OS_Key_P, panel_menu_key},
+                {str8_lit("View"),     'v', OS_Key_V, view_menu_key},
+                {str8_lit("Targets"),  't', OS_Key_T, targets_menu_key},
+                {str8_lit("Control"),  'c', OS_Key_C, ctrl_menu_key},
+                {str8_lit("Help"),     'h', OS_Key_H, help_menu_key},
+              };
+              
+              // rjf: determine if one of the menus is already open
+              B32 menu_open = 0;
+              U64 open_menu_idx = 0;
+              for(U64 idx = 0; idx < ArrayCount(items); idx += 1)
+              {
+                if(ui_ctx_menu_is_open(items[idx].menu_key))
+                {
+                  menu_open = 1;
+                  open_menu_idx = idx;
+                  break;
+                }
+              }
+              
+              // rjf: navigate between menus
+              U64 open_menu_idx_prime = open_menu_idx;
+              if(menu_open && ws->menu_bar_focused && window_is_focused)
+              {
+                UI_NavActionList *nav_actions = ui_nav_actions();
+                for(UI_NavActionNode *n = nav_actions->first, *next = 0;
+                    n != 0;
+                    n = next)
+                {
+                  next = n->next;
+                  UI_NavAction *action = &n->v;
+                  B32 taken = 0;
+                  if(action->delta.x > 0)
+                  {
+                    taken = 1;
+                    open_menu_idx_prime += 1;
+                    open_menu_idx_prime = open_menu_idx_prime%ArrayCount(items);
+                  }
+                  if(action->delta.x < 0)
+                  {
+                    taken = 1;
+                    open_menu_idx_prime = open_menu_idx_prime > 0 ? open_menu_idx_prime-1 : (ArrayCount(items)-1);
+                  }
+                  if(taken)
+                  {
+                    ui_nav_eat_action_node(nav_actions, n);
+                  }
+                }
+              }
+              
+              // rjf: make ui
+              for(U64 idx = 0; idx < ArrayCount(items); idx += 1)
+              {
+                ui_set_next_fastpath_codepoint(items[idx].codepoint);
+                B32 alt_fastpath_key = 0;
+                if(os_key_press(ui_events(), ui_window(), OS_EventFlag_Alt, items[idx].key))
+                {
+                  alt_fastpath_key = 1;
+                }
+                if((ws->menu_bar_key_held || ws->menu_bar_focused) && !ui_any_ctx_menu_is_open())
+                {
+                  ui_set_next_flags(UI_BoxFlag_DrawTextFastpathCodepoint);
+                }
+                UI_Signal sig = df_menu_bar_button(items[idx].name);
+                os_window_push_custom_title_bar_client_area(ws->os, sig.box->rect);
+                if(menu_open)
+                {
+                  if((ui_hovering(sig) && !ui_ctx_menu_is_open(items[idx].menu_key)) || (open_menu_idx_prime == idx && open_menu_idx_prime != open_menu_idx))
+                  {
+                    ui_ctx_menu_open(items[idx].menu_key, sig.box->key, v2f32(0, sig.box->rect.y1-sig.box->rect.y0));
+                  }
+                }
+                else if(ui_pressed(sig) || alt_fastpath_key)
+                {
+                  if(ui_ctx_menu_is_open(items[idx].menu_key))
+                  {
+                    ui_ctx_menu_close();
+                  }
+                  else
+                  {
+                    ui_ctx_menu_open(items[idx].menu_key, sig.box->key, v2f32(0, sig.box->rect.y1-sig.box->rect.y0));
+                  }
+                }
+              }
+            }
           }
           
-          // rjf: panel menu
-          UI_Key panel_menu_key = ui_key_from_string(ui_key_zero(), str8_lit("_panel_menu_key_"));
-          UI_CtxMenu(panel_menu_key) UI_PrefWidth(ui_em(30.f, 1.f))
-          {
-            DF_CoreCmdKind cmds[] =
-            {
-              DF_CoreCmdKind_NewPanelRight,
-              DF_CoreCmdKind_NewPanelDown,
-              DF_CoreCmdKind_ClosePanel,
-              DF_CoreCmdKind_RotatePanelColumns,
-              DF_CoreCmdKind_NextPanel,
-              DF_CoreCmdKind_PrevPanel,
-              DF_CoreCmdKind_CloseTab,
-              DF_CoreCmdKind_NextTab,
-              DF_CoreCmdKind_PrevTab,
-              DF_CoreCmdKind_TabBarTop,
-              DF_CoreCmdKind_TabBarBottom,
-              DF_CoreCmdKind_ResetToDefaultPanels,
-            };
-            U32 codepoints[] =
-            {
-              'r',
-              'd',
-              'x',
-              'c',
-              'n',
-              'p',
-              't',
-              'b',
-              'v',
-              0,
-              0,
-              0,
-            };
-            Assert(ArrayCount(codepoints) == ArrayCount(cmds));
-            df_cmd_list_menu_buttons(ws, ArrayCount(cmds), cmds, codepoints);
-          }
+          ui_spacer(ui_em(0.75f, 1));
           
-          // rjf: view menu
-          UI_Key view_menu_key = ui_key_from_string(ui_key_zero(), str8_lit("_view_menu_key_"));
-          UI_CtxMenu(view_menu_key) UI_PrefWidth(ui_em(30.f, 1.f))
-          {
-            DF_CoreCmdKind cmds[] =
-            {
-              DF_CoreCmdKind_Targets,
-              DF_CoreCmdKind_Scheduler,
-              DF_CoreCmdKind_CallStack,
-              DF_CoreCmdKind_Modules,
-              DF_CoreCmdKind_Output,
-              DF_CoreCmdKind_Memory,
-              DF_CoreCmdKind_Disassembly,
-              DF_CoreCmdKind_Watch,
-              DF_CoreCmdKind_Locals,
-              DF_CoreCmdKind_Registers,
-              DF_CoreCmdKind_Globals,
-              DF_CoreCmdKind_ThreadLocals,
-              DF_CoreCmdKind_Types,
-              DF_CoreCmdKind_Procedures,
-              DF_CoreCmdKind_Breakpoints,
-              DF_CoreCmdKind_WatchPins,
-              DF_CoreCmdKind_FilePathMap,
-              DF_CoreCmdKind_Theme,
-              DF_CoreCmdKind_ExceptionFilters,
-            };
-            U32 codepoints[] =
-            {
-              't',
-              's',
-              'k',
-              'd',
-              'o',
-              'm',
-              'y',
-              'w',
-              'l',
-              'r',
-              0,
-              0,
-              0,
-              0,
-              'b',
-              'h',
-              'p',
-              'e',
-              'g',
-            };
-            Assert(ArrayCount(codepoints) == ArrayCount(cmds));
-            df_cmd_list_menu_buttons(ws, ArrayCount(cmds), cmds, codepoints);
-          }
-          
-          // rjf: targets menu
-          UI_Key targets_menu_key = ui_key_from_string(ui_key_zero(), str8_lit("_targets_menu_key_"));
-          UI_CtxMenu(targets_menu_key) UI_PrefWidth(ui_em(30.f, 1.f))
+          // rjf: conversion task visualization
+          UI_PrefWidth(ui_text_dim(10, 1)) UI_HeightFill UI_BackgroundColor(df_rgba_from_theme_color(DF_ThemeColor_Highlight1))
           {
             Temp scratch = scratch_begin(&arena, 1);
-            DF_CoreCmdKind cmds[] =
+            DF_EntityList tasks = df_query_cached_entity_list_with_kind(DF_EntityKind_ConversionTask);
+            for(DF_EntityNode *n = tasks.first; n != 0; n = n->next)
             {
-              DF_CoreCmdKind_AddTarget,
-              DF_CoreCmdKind_EditTarget,
-              DF_CoreCmdKind_RemoveTarget,
-            };
-            U32 codepoints[] =
-            {
-              'a',
-              'e',
-              'r',
-            };
-            Assert(ArrayCount(codepoints) == ArrayCount(cmds));
-            df_cmd_list_menu_buttons(ws, ArrayCount(cmds), cmds, codepoints);
-            DF_EntityList targets_list = df_query_cached_entity_list_with_kind(DF_EntityKind_Target);
-            for(DF_EntityNode *n = targets_list.first; n != 0; n = n->next)
-            {
-              DF_Entity *target = n->entity;
-              Vec4F32 color = ui_top_text_color();
-              if(target->flags & DF_EntityFlag_HasColor)
+              DF_Entity *task = n->entity;
+              if(task->alloc_time_us + 500000 < os_now_microseconds())
               {
-                color = df_rgba_from_entity(target);
-              }
-              String8 target_name = df_display_string_from_entity(scratch.arena, target);
-              UI_Signal sig = {0};
-              UI_TextColor(color)
-                sig = df_icon_buttonf(DF_IconKind_Target, 0, "%S##%p", target_name, target);
-              if(ui_clicked(sig))
-              {
-                DF_CmdParams params = df_cmd_params_from_window(ws);
-                params.entity = df_handle_from_entity(target);
-                df_cmd_params_mark_slot(&params, DF_CmdParamSlot_Entity);
-                df_push_cmd__root(&params, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_EditTarget));
-                ui_ctx_menu_close();
-                ws->menu_bar_focused = 0;
+                String8 rdi_path = task->name;
+                String8 rdi_name = str8_skip_last_slash(rdi_path);
+                String8 task_text = push_str8f(scratch.arena, "Creating %S...", rdi_name);
+                UI_Key key = ui_key_from_stringf(ui_key_zero(), "task_%p", task);
+                UI_Box *box = ui_build_box_from_key(UI_BoxFlag_DrawHotEffects|UI_BoxFlag_DrawText|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_Clickable, key);
+                os_window_push_custom_title_bar_client_area(ws->os, box->rect);
+                UI_Signal sig = ui_signal_from_box(box);
+                if(ui_hovering(sig)) UI_Tooltip
+                {
+                  ui_label(rdi_path);
+                }
+                ui_box_equip_display_string(box, task_text);
               }
             }
             scratch_end(scratch);
           }
-          
-          // rjf: ctrl menu
-          UI_Key ctrl_menu_key = ui_key_from_string(ui_key_zero(), str8_lit("_ctrl_menu_key_"));
-          UI_CtxMenu(ctrl_menu_key) UI_PrefWidth(ui_em(30.f, 1.f))
+        }
+        
+        //- rjf: center column
+        UI_PrefWidth(ui_children_sum(1.f)) UI_Row
+        {
+          // rjf: fast-paths
+          UI_PrefWidth(ui_em(2.25f, 1))
+            UI_Font(df_font_from_slot(DF_FontSlot_Icons))
+            UI_FontSize(ui_top_font_size()*0.85f)
           {
-            DF_CoreCmdKind cmds[] =
-            {
-              DF_CoreCmdKind_Run,
-              DF_CoreCmdKind_KillAll,
-              DF_CoreCmdKind_Restart,
-              DF_CoreCmdKind_Halt,
-              DF_CoreCmdKind_SoftHaltRefresh,
-              DF_CoreCmdKind_StepInto,
-              DF_CoreCmdKind_StepOver,
-              DF_CoreCmdKind_StepOut,
-              DF_CoreCmdKind_Attach,
-            };
-            U32 codepoints[] =
-            {
-              'r',
-              'k',
-              's',
-              'h',
-              'f',
-              'i',
-              'o',
-              't',
-              'a',
-            };
-            Assert(ArrayCount(codepoints) == ArrayCount(cmds));
-            df_cmd_list_menu_buttons(ws, ArrayCount(cmds), cmds, codepoints);
-          }
-          
-          // rjf: help menu
-          UI_Key help_menu_key = ui_key_from_string(ui_key_zero(), str8_lit("_help_menu_key_"));
-          UI_CtxMenu(help_menu_key) UI_PrefWidth(ui_em(40.f, 1.f))
-          {
-            UI_Row UI_TextAlignment(UI_TextAlign_Center) UI_TextColor(df_rgba_from_theme_color(DF_ThemeColor_WeakText))
-              ui_label(str8_lit(BUILD_TITLE_STRING_LITERAL));
-            ui_spacer(ui_em(0.25f, 1.f));
-            UI_Row
-              UI_PrefWidth(ui_text_dim(10, 1))
-              UI_TextAlignment(UI_TextAlign_Center)
-              UI_Padding(ui_pct(1, 0))
-            {
-              ui_labelf("Search for commands by pressing ");
-              DF_CmdSpec *spec = df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_RunCommand);
-              UI_TextColor(df_rgba_from_theme_color(DF_ThemeColor_PlainText))
-                UI_Flags(UI_BoxFlag_DrawBorder)
-                UI_TextAlignment(UI_TextAlign_Center)
-                df_cmd_binding_button(spec);
-            }
-            ui_spacer(ui_em(0.25f, 1.f));
-            UI_Row UI_TextAlignment(UI_TextAlign_Center) ui_label(str8_lit("Submit issues to the GitHub at:"));
-            UI_TextAlignment(UI_TextAlign_Center)
-            {
-              UI_Signal url_sig = ui_buttonf("github.com/EpicGames/raddebugger");
-              if(ui_hovering(url_sig)) UI_Tooltip
-              {
-                ui_labelf("Copy To Clipboard");
-              }
-              if(ui_clicked(url_sig))
-              {
-                os_set_clipboard_text(str8_lit("https://github.com/EpicGames/raddebugger"));
-              }
-            }
-          }
-          
-          // rjf: buttons
-          UI_TextAlignment(UI_TextAlign_Center) UI_HeightFill
-          {
-            // rjf: set up table
-            struct
-            {
-              String8 name;
-              U32 codepoint;
-              OS_Key key;
-              UI_Key menu_key;
-            }
-            items[] =
-            {
-              {str8_lit("File"),     'f', OS_Key_F, file_menu_key},
-              {str8_lit("Window"),   'w', OS_Key_W, window_menu_key},
-              {str8_lit("Panel"),    'p', OS_Key_P, panel_menu_key},
-              {str8_lit("View"),     'v', OS_Key_V, view_menu_key},
-              {str8_lit("Targets"),  't', OS_Key_T, targets_menu_key},
-              {str8_lit("Control"),  'c', OS_Key_C, ctrl_menu_key},
-              {str8_lit("Help"),     'h', OS_Key_H, help_menu_key},
-            };
+            Temp scratch = scratch_begin(&arena, 1);
+            DF_EntityList targets = df_push_active_target_list(scratch.arena);
+            DF_EntityList processes = df_query_cached_entity_list_with_kind(DF_EntityKind_Process);
+            B32 have_targets = targets.count != 0;
+            B32 can_send_signal = !df_ctrl_targets_running();
+            B32 can_play  = (have_targets && (can_send_signal || df_ctrl_last_run_frame_idx()+4 > df_frame_index()));
+            B32 can_pause = (!can_send_signal);
+            B32 can_stop  = (processes.count != 0);
+            B32 can_step =  (processes.count != 0 && can_send_signal);
             
-            // rjf: determine if one of the menus is already open
-            B32 menu_open = 0;
-            U64 open_menu_idx = 0;
-            for(U64 idx = 0; idx < ArrayCount(items); idx += 1)
+            if(can_play || !have_targets ||
+               processes.count == 0) UI_TextAlignment(UI_TextAlign_Center) UI_Flags((can_play ? 0 : UI_BoxFlag_Disabled))
             {
-              if(ui_ctx_menu_is_open(items[idx].menu_key))
+              ui_set_next_text_color(v4f32(0.3f, 0.8f, 0.2f, 1.f));
+              UI_Signal sig = ui_button(df_g_icon_kind_text_table[DF_IconKind_Play]);
+              os_window_push_custom_title_bar_client_area(ws->os, sig.box->rect);
+              if(ui_hovering(sig) && !can_play)
               {
-                menu_open = 1;
-                open_menu_idx = idx;
-                break;
+                UI_Tooltip
+                  UI_Font(df_font_from_slot(DF_FontSlot_Main))
+                  UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
+                  ui_labelf("Disabled: %s", have_targets ? "Targets are currently running" : "No active targets exist");
               }
-            }
-            
-            // rjf: navigate between menus
-            U64 open_menu_idx_prime = open_menu_idx;
-            if(menu_open && ws->menu_bar_focused && window_is_focused)
-            {
-              UI_NavActionList *nav_actions = ui_nav_actions();
-              for(UI_NavActionNode *n = nav_actions->first, *next = 0;
-                  n != 0;
-                  n = next)
+              if(ui_hovering(sig) && can_play)
               {
-                next = n->next;
-                UI_NavAction *action = &n->v;
-                B32 taken = 0;
-                if(action->delta.x > 0)
+                UI_Tooltip
+                  UI_Font(df_font_from_slot(DF_FontSlot_Main))
+                  UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
                 {
-                  taken = 1;
-                  open_menu_idx_prime += 1;
-                  open_menu_idx_prime = open_menu_idx_prime%ArrayCount(items);
-                }
-                if(action->delta.x < 0)
-                {
-                  taken = 1;
-                  open_menu_idx_prime = open_menu_idx_prime > 0 ? open_menu_idx_prime-1 : (ArrayCount(items)-1);
-                }
-                if(taken)
-                {
-                  ui_nav_eat_action_node(nav_actions, n);
-                }
-              }
-            }
-            
-            // rjf: make ui
-            for(U64 idx = 0; idx < ArrayCount(items); idx += 1)
-            {
-              ui_set_next_fastpath_codepoint(items[idx].codepoint);
-              B32 alt_fastpath_key = 0;
-              if(os_key_press(ui_events(), ui_window(), OS_EventFlag_Alt, items[idx].key))
-              {
-                alt_fastpath_key = 1;
-              }
-              if((ws->menu_bar_key_held || ws->menu_bar_focused) && !ui_any_ctx_menu_is_open())
-              {
-                ui_set_next_flags(UI_BoxFlag_DrawTextFastpathCodepoint);
-              }
-              UI_Signal sig = df_menu_bar_button(items[idx].name);
-              if(menu_open)
-              {
-                if((ui_hovering(sig) && !ui_ctx_menu_is_open(items[idx].menu_key)) || (open_menu_idx_prime == idx && open_menu_idx_prime != open_menu_idx))
-                {
-                  ui_ctx_menu_open(items[idx].menu_key, sig.box->key, v2f32(0, sig.box->rect.y1-sig.box->rect.y0));
-                }
-              }
-              else if(ui_pressed(sig) || alt_fastpath_key)
-              {
-                if(ui_ctx_menu_is_open(items[idx].menu_key))
-                {
-                  ui_ctx_menu_close();
-                }
-                else
-                {
-                  ui_ctx_menu_open(items[idx].menu_key, sig.box->key, v2f32(0, sig.box->rect.y1-sig.box->rect.y0));
-                }
-              }
-            }
-          }
-        }
-        
-        ui_spacer(ui_em(0.75f, 1));
-        
-        // rjf: conversion task visualization
-        UI_PrefWidth(ui_text_dim(10, 1)) UI_HeightFill UI_BackgroundColor(df_rgba_from_theme_color(DF_ThemeColor_Highlight1))
-        {
-          Temp scratch = scratch_begin(&arena, 1);
-          DF_EntityList tasks = df_query_cached_entity_list_with_kind(DF_EntityKind_ConversionTask);
-          for(DF_EntityNode *n = tasks.first; n != 0; n = n->next)
-          {
-            DF_Entity *task = n->entity;
-            if(task->alloc_time_us + 500000 < os_now_microseconds())
-            {
-              String8 rdi_path = task->name;
-              String8 rdi_name = str8_skip_last_slash(rdi_path);
-              String8 task_text = push_str8f(scratch.arena, "Creating %S...", rdi_name);
-              UI_Key key = ui_key_from_stringf(ui_key_zero(), "task_%p", task);
-              UI_Box *box = ui_build_box_from_key(UI_BoxFlag_DrawHotEffects|UI_BoxFlag_DrawText|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_Clickable, key);
-              UI_Signal sig = ui_signal_from_box(box);
-              if(ui_hovering(sig)) UI_Tooltip
-              {
-                ui_label(rdi_path);
-              }
-              ui_box_equip_display_string(box, task_text);
-            }
-          }
-          scratch_end(scratch);
-        }
-        
-        ui_spacer(ui_pct(1, 0));
-        
-        // rjf: loaded user viz
-        {
-          ui_set_next_background_color(df_rgba_from_theme_color(DF_ThemeColor_Highlight1));
-          ui_set_next_pref_width(ui_children_sum(1));
-          ui_set_next_child_layout_axis(Axis2_X);
-          ui_set_next_hover_cursor(OS_Cursor_HandPoint);
-          UI_Box *user_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable|
-                                                       UI_BoxFlag_DrawBorder|
-                                                       UI_BoxFlag_DrawBackground|
-                                                       UI_BoxFlag_DrawHotEffects|
-                                                       UI_BoxFlag_DrawActiveEffects,
-                                                       "###loaded_user_button");
-          UI_Parent(user_box) UI_PrefWidth(ui_text_dim(10, 1)) UI_TextAlignment(UI_TextAlign_Center)
-          {
-            String8 user_path = df_cfg_path_from_src(DF_CfgSrc_User);
-            UI_Font(ui_icon_font()) ui_label(df_g_icon_kind_text_table[DF_IconKind_Person]);
-            ui_label(str8_skip_last_slash(user_path));
-          }
-          UI_Signal user_sig = ui_signal_from_box(user_box);
-          if(ui_clicked(user_sig))
-          {
-            DF_CmdParams p = df_cmd_params_from_window(ws);
-            p.cmd_spec = df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_OpenUser);
-            df_cmd_params_mark_slot(&p, DF_CmdParamSlot_CmdSpec);
-            df_push_cmd__root(&p, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_RunCommand));
-          }
-        }
-        
-        ui_spacer(ui_em(0.75f, 1));
-        
-        // rjf: loaded profile viz
-        {
-          ui_set_next_background_color(df_rgba_from_theme_color(DF_ThemeColor_Highlight0));
-          ui_set_next_pref_width(ui_children_sum(1));
-          ui_set_next_child_layout_axis(Axis2_X);
-          ui_set_next_hover_cursor(OS_Cursor_HandPoint);
-          UI_Box *prof_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable|
-                                                       UI_BoxFlag_DrawBorder|
-                                                       UI_BoxFlag_DrawBackground|
-                                                       UI_BoxFlag_DrawHotEffects|
-                                                       UI_BoxFlag_DrawActiveEffects,
-                                                       "###loaded_profile_button");
-          UI_Parent(prof_box) UI_PrefWidth(ui_text_dim(10, 1)) UI_TextAlignment(UI_TextAlign_Center)
-          {
-            String8 prof_path = df_cfg_path_from_src(DF_CfgSrc_Profile);
-            UI_Font(ui_icon_font()) ui_label(df_g_icon_kind_text_table[DF_IconKind_Briefcase]);
-            ui_label(str8_skip_last_slash(prof_path));
-          }
-          UI_Signal prof_sig = ui_signal_from_box(prof_box);
-          if(ui_clicked(prof_sig))
-          {
-            DF_CmdParams p = df_cmd_params_from_window(ws);
-            p.cmd_spec = df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_OpenProfile);
-            df_cmd_params_mark_slot(&p, DF_CmdParamSlot_CmdSpec);
-            df_push_cmd__root(&p, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_RunCommand));
-          }
-        }
-        
-        ui_spacer(ui_em(0.75f, 1));
-        
-        // rjf: fast-paths
-        UI_PrefWidth(ui_em(2.25f, 1))
-          UI_Font(df_font_from_slot(DF_FontSlot_Icons))
-          UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Icons))
-        {
-          Temp scratch = scratch_begin(&arena, 1);
-          DF_EntityList targets = df_push_active_target_list(scratch.arena);
-          DF_EntityList processes = df_query_cached_entity_list_with_kind(DF_EntityKind_Process);
-          B32 have_targets = targets.count != 0;
-          B32 can_send_signal = !df_ctrl_targets_running();
-          B32 can_play  = (have_targets && can_send_signal);
-          B32 can_pause = (!can_send_signal);
-          B32 can_stop  = (processes.count != 0);
-          
-          if(can_play || !have_targets) UI_TextAlignment(UI_TextAlign_Center) UI_Flags((can_play ? 0 : UI_BoxFlag_Disabled))
-          {
-            UI_Signal sig = ui_button(df_g_icon_kind_text_table[DF_IconKind_Play]);
-            if(ui_hovering(sig) && !can_play)
-            {
-              UI_Tooltip
-                UI_Font(df_font_from_slot(DF_FontSlot_Main))
-                UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
-                ui_labelf("Disabled: %s", have_targets ? "Targets are currently running" : "No active targets exist");
-            }
-            if(ui_hovering(sig) && can_play)
-            {
-              UI_Tooltip
-                UI_Font(df_font_from_slot(DF_FontSlot_Main))
-                UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
-              {
-                if(can_stop)
-                {
-                  ui_labelf("Resume all processes");
-                }
-                else
-                {
-                  ui_labelf("Launch all active targets:");
-                  for(DF_EntityNode *n = targets.first; n != 0; n = n->next)
+                  if(can_stop)
                   {
-                    ui_label(n->entity->name);
+                    ui_labelf("Resume all processes");
                   }
-                }
-              }
-            }
-            if(ui_clicked(sig))
-            {
-              DF_CmdParams params = df_cmd_params_from_window(ws);
-              df_push_cmd__root(&params, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_Run));
-            }
-          }
-          
-          if(!can_play && have_targets && !can_send_signal) UI_TextAlignment(UI_TextAlign_Center)
-          {
-            UI_Signal sig = ui_button(df_g_icon_kind_text_table[DF_IconKind_Redo]);
-            if(ui_hovering(sig))
-            {
-              UI_Tooltip
-                UI_Font(df_font_from_slot(DF_FontSlot_Main))
-                UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
-              {
-                ui_labelf("Restart all running targets:");
-                {
-                  DF_EntityList processes = df_query_cached_entity_list_with_kind(DF_EntityKind_Process);
-                  for(DF_EntityNode *n = processes.first; n != 0; n = n->next)
+                  else
                   {
-                    DF_Entity *process = n->entity;
-                    DF_Entity *target = df_entity_from_handle(process->entity_handle);
-                    if(!df_entity_is_nil(target))
+                    ui_labelf("Launch all active targets:");
+                    for(DF_EntityNode *n = targets.first; n != 0; n = n->next)
                     {
-                      ui_label(target->name);
+                      String8 target_display_name = df_display_string_from_entity(scratch.arena, n->entity);
+                      ui_label(target_display_name);
                     }
                   }
                 }
               }
+              if(ui_clicked(sig))
+              {
+                DF_CmdParams params = df_cmd_params_from_window(ws);
+                df_push_cmd__root(&params, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_Run));
+              }
             }
-            if(ui_clicked(sig))
+            
+            if(!can_play && processes.count != 0) UI_TextAlignment(UI_TextAlign_Center)
             {
-              DF_CmdParams params = df_cmd_params_from_window(ws);
-              df_push_cmd__root(&params, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_Restart));
+              ui_set_next_text_color(v4f32(0.3f, 0.8f, 0.2f, 1.f));
+              UI_Signal sig = ui_button(df_g_icon_kind_text_table[DF_IconKind_Redo]);
+              os_window_push_custom_title_bar_client_area(ws->os, sig.box->rect);
+              if(ui_hovering(sig))
+              {
+                UI_Tooltip
+                  UI_Font(df_font_from_slot(DF_FontSlot_Main))
+                  UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
+                {
+                  ui_labelf("Restart all running targets:");
+                  {
+                    DF_EntityList processes = df_query_cached_entity_list_with_kind(DF_EntityKind_Process);
+                    for(DF_EntityNode *n = processes.first; n != 0; n = n->next)
+                    {
+                      DF_Entity *process = n->entity;
+                      DF_Entity *target = df_entity_from_handle(process->entity_handle);
+                      if(!df_entity_is_nil(target))
+                      {
+                        String8 target_display_name = df_display_string_from_entity(scratch.arena, target);
+                        ui_label(target_display_name);
+                      }
+                    }
+                  }
+                }
+              }
+              if(ui_clicked(sig))
+              {
+                DF_CmdParams params = df_cmd_params_from_window(ws);
+                df_push_cmd__root(&params, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_Restart));
+              }
+            }
+            
+            UI_TextAlignment(UI_TextAlign_Center) UI_Flags(can_pause ? 0 : UI_BoxFlag_Disabled)
+            {
+              ui_set_next_text_color(v4f32(0.3f, 0.5f, 0.8f, 1.f));
+              UI_Signal sig = ui_button(df_g_icon_kind_text_table[DF_IconKind_Pause]);
+              os_window_push_custom_title_bar_client_area(ws->os, sig.box->rect);
+              if(ui_hovering(sig) && !can_pause)
+              {
+                UI_Tooltip
+                  UI_Font(df_font_from_slot(DF_FontSlot_Main))
+                  UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
+                  ui_labelf("Disabled: Already halted");
+              }
+              if(ui_hovering(sig) && can_pause)
+              {
+                UI_Tooltip
+                  UI_Font(df_font_from_slot(DF_FontSlot_Main))
+                  UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
+                  ui_labelf("Halt all target processes");
+              }
+              if(ui_clicked(sig))
+              {
+                DF_CmdParams params = df_cmd_params_from_window(ws);
+                df_push_cmd__root(&params, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_Halt));
+              }
+            }
+            
+            UI_TextAlignment(UI_TextAlign_Center) UI_Flags(can_stop ? 0 : UI_BoxFlag_Disabled)
+            {
+              UI_Signal sig = {0};
+              {
+                ui_set_next_text_color(v4f32(0.8f, 0.4f, 0.2f, 1.f));
+                sig = ui_button(df_g_icon_kind_text_table[DF_IconKind_Stop]);
+                os_window_push_custom_title_bar_client_area(ws->os, sig.box->rect);
+              }
+              if(ui_hovering(sig) && !can_stop)
+              {
+                UI_Tooltip
+                  UI_Font(df_font_from_slot(DF_FontSlot_Main))
+                  UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
+                  ui_labelf("Disabled: No processes are running");
+              }
+              if(ui_hovering(sig) && can_stop)
+              {
+                UI_Tooltip
+                  UI_Font(df_font_from_slot(DF_FontSlot_Main))
+                  UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
+                  ui_labelf("Kill all target processes");
+              }
+              if(ui_clicked(sig))
+              {
+                DF_CmdParams params = df_cmd_params_from_window(ws);
+                df_push_cmd__root(&params, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_Kill));
+              }
+            }
+            
+            UI_TextAlignment(UI_TextAlign_Center) UI_Flags(can_step ? 0 : UI_BoxFlag_Disabled)
+            {
+              UI_Signal sig = ui_button(df_g_icon_kind_text_table[DF_IconKind_StepOver]);
+              os_window_push_custom_title_bar_client_area(ws->os, sig.box->rect);
+              if(ui_hovering(sig) && !can_step && can_pause)
+              {
+                UI_Tooltip
+                  UI_Font(df_font_from_slot(DF_FontSlot_Main))
+                  UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
+                  ui_labelf("Disabled: Running");
+              }
+              if(ui_hovering(sig) && !can_step && !can_stop)
+              {
+                UI_Tooltip
+                  UI_Font(df_font_from_slot(DF_FontSlot_Main))
+                  UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
+                  ui_labelf("Disabled: No processes are running");
+              }
+              if(ui_hovering(sig) && can_step)
+              {
+                UI_Tooltip
+                  UI_Font(df_font_from_slot(DF_FontSlot_Main))
+                  UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
+                  ui_labelf("Step Over");
+              }
+              if(ui_clicked(sig))
+              {
+                DF_CmdParams params = df_cmd_params_from_window(ws);
+                df_push_cmd__root(&params, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_StepOver));
+              }
+            }
+            
+            UI_TextAlignment(UI_TextAlign_Center) UI_Flags(can_step ? 0 : UI_BoxFlag_Disabled)
+            {
+              UI_Signal sig = ui_button(df_g_icon_kind_text_table[DF_IconKind_StepInto]);
+              os_window_push_custom_title_bar_client_area(ws->os, sig.box->rect);
+              if(ui_hovering(sig) && !can_step && can_pause)
+              {
+                UI_Tooltip
+                  UI_Font(df_font_from_slot(DF_FontSlot_Main))
+                  UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
+                  ui_labelf("Disabled: Running");
+              }
+              if(ui_hovering(sig) && !can_step && !can_stop)
+              {
+                UI_Tooltip
+                  UI_Font(df_font_from_slot(DF_FontSlot_Main))
+                  UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
+                  ui_labelf("Disabled: No processes are running");
+              }
+              if(ui_hovering(sig) && can_step)
+              {
+                UI_Tooltip
+                  UI_Font(df_font_from_slot(DF_FontSlot_Main))
+                  UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
+                  ui_labelf("Step Into");
+              }
+              if(ui_clicked(sig))
+              {
+                DF_CmdParams params = df_cmd_params_from_window(ws);
+                df_push_cmd__root(&params, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_StepInto));
+              }
+            }
+            
+            UI_TextAlignment(UI_TextAlign_Center) UI_Flags(can_step ? 0 : UI_BoxFlag_Disabled)
+            {
+              UI_Signal sig = ui_button(df_g_icon_kind_text_table[DF_IconKind_StepOut]);
+              os_window_push_custom_title_bar_client_area(ws->os, sig.box->rect);
+              if(ui_hovering(sig) && !can_step && can_pause)
+              {
+                UI_Tooltip
+                  UI_Font(df_font_from_slot(DF_FontSlot_Main))
+                  UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
+                  ui_labelf("Disabled: Running");
+              }
+              if(ui_hovering(sig) && !can_step && !can_stop)
+              {
+                UI_Tooltip
+                  UI_Font(df_font_from_slot(DF_FontSlot_Main))
+                  UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
+                  ui_labelf("Disabled: No processes are running");
+              }
+              if(ui_hovering(sig) && can_step)
+              {
+                UI_Tooltip
+                  UI_Font(df_font_from_slot(DF_FontSlot_Main))
+                  UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
+                  ui_labelf("Step Out");
+              }
+              if(ui_clicked(sig))
+              {
+                DF_CmdParams params = df_cmd_params_from_window(ws);
+                df_push_cmd__root(&params, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_StepOut));
+              }
+            }
+            
+            scratch_end(scratch);
+          }
+        }
+        
+        //- rjf: right column
+        UI_WidthFill UI_Row
+        {
+          B32 do_user_prof = (dim_2f32(top_bar_rect).x > ui_top_font_size()*80);
+          
+          ui_spacer(ui_pct(1, 0));
+          
+          // rjf: loaded user viz
+          if(do_user_prof)
+          {
+            ui_set_next_background_color(df_rgba_from_theme_color(DF_ThemeColor_Highlight1));
+            ui_set_next_pref_width(ui_children_sum(1));
+            ui_set_next_child_layout_axis(Axis2_X);
+            ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+            UI_Box *user_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable|
+                                                         UI_BoxFlag_DrawBorder|
+                                                         UI_BoxFlag_DrawBackground|
+                                                         UI_BoxFlag_DrawHotEffects|
+                                                         UI_BoxFlag_DrawActiveEffects,
+                                                         "###loaded_user_button");
+            os_window_push_custom_title_bar_client_area(ws->os, user_box->rect);
+            UI_Parent(user_box) UI_PrefWidth(ui_text_dim(10, 0)) UI_TextAlignment(UI_TextAlign_Center)
+            {
+              String8 user_path = df_cfg_path_from_src(DF_CfgSrc_User);
+              user_path = str8_chop_last_dot(user_path);
+              UI_Font(ui_icon_font()) ui_label(df_g_icon_kind_text_table[DF_IconKind_Person]);
+              ui_label(str8_skip_last_slash(user_path));
+            }
+            UI_Signal user_sig = ui_signal_from_box(user_box);
+            if(ui_clicked(user_sig))
+            {
+              DF_CmdParams p = df_cmd_params_from_window(ws);
+              p.cmd_spec = df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_OpenUser);
+              df_cmd_params_mark_slot(&p, DF_CmdParamSlot_CmdSpec);
+              df_push_cmd__root(&p, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_RunCommand));
             }
           }
           
-          UI_TextAlignment(UI_TextAlign_Center) UI_Flags(can_pause ? 0 : UI_BoxFlag_Disabled)
+          if(do_user_prof)
           {
-            UI_Signal sig = ui_button(df_g_icon_kind_text_table[DF_IconKind_Pause]);
-            if(ui_hovering(sig) && !can_pause)
+            ui_spacer(ui_em(0.75f, 0));
+          }
+          
+          // rjf: loaded profile viz
+          if(do_user_prof)
+          {
+            ui_set_next_background_color(df_rgba_from_theme_color(DF_ThemeColor_Highlight0));
+            ui_set_next_pref_width(ui_children_sum(1));
+            ui_set_next_child_layout_axis(Axis2_X);
+            ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+            UI_Box *prof_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable|
+                                                         UI_BoxFlag_DrawBorder|
+                                                         UI_BoxFlag_DrawBackground|
+                                                         UI_BoxFlag_DrawHotEffects|
+                                                         UI_BoxFlag_DrawActiveEffects,
+                                                         "###loaded_profile_button");
+            os_window_push_custom_title_bar_client_area(ws->os, prof_box->rect);
+            UI_Parent(prof_box) UI_PrefWidth(ui_text_dim(10, 0)) UI_TextAlignment(UI_TextAlign_Center)
             {
-              UI_Tooltip
-                UI_Font(df_font_from_slot(DF_FontSlot_Main))
-                UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
-                ui_labelf("Disabled: Already halted");
+              String8 prof_path = df_cfg_path_from_src(DF_CfgSrc_Profile);
+              prof_path = str8_chop_last_dot(prof_path);
+              UI_Font(ui_icon_font()) ui_label(df_g_icon_kind_text_table[DF_IconKind_Briefcase]);
+              ui_label(str8_skip_last_slash(prof_path));
             }
-            if(ui_hovering(sig) && can_pause)
+            UI_Signal prof_sig = ui_signal_from_box(prof_box);
+            if(ui_clicked(prof_sig))
             {
-              UI_Tooltip
-                UI_Font(df_font_from_slot(DF_FontSlot_Main))
-                UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
-                ui_labelf("Halt all target processes");
-            }
-            if(ui_clicked(sig))
-            {
-              DF_CmdParams params = df_cmd_params_from_window(ws);
-              df_push_cmd__root(&params, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_Halt));
+              DF_CmdParams p = df_cmd_params_from_window(ws);
+              p.cmd_spec = df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_OpenProfile);
+              df_cmd_params_mark_slot(&p, DF_CmdParamSlot_CmdSpec);
+              df_push_cmd__root(&p, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_RunCommand));
             }
           }
           
-          UI_TextAlignment(UI_TextAlign_Center) UI_Flags(can_stop ? 0 : UI_BoxFlag_Disabled)
+          if(do_user_prof)
           {
-            UI_Signal sig = {0};
-            {
-              sig = ui_button(df_g_icon_kind_text_table[DF_IconKind_Stop]);
-            }
-            if(ui_hovering(sig) && !can_stop)
-            {
-              UI_Tooltip
-                UI_Font(df_font_from_slot(DF_FontSlot_Main))
-                UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
-                ui_labelf("Disabled: No processes are running");
-            }
-            if(ui_hovering(sig) && can_stop)
-            {
-              UI_Tooltip
-                UI_Font(df_font_from_slot(DF_FontSlot_Main))
-                UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Main))
-                ui_labelf("Kill all target processes");
-            }
-            if(ui_clicked(sig))
-            {
-              DF_CmdParams params = df_cmd_params_from_window(ws);
-              df_push_cmd__root(&params, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_Kill));
-            }
+            ui_spacer(ui_em(0.75f, 0));
           }
-          scratch_end(scratch);
+          
+          // rjf: min/max/close buttons
+          {
+            UI_Signal min_sig = {0};
+            UI_Signal max_sig = {0};
+            UI_Signal cls_sig = {0};
+            Vec2F32 bar_dim = dim_2f32(top_bar_rect);
+            F32 button_dim = bar_dim.y;
+            UI_PrefWidth(ui_px(button_dim, 1.f))
+            {
+              min_sig = df_icon_buttonf(DF_IconKind_Minus,  0, "##minimize");
+              max_sig = df_icon_buttonf(DF_IconKind_Window, 0, "##maximize");
+            }
+            UI_PrefWidth(ui_px(button_dim*2, 1.f))
+              UI_BackgroundColor(df_rgba_from_theme_color(DF_ThemeColor_FailureBackground))
+            {
+              cls_sig = df_icon_buttonf(DF_IconKind_X,      0, "##close");
+            }
+            if(ui_clicked(min_sig))
+            {
+              os_window_minimize(ws->os);
+            }
+            if(ui_clicked(max_sig))
+            {
+              os_window_set_maximized(ws->os, !os_window_is_maximized(ws->os));
+            }
+            if(ui_clicked(cls_sig))
+            {
+              DF_CmdParams p = df_cmd_params_from_window(ws);
+              df_push_cmd__root(&p, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_CloseWindow));
+            }
+            os_window_push_custom_title_bar_client_area(ws->os, min_sig.box->rect);
+            os_window_push_custom_title_bar_client_area(ws->os, max_sig.box->rect);
+            os_window_push_custom_title_bar_client_area(ws->os, cls_sig.box->rect);
+          }
         }
       }
     }
@@ -4784,7 +5053,7 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
         
         // rjf: construct & push new view
         DF_View *view = df_view_alloc();
-        df_view_equip_spec(view, view_spec, &df_g_nil_entity, default_query, &df_g_nil_cfg_node);
+        df_view_equip_spec(ws, view, view_spec, &df_g_nil_entity, default_query, &df_g_nil_cfg_node);
         if(cmd_spec->info.query.flags & DF_CmdQueryFlag_SelectOldInput)
         {
           view->query_mark = txt_pt(1, 1);
@@ -4991,7 +5260,7 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
             panel = df_panel_rec_df_pre(panel).next)
         {
           if(!df_panel_is_nil(panel->first)) { continue; }
-          Rng2F32 panel_rect = df_rect_from_panel(content_rect, ws->root_panel, panel);
+          Rng2F32 panel_rect = df_target_rect_from_panel(content_rect, ws->root_panel, panel);
           DF_View *view = df_view_from_handle(panel->selected_tab_view);
           if(!df_view_is_nil(view) &&
              contains_2f32(panel_rect, ui_mouse()) &&
@@ -5127,7 +5396,7 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
               //- rjf: calculate width of exp row
               if(row == viz_rows.first)
               {
-                expr_column_width_px = f_dim_from_tag_size_string(ui_top_font(), ui_top_font_size(), row->expr).x + ui_top_font_size()*0.5f;
+                expr_column_width_px = f_dim_from_tag_size_string(ui_top_font(), ui_top_font_size(), row->display_expr).x + ui_top_font_size()*0.5f;
                 expr_column_width_px = Max(expr_column_width_px, ui_top_font_size()*10.f);
               }
               
@@ -5176,7 +5445,7 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
                 }
                 UI_WidthFill
                 {
-                  UI_PrefWidth(ui_px(expr_column_width_px, 1.f)) df_code_label(1.f, 1, df_rgba_from_theme_color(DF_ThemeColor_CodeDefault), row->expr);
+                  UI_PrefWidth(ui_px(expr_column_width_px, 1.f)) df_code_label(1.f, 1, df_rgba_from_theme_color(DF_ThemeColor_CodeDefault), row->display_expr);
                   ui_spacer(ui_em(1.5f, 1.f));
                   if(row->flags & DF_EvalVizRowFlag_CanEditValue)
                   {
@@ -5298,7 +5567,7 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
     }
     
     ////////////////////////////
-    //- rjf: panel non-leaf UI (drag boundaries)
+    //- rjf: panel non-leaf UI (drag boundaries, drag/drop sites)
     //
     B32 is_changing_panel_boundaries = 0;
     ProfScope("non-leaf panel UI")
@@ -5306,23 +5575,224 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
           !df_panel_is_nil(panel);
           panel = df_panel_rec_df_pre(panel).next)
     {
+      //////////////////////////
       //- rjf: continue on leaf panels
+      //
       if(df_panel_is_nil(panel->first))
       {
         continue;
       }
       
+      //////////////////////////
       //- rjf: grab info
+      //
       Axis2 split_axis = panel->split_axis;
-      Rng2F32 panel_rect = df_rect_from_panel(content_rect, ws->root_panel, panel);
+      Rng2F32 panel_rect = df_target_rect_from_panel(content_rect, ws->root_panel, panel);
       
-      //- rjf: do UI for boundaries between all children
+      //////////////////////////
+      //- rjf: boundary tab-drag/drop sites
+      //
+      {
+        DF_View *drag_view = df_view_from_handle(df_g_drag_drop_payload.view);
+        if(df_drag_is_active() && !df_view_is_nil(drag_view))
+        {
+          //- rjf: params
+          F32 drop_site_major_dim_px = ceil_f32(ui_top_font_size()*7.f);
+          F32 drop_site_minor_dim_px = ceil_f32(ui_top_font_size()*5.f);
+          F32 corner_radius = ui_top_font_size()*0.5f;
+          F32 padding = ceil_f32(ui_top_font_size()*0.5f);
+          
+          //- rjf: special case - build Y boundary drop sites on root panel
+          //
+          // (this does not naturally follow from the below algorithm, since the
+          // root level panel only splits on X)
+          if(panel == ws->root_panel) UI_CornerRadius(corner_radius)
+          {
+            Vec2F32 panel_rect_center = center_2f32(panel_rect);
+            Axis2 axis = axis2_flip(ws->root_panel->split_axis);
+            for(EachEnumVal(Side, side))
+            {
+              UI_Key key = ui_key_from_stringf(ui_key_zero(), "root_extra_split_%i", side);
+              Rng2F32 site_rect = panel_rect;
+              site_rect.p0.v[axis2_flip(axis)] = panel_rect_center.v[axis2_flip(axis)] - drop_site_major_dim_px/2;
+              site_rect.p1.v[axis2_flip(axis)] = panel_rect_center.v[axis2_flip(axis)] + drop_site_major_dim_px/2;
+              site_rect.p0.v[axis] = panel_rect.v[side].v[axis] - drop_site_minor_dim_px/2;
+              site_rect.p1.v[axis] = panel_rect.v[side].v[axis] + drop_site_minor_dim_px/2;
+              
+              // rjf: build
+              UI_Box *site_box = &ui_g_nil_box;
+              {
+                UI_Rect(site_rect)
+                {
+                  site_box = ui_build_box_from_key(UI_BoxFlag_DropSite, key);
+                  ui_signal_from_box(site_box);
+                }
+                UI_Box *site_box_viz = &ui_g_nil_box;
+                UI_Parent(site_box) UI_WidthFill UI_HeightFill
+                  UI_Padding(ui_px(padding, 1.f))
+                  UI_Column
+                  UI_Padding(ui_px(padding, 1.f))
+                {
+                  ui_set_next_child_layout_axis(axis2_flip(axis));
+                  if(ui_key_match(key, ui_drop_hot_key()))
+                  {
+                    ui_set_next_border_color(df_rgba_from_theme_color(DF_ThemeColor_Highlight0));
+                  }
+                  site_box_viz = ui_build_box_from_key(UI_BoxFlag_DrawBackground|
+                                                       UI_BoxFlag_DrawBorder|
+                                                       UI_BoxFlag_DrawDropShadow|
+                                                       UI_BoxFlag_DrawBackgroundBlur, ui_key_zero());
+                }
+                UI_Parent(site_box_viz) UI_WidthFill UI_HeightFill UI_Padding(ui_px(padding, 1.f))
+                {
+                  ui_set_next_child_layout_axis(axis);
+                  UI_Box *row_or_column = ui_build_box_from_key(0, ui_key_zero()); UI_Parent(row_or_column) UI_Padding(ui_px(padding, 1.f))
+                  {
+                    ui_build_box_from_key(UI_BoxFlag_DrawBorder, ui_key_zero());
+                    ui_spacer(ui_px(padding, 1.f));
+                    ui_build_box_from_key(UI_BoxFlag_DrawBorder, ui_key_zero());
+                  }
+                }
+              }
+              
+              // rjf: viz
+              if(ui_key_match(site_box->key, ui_drop_hot_key()))
+              {
+                Rng2F32 future_split_rect = site_rect;
+                future_split_rect.p0.v[axis] -= drop_site_major_dim_px;
+                future_split_rect.p1.v[axis] += drop_site_major_dim_px;
+                future_split_rect.p0.v[axis2_flip(axis)] = panel_rect.p0.v[axis2_flip(axis)];
+                future_split_rect.p1.v[axis2_flip(axis)] = panel_rect.p1.v[axis2_flip(axis)];
+                UI_Rect(future_split_rect)
+                {
+                  ui_set_next_background_color(df_rgba_from_theme_color(DF_ThemeColor_DropSiteOverlay));
+                  ui_build_box_from_key(UI_BoxFlag_DrawBackground, ui_key_zero());
+                }
+              }
+              
+              // rjf: drop
+              DF_DragDropPayload payload = {0};
+              if(ui_key_match(site_box->key, ui_drop_hot_key()) && df_drag_drop(&payload))
+              {
+                Dir2 dir = (axis == Axis2_Y ? (side == Side_Min ? Dir2_Up : Dir2_Down) :
+                            axis == Axis2_X ? (side == Side_Min ? Dir2_Left : Dir2_Right) :
+                            Dir2_Invalid);
+                if(dir != Dir2_Invalid)
+                {
+                  DF_Panel *split_panel = panel;
+                  DF_CmdParams p = df_cmd_params_from_window(ws);
+                  p.dest_panel = df_handle_from_panel(split_panel);
+                  p.panel = payload.panel;
+                  p.view = payload.view;
+                  p.dir2 = dir;
+                  df_push_cmd__root(&p, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_SplitPanel));
+                }
+              }
+            }
+          }
+          
+          //- rjf: iterate all children, build boundary drop sites
+          Axis2 split_axis = panel->split_axis;
+          UI_CornerRadius(corner_radius) for(DF_Panel *child = panel->first;; child = child->next)
+          {
+            // rjf: form rect
+            Rng2F32 child_rect = df_target_rect_from_panel_child(panel_rect, panel, child);
+            Vec2F32 child_rect_center = center_2f32(child_rect);
+            UI_Key key = ui_key_from_stringf(ui_key_zero(), "drop_boundary_%p_%p", panel, child);
+            Rng2F32 site_rect = r2f32(child_rect_center, child_rect_center);
+            site_rect.p0.v[split_axis] = child_rect.p0.v[split_axis] - drop_site_minor_dim_px/2;
+            site_rect.p1.v[split_axis] = child_rect.p0.v[split_axis] + drop_site_minor_dim_px/2;
+            site_rect.p0.v[axis2_flip(split_axis)] -= drop_site_major_dim_px/2;
+            site_rect.p1.v[axis2_flip(split_axis)] += drop_site_major_dim_px/2;
+            
+            // rjf: build
+            UI_Box *site_box = &ui_g_nil_box;
+            {
+              UI_Rect(site_rect)
+              {
+                site_box = ui_build_box_from_key(UI_BoxFlag_DropSite, key);
+                ui_signal_from_box(site_box);
+              }
+              UI_Box *site_box_viz = &ui_g_nil_box;
+              UI_Parent(site_box) UI_WidthFill UI_HeightFill
+                UI_Padding(ui_px(padding, 1.f))
+                UI_Column
+                UI_Padding(ui_px(padding, 1.f))
+              {
+                ui_set_next_child_layout_axis(axis2_flip(split_axis));
+                if(ui_key_match(key, ui_drop_hot_key()))
+                {
+                  ui_set_next_border_color(df_rgba_from_theme_color(DF_ThemeColor_Highlight0));
+                }
+                site_box_viz = ui_build_box_from_key(UI_BoxFlag_DrawBackground|
+                                                     UI_BoxFlag_DrawBorder|
+                                                     UI_BoxFlag_DrawDropShadow|
+                                                     UI_BoxFlag_DrawBackgroundBlur, ui_key_zero());
+              }
+              UI_Parent(site_box_viz) UI_WidthFill UI_HeightFill UI_Padding(ui_px(padding, 1.f))
+              {
+                ui_set_next_child_layout_axis(split_axis);
+                UI_Box *row_or_column = ui_build_box_from_key(0, ui_key_zero()); UI_Parent(row_or_column) UI_Padding(ui_px(padding, 1.f))
+                {
+                  ui_build_box_from_key(UI_BoxFlag_DrawBorder, ui_key_zero());
+                  ui_spacer(ui_px(padding, 1.f));
+                  ui_build_box_from_key(UI_BoxFlag_DrawBorder, ui_key_zero());
+                }
+              }
+            }
+            
+            // rjf: viz
+            if(ui_key_match(site_box->key, ui_drop_hot_key()))
+            {
+              Rng2F32 future_split_rect = site_rect;
+              future_split_rect.p0.v[split_axis] -= drop_site_major_dim_px;
+              future_split_rect.p1.v[split_axis] += drop_site_major_dim_px;
+              future_split_rect.p0.v[axis2_flip(split_axis)] = child_rect.p0.v[axis2_flip(split_axis)];
+              future_split_rect.p1.v[axis2_flip(split_axis)] = child_rect.p1.v[axis2_flip(split_axis)];
+              UI_Rect(future_split_rect)
+              {
+                ui_set_next_background_color(df_rgba_from_theme_color(DF_ThemeColor_DropSiteOverlay));
+                ui_build_box_from_key(UI_BoxFlag_DrawBackground, ui_key_zero());
+              }
+            }
+            
+            // rjf: drop
+            DF_DragDropPayload payload = {0};
+            if(ui_key_match(site_box->key, ui_drop_hot_key()) && df_drag_drop(&payload))
+            {
+              Dir2 dir = (panel->split_axis == Axis2_X ? Dir2_Left : Dir2_Up);
+              DF_Panel *split_panel = child;
+              if(df_panel_is_nil(split_panel))
+              {
+                split_panel = panel->last;
+                dir = (panel->split_axis == Axis2_X ? Dir2_Right : Dir2_Down);
+              }
+              DF_CmdParams p = df_cmd_params_from_window(ws);
+              p.dest_panel = df_handle_from_panel(split_panel);
+              p.panel = payload.panel;
+              p.view = payload.view;
+              p.dir2 = dir;
+              df_push_cmd__root(&p, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_SplitPanel));
+            }
+            
+            // rjf: exit on opl child
+            if(df_panel_is_nil(child))
+            {
+              break;
+            }
+          }
+        }
+      }
+      
+      //////////////////////////
+      //- rjf: do UI for drag boundaries between all children
+      //
       for(DF_Panel *child = panel->first; !df_panel_is_nil(child) && !df_panel_is_nil(child->next); child = child->next)
       {
         DF_Panel *min_child = child;
         DF_Panel *max_child = min_child->next;
-        Rng2F32 min_child_rect = df_rect_from_panel_child(panel_rect, panel, min_child);
-        Rng2F32 max_child_rect = df_rect_from_panel_child(panel_rect, panel, max_child);
+        Rng2F32 min_child_rect = df_target_rect_from_panel_child(panel_rect, panel, min_child);
+        Rng2F32 max_child_rect = df_target_rect_from_panel_child(panel_rect, panel, max_child);
         Rng2F32 boundary_rect = {0};
         {
           boundary_rect.p0.v[split_axis] = min_child_rect.p1.v[split_axis] - ui_top_font_size()/3;
@@ -5339,13 +5809,13 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
           if(ui_double_clicked(sig))
           {
             ui_kill_action();
-            F32 sum_pct = min_child->size_pct_of_parent_target.v[split_axis] + max_child->size_pct_of_parent_target.v[split_axis];
-            min_child->size_pct_of_parent_target.v[split_axis] = 0.5f * sum_pct;
-            max_child->size_pct_of_parent_target.v[split_axis] = 0.5f * sum_pct;
+            F32 sum_pct = min_child->pct_of_parent + max_child->pct_of_parent;
+            min_child->pct_of_parent = 0.5f * sum_pct;
+            max_child->pct_of_parent = 0.5f * sum_pct;
           }
           else if(ui_pressed(sig))
           {
-            Vec2F32 v = {min_child->size_pct_of_parent_target.v[split_axis], max_child->size_pct_of_parent_target.v[split_axis]};
+            Vec2F32 v = {min_child->pct_of_parent, max_child->pct_of_parent};
             ui_store_drag_struct(&v);
           }
           else if(ui_dragging(sig))
@@ -5372,14 +5842,45 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
               pct_delta = -(max_pct__after - max_pct__before);
               min_pct__after = min_pct__before + pct_delta;
             }
-            min_child->size_pct_of_parent.v[split_axis] = min_child->size_pct_of_parent_target.v[split_axis] = min_pct__after;
-            max_child->size_pct_of_parent.v[split_axis] = max_child->size_pct_of_parent_target.v[split_axis] = max_pct__after;
+            min_child->pct_of_parent = min_pct__after;
+            max_child->pct_of_parent = max_pct__after;
             is_changing_panel_boundaries = 1;
           }
           if(ui_released(sig) || ui_double_clicked(sig))
           {
             df_panel_notify_mutation(ws, min_child);
           }
+        }
+      }
+    }
+    
+    ////////////////////////////
+    //- rjf: animate panels
+    //
+    {
+      F32 rate = 1 - pow_f32(2, (-50.f * df_dt()));
+      Vec2F32 content_rect_dim = dim_2f32(content_rect);
+      for(DF_Panel *panel = ws->root_panel; !df_panel_is_nil(panel); panel = df_panel_rec_df_pre(panel).next)
+      {
+        Rng2F32 target_rect_px = df_target_rect_from_panel(content_rect, ws->root_panel, panel);
+        Rng2F32 target_rect_pct = r2f32p(target_rect_px.x0/content_rect_dim.x,
+                                         target_rect_px.y0/content_rect_dim.y,
+                                         target_rect_px.x1/content_rect_dim.x,
+                                         target_rect_px.y1/content_rect_dim.y);
+        if(abs_f32(target_rect_pct.x0 - panel->animated_rect_pct.x0) > 0.005f ||
+           abs_f32(target_rect_pct.y0 - panel->animated_rect_pct.y0) > 0.005f ||
+           abs_f32(target_rect_pct.x1 - panel->animated_rect_pct.x1) > 0.005f ||
+           abs_f32(target_rect_pct.y1 - panel->animated_rect_pct.y1) > 0.005f)
+        {
+          df_gfx_request_frame();
+        }
+        panel->animated_rect_pct.x0 += rate * (target_rect_pct.x0 - panel->animated_rect_pct.x0);
+        panel->animated_rect_pct.y0 += rate * (target_rect_pct.y0 - panel->animated_rect_pct.y0);
+        panel->animated_rect_pct.x1 += rate * (target_rect_pct.x1 - panel->animated_rect_pct.x1);
+        panel->animated_rect_pct.y1 += rate * (target_rect_pct.y1 - panel->animated_rect_pct.y1);
+        if(ws->frames_alive < 5 || is_changing_panel_boundaries)
+        {
+          panel->animated_rect_pct = target_rect_pct;
         }
       }
     }
@@ -5404,7 +5905,12 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
         //////////////////////////
         //- rjf: calculate UI rectangles
         //
-        Rng2F32 panel_rect = df_rect_from_panel(content_rect, ws->root_panel, panel);
+        Vec2F32 content_rect_dim = dim_2f32(content_rect);
+        Rng2F32 panel_rect_pct = panel->animated_rect_pct;
+        Rng2F32 panel_rect = r2f32p(panel_rect_pct.x0*content_rect_dim.x,
+                                    panel_rect_pct.y0*content_rect_dim.y,
+                                    panel_rect_pct.x1*content_rect_dim.x,
+                                    panel_rect_pct.y1*content_rect_dim.y);
         panel_rect = pad_2f32(panel_rect, -1.f);
         F32 tab_bar_rheight = ui_top_font_size()*3.f;
         F32 tab_bar_vheight = ui_top_font_size()*2.6f;
@@ -5430,6 +5936,190 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
             filter_rect.x1 = content_rect.x1;
             content_rect.y0 += filter_bar_height*tab->is_filtering_t;
             filter_rect.y1 = content_rect.y0;
+          }
+        }
+        
+        //////////////////////////
+        //- rjf: build combined split+movetab drag/drop sites
+        //
+        {
+          DF_View *view = df_view_from_handle(df_g_drag_drop_payload.view);
+          if(df_drag_is_active() && !df_view_is_nil(view) && contains_2f32(panel_rect, ui_mouse()))
+          {
+            F32 drop_site_dim_px = ceil_f32(ui_top_font_size()*7.f);
+            Vec2F32 drop_site_half_dim = v2f32(drop_site_dim_px/2, drop_site_dim_px/2);
+            Vec2F32 panel_center = center_2f32(panel_rect);
+            F32 corner_radius = ui_top_font_size()*0.5f;
+            F32 padding = ceil_f32(ui_top_font_size()*0.5f);
+            struct
+            {
+              UI_Key key;
+              Dir2 split_dir;
+              Rng2F32 rect;
+            }
+            sites[] =
+            {
+              {
+                ui_key_from_stringf(ui_key_zero(), "drop_split_center_%p", panel),
+                Dir2_Invalid,
+                r2f32(sub_2f32(panel_center, drop_site_half_dim),
+                      add_2f32(panel_center, drop_site_half_dim))
+              },
+              {
+                ui_key_from_stringf(ui_key_zero(), "drop_split_up_%p", panel),
+                Dir2_Up,
+                r2f32p(panel_center.x-drop_site_half_dim.x,
+                       panel_center.y-drop_site_half_dim.y - drop_site_half_dim.y*2,
+                       panel_center.x+drop_site_half_dim.x,
+                       panel_center.y+drop_site_half_dim.y - drop_site_half_dim.y*2),
+              },
+              {
+                ui_key_from_stringf(ui_key_zero(), "drop_split_down_%p", panel),
+                Dir2_Down,
+                r2f32p(panel_center.x-drop_site_half_dim.x,
+                       panel_center.y-drop_site_half_dim.y + drop_site_half_dim.y*2,
+                       panel_center.x+drop_site_half_dim.x,
+                       panel_center.y+drop_site_half_dim.y + drop_site_half_dim.y*2),
+              },
+              {
+                ui_key_from_stringf(ui_key_zero(), "drop_split_left_%p", panel),
+                Dir2_Left,
+                r2f32p(panel_center.x-drop_site_half_dim.x - drop_site_half_dim.x*2,
+                       panel_center.y-drop_site_half_dim.y,
+                       panel_center.x+drop_site_half_dim.x - drop_site_half_dim.x*2,
+                       panel_center.y+drop_site_half_dim.y),
+              },
+              {
+                ui_key_from_stringf(ui_key_zero(), "drop_split_right_%p", panel),
+                Dir2_Right,
+                r2f32p(panel_center.x-drop_site_half_dim.x + drop_site_half_dim.x*2,
+                       panel_center.y-drop_site_half_dim.y,
+                       panel_center.x+drop_site_half_dim.x + drop_site_half_dim.x*2,
+                       panel_center.y+drop_site_half_dim.y),
+              },
+            };
+            UI_CornerRadius(corner_radius)
+              for(U64 idx = 0; idx < ArrayCount(sites); idx += 1)
+            {
+              UI_Key key = sites[idx].key;
+              Dir2 dir = sites[idx].split_dir;
+              Rng2F32 rect = sites[idx].rect;
+              Axis2 split_axis = axis2_from_dir2(dir);
+              Side split_side = side_from_dir2(dir);
+              if(dir != Dir2_Invalid && split_axis == panel->parent->split_axis)
+              {
+                continue;
+              }
+              UI_Box *site_box = &ui_g_nil_box;
+              {
+                UI_Rect(rect)
+                {
+                  site_box = ui_build_box_from_key(UI_BoxFlag_DropSite, key);
+                  ui_signal_from_box(site_box);
+                }
+                UI_Box *site_box_viz = &ui_g_nil_box;
+                UI_Parent(site_box) UI_WidthFill UI_HeightFill
+                  UI_Padding(ui_px(padding, 1.f))
+                  UI_Column
+                  UI_Padding(ui_px(padding, 1.f))
+                {
+                  ui_set_next_child_layout_axis(axis2_flip(split_axis));
+                  if(ui_key_match(key, ui_drop_hot_key()))
+                  {
+                    ui_set_next_border_color(df_rgba_from_theme_color(DF_ThemeColor_Highlight0));
+                  }
+                  site_box_viz = ui_build_box_from_key(UI_BoxFlag_DrawBackground|
+                                                       UI_BoxFlag_DrawBorder|
+                                                       UI_BoxFlag_DrawDropShadow|
+                                                       UI_BoxFlag_DrawBackgroundBlur, ui_key_zero());
+                }
+                if(dir != Dir2_Invalid)
+                {
+                  UI_Parent(site_box_viz) UI_WidthFill UI_HeightFill UI_Padding(ui_px(padding, 1.f))
+                  {
+                    ui_set_next_child_layout_axis(split_axis);
+                    UI_Box *row_or_column = ui_build_box_from_key(0, ui_key_zero()); UI_Parent(row_or_column) UI_Padding(ui_px(padding, 1.f))
+                    {
+                      if(split_side == Side_Min) { ui_set_next_flags(UI_BoxFlag_DrawBackground); ui_set_next_background_color(df_rgba_from_theme_color(DF_ThemeColor_DropSiteOverlay)); }
+                      ui_build_box_from_key(UI_BoxFlag_DrawBorder, ui_key_zero());
+                      ui_spacer(ui_px(padding, 1.f));
+                      if(split_side == Side_Max) { ui_set_next_flags(UI_BoxFlag_DrawBackground); ui_set_next_background_color(df_rgba_from_theme_color(DF_ThemeColor_DropSiteOverlay)); }
+                      ui_build_box_from_key(UI_BoxFlag_DrawBorder, ui_key_zero());
+                    }
+                  }
+                }
+                else
+                {
+                  UI_Parent(site_box_viz) UI_WidthFill UI_HeightFill UI_Padding(ui_px(padding, 1.f))
+                  {
+                    ui_set_next_child_layout_axis(split_axis);
+                    UI_Box *row_or_column = ui_build_box_from_key(0, ui_key_zero());
+                    UI_Parent(row_or_column) UI_Padding(ui_px(padding, 1.f))
+                    {
+                      ui_set_next_background_color(df_rgba_from_theme_color(DF_ThemeColor_DropSiteOverlay));
+                      ui_build_box_from_key(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground, ui_key_zero());
+                    }
+                  }
+                }
+              }
+              DF_DragDropPayload payload = {0};
+              if(ui_key_match(site_box->key, ui_drop_hot_key()) && df_drag_drop(&payload))
+              {
+                if(dir != Dir2_Invalid)
+                {
+                  DF_CmdParams p = df_cmd_params_from_window(ws);
+                  p.dest_panel = df_handle_from_panel(panel);
+                  p.panel = payload.panel;
+                  p.view = payload.view;
+                  p.dir2 = dir;
+                  df_push_cmd__root(&p, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_SplitPanel));
+                }
+                else
+                {
+                  DF_CmdParams p = df_cmd_params_from_window(ws);
+                  p.dest_panel = df_handle_from_panel(panel);
+                  p.panel = payload.panel;
+                  p.view = payload.view;
+                  p.prev_view = df_handle_from_view(panel->last_tab_view);
+                  df_push_cmd__root(&p, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_MoveTab));
+                }
+              }
+            }
+            for(U64 idx = 0; idx < ArrayCount(sites); idx += 1)
+            {
+              B32 is_drop_hot = ui_key_match(ui_drop_hot_key(), sites[idx].key);
+              if(is_drop_hot)
+              {
+                Axis2 split_axis = axis2_from_dir2(sites[idx].split_dir);
+                Side split_side = side_from_dir2(sites[idx].split_dir);
+                Rng2F32 future_split_rect = panel_rect;
+                if(sites[idx].split_dir != Dir2_Invalid)
+                {
+                  Vec2F32 panel_center = center_2f32(panel_rect);
+                  future_split_rect.v[side_flip(split_side)].v[split_axis] = panel_center.v[split_axis];
+                }
+                UI_Rect(future_split_rect)
+                {
+                  ui_set_next_background_color(df_rgba_from_theme_color(DF_ThemeColor_DropSiteOverlay));
+                  ui_build_box_from_key(UI_BoxFlag_DrawBackground, ui_key_zero());
+                }
+              }
+            }
+          }
+        }
+        
+        //////////////////////////
+        //- rjf: build catch-all panel drop-site
+        //
+        B32 catchall_drop_site_hovered = 0;
+        if(df_drag_is_active() && ui_key_match(ui_key_zero(), ui_drop_hot_key()))
+        {
+          UI_Rect(panel_rect)
+          {
+            UI_Key key = ui_key_from_stringf(ui_key_zero(), "catchall_drop_site_%p", panel);
+            UI_Box *catchall_drop_site = ui_build_box_from_key(UI_BoxFlag_DropSite, key);
+            ui_signal_from_box(catchall_drop_site);
+            catchall_drop_site_hovered = ui_key_match(key, ui_drop_hot_key());
           }
         }
         
@@ -5800,9 +6490,39 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
               UI_CornerRadius01(panel->tab_side == Side_Min ? 0 : corner_radius)
               UI_CornerRadius10(panel->tab_side == Side_Min ? corner_radius : 0)
               UI_CornerRadius11(panel->tab_side == Side_Min ? 0 : corner_radius)
-              for(DF_View *view = panel->first_tab_view; !df_view_is_nil(view); view = view->next, view_idx += 1)
+              for(DF_View *view = panel->first_tab_view;; view = view->next, view_idx += 1)
             {
               temp_end(scratch);
+              
+              // rjf: if before this tab is the prev-view of the current tab drag,
+              // draw empty space
+              if(df_drag_is_active() && catchall_drop_site_hovered)
+              {
+                DF_Panel *dst_panel = df_panel_from_handle(df_g_last_drag_drop_panel);
+                DF_View *drag_view = df_view_from_handle(df_g_drag_drop_payload.view);
+                DF_View *dst_prev_view = df_view_from_handle(df_g_last_drag_drop_prev_tab);
+                if(dst_panel == panel &&
+                   ((!df_view_is_nil(view) && dst_prev_view == view->prev && drag_view != view && drag_view != view->prev) ||
+                    (df_view_is_nil(view) && dst_prev_view == panel->last_tab_view && drag_view != panel->last_tab_view)))
+                {
+                  UI_PrefWidth(ui_em(9.f, 0.2f)) UI_Column
+                  {
+                    ui_spacer(ui_em(0.2f, 1.f));
+                    UI_BackgroundColor(df_rgba_from_theme_color(DF_ThemeColor_DropSiteOverlay))
+                      UI_CornerRadius00(corner_radius)
+                      UI_CornerRadius10(corner_radius)
+                    {
+                      ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
+                    }
+                  }
+                }
+              }
+              
+              // rjf: end on nil view
+              if(df_view_is_nil(view))
+              {
+                break;
+              }
               
               // rjf: gather info for this tab
               B32 view_is_selected = (view == df_view_from_handle(panel->selected_tab_view));
@@ -5845,18 +6565,65 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
                 // rjf: build tab contents
                 UI_Parent(tab_box)
                 {
-                  if(icon_kind != DF_IconKind_Null)
+                  UI_WidthFill UI_Row
                   {
-                    UI_TextColor(df_rgba_from_theme_color(DF_ThemeColor_WeakText))
-                      UI_Font(df_font_from_slot(DF_FontSlot_Icons))
-                      UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Icons))
-                      UI_TextAlignment(UI_TextAlign_Center)
-                      UI_PrefWidth(ui_em(2.25f, 1.f))
-                      ui_label(df_g_icon_kind_text_table[icon_kind]);
+                    if(icon_kind != DF_IconKind_Null)
+                    {
+                      UI_TextColor(df_rgba_from_theme_color(DF_ThemeColor_WeakText))
+                        UI_Font(df_font_from_slot(DF_FontSlot_Icons))
+                        UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Icons))
+                        UI_TextAlignment(UI_TextAlign_Center)
+                        UI_PrefWidth(ui_em(2.25f, 1.f))
+                        ui_label(df_g_icon_kind_text_table[icon_kind]);
+                    }
+                    if(view->query_string_size != 0)
+                    {
+                      UI_PrefWidth(ui_text_dim(10, 0))
+                      {
+                        Temp scratch = scratch_begin(0, 0);
+                        D_FancyStringList fstrs = {0};
+                        {
+                          D_FancyString view_title =
+                          {
+                            df_font_from_slot(DF_FontSlot_Main),
+                            label,
+                            df_rgba_from_theme_color(view_is_selected ? DF_ThemeColor_PlainText : DF_ThemeColor_WeakText),
+                            ui_top_font_size(),
+                          };
+                          d_fancy_string_list_push(scratch.arena, &fstrs, &view_title);
+                        }
+                        {
+                          D_FancyString space =
+                          {
+                            df_font_from_slot(DF_FontSlot_Code),
+                            str8_lit(" "),
+                            v4f32(0, 0, 0, 0),
+                            ui_top_font_size(),
+                          };
+                          d_fancy_string_list_push(scratch.arena, &fstrs, &space);
+                        }
+                        {
+                          D_FancyString query =
+                          {
+                            df_font_from_slot(DF_FontSlot_Code),
+                            str8(view->query_buffer, view->query_string_size),
+                            df_rgba_from_theme_color(DF_ThemeColor_WeakText),
+                            ui_top_font_size(),
+                          };
+                          d_fancy_string_list_push(scratch.arena, &fstrs, &query);
+                        }
+                        UI_Box *box = ui_build_box_from_key(UI_BoxFlag_DrawText, ui_key_zero());
+                        ui_box_equip_display_fancy_strings(box, &fstrs);
+                        scratch_end(scratch);
+                      }
+                    }
+                    else
+                    {
+                      UI_TextColor(df_rgba_from_theme_color(view_is_selected ? DF_ThemeColor_PlainText : DF_ThemeColor_WeakText))
+                        UI_PrefWidth(ui_text_dim(10, 0))
+                        ui_label(label);
+                    }
                   }
-                  UI_TextColor(df_rgba_from_theme_color(view_is_selected ? DF_ThemeColor_PlainText : DF_ThemeColor_WeakText))
-                    UI_WidthFill
-                    ui_label(label);
                   UI_PrefWidth(ui_em(2.35f, 1.f)) UI_TextAlignment(UI_TextAlign_Center)
                     UI_Font(df_font_from_slot(DF_FontSlot_Icons))
                     UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Icons)*0.75f)
@@ -5942,44 +6709,42 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
               // rjf: mouse => hovered drop site
               F32 min_distance = 0;
               DropSite *active_drop_site = 0;
-              for(U64 drop_site_idx = 0; drop_site_idx < drop_site_count; drop_site_idx += 1)
+              if(catchall_drop_site_hovered)
               {
-                F32 distance = abs_f32(drop_sites[drop_site_idx].p - mouse.x);
-                if(drop_site_idx == 0 || distance < min_distance)
+                for(U64 drop_site_idx = 0; drop_site_idx < drop_site_count; drop_site_idx += 1)
                 {
-                  active_drop_site = &drop_sites[drop_site_idx];
-                  min_distance = distance;
+                  F32 distance = abs_f32(drop_sites[drop_site_idx].p - mouse.x);
+                  if(drop_site_idx == 0 || distance < min_distance)
+                  {
+                    active_drop_site = &drop_sites[drop_site_idx];
+                    min_distance = distance;
+                  }
                 }
+              }
+              
+              // rjf: store closest prev-view
+              if(active_drop_site != 0)
+              {
+                df_g_last_drag_drop_prev_tab = df_handle_from_view(active_drop_site->prev_view);
+              }
+              else
+              {
+                df_g_last_drag_drop_prev_tab = df_handle_zero();
               }
               
               // rjf: vis
               DF_Panel *drag_panel = df_panel_from_handle(df_g_drag_drop_payload.panel);
               if(!df_view_is_nil(view) &&
                  active_drop_site != 0 &&
-                 (panel != drag_panel))
+                 (panel != drag_panel || 1))
               {
                 tab_bar_box->flags |= UI_BoxFlag_DrawOverlay;
                 tab_bar_box->overlay_color = df_rgba_from_theme_color(DF_ThemeColor_DropSiteOverlay);
-                
-                if(panel->tab_view_count != 0)
-                {
-                  D_Bucket *bucket = d_bucket_make();
-                  D_BucketScope(bucket)
-                  {
-                    d_rect(r2f32p(active_drop_site->p - tab_spacing/2,
-                                  tab_bar_box->rect.y0,
-                                  active_drop_site->p + tab_spacing/2,
-                                  tab_bar_box->rect.y1),
-                           v4f32(1, 1, 1, 1),
-                           2.f, 0, 1.f);
-                  }
-                  ui_box_equip_draw_bucket(tab_bar_box, bucket);
-                }
               }
               
               // rjf: drop
               DF_DragDropPayload payload = df_g_drag_drop_payload;
-              if((active_drop_site != 0 && df_drag_drop(&payload)) || df_panel_from_handle(payload.panel) == panel)
+              if(catchall_drop_site_hovered && (active_drop_site != 0 && df_drag_drop(&payload)) || (df_panel_from_handle(payload.panel) == panel && 0))
               {
                 DF_View *view = df_view_from_handle(payload.view);
                 DF_Panel *src_panel = df_panel_from_handle(payload.panel);
@@ -6011,8 +6776,10 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
         //////////////////////////
         //- rjf: less granular panel for tabs & entities drop-site
         //
-        if(df_drag_is_active() && window_is_focused && contains_2f32(panel_rect, ui_mouse()))
+        if(catchall_drop_site_hovered)
         {
+          df_g_last_drag_drop_panel = df_handle_from_panel(panel);
+          
           DF_DragDropPayload *payload = &df_g_drag_drop_payload;
           DF_View *dragged_view = df_view_from_handle(payload->view);
           B32 view_is_in_panel = 0;
@@ -6077,27 +6844,6 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
             }
           }
         }
-      }
-    }
-    
-    ////////////////////////////
-    //- rjf: animate panel pcts
-    //
-    {
-      F32 rate = 1 - pow_f32(2, (-50.f * df_dt()));
-      for(DF_Panel *panel = ws->root_panel; !df_panel_is_nil(panel); panel = df_panel_rec_df_pre(panel).next)
-      {
-        if(abs_f32(panel->off_pct_of_parent.x) > 0.005f ||
-           abs_f32(panel->off_pct_of_parent.y) > 0.005f ||
-           abs_f32(panel->size_pct_of_parent_target.x - panel->size_pct_of_parent.x) > 0.005f ||
-           abs_f32(panel->size_pct_of_parent_target.y - panel->size_pct_of_parent.y) > 0.005f)
-        {
-          df_gfx_request_frame();
-        }
-        panel->off_pct_of_parent.x += (-panel->off_pct_of_parent.x) * rate;
-        panel->off_pct_of_parent.y += (-panel->off_pct_of_parent.y) * rate;
-        panel->size_pct_of_parent.x += (panel->size_pct_of_parent_target.x - panel->size_pct_of_parent.x) * rate;
-        panel->size_pct_of_parent.y += (panel->size_pct_of_parent_target.y - panel->size_pct_of_parent.y) * rate;
       }
     }
     
@@ -6285,6 +7031,12 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
       d_rect(os_client_rect_from_window(ws->os), bg_color, 0, 0, 0);
     }
     
+    //- rjf: draw window border
+    {
+      Vec4F32 color = df_rgba_from_theme_color(DF_ThemeColor_PlainBorder);
+      d_rect(os_client_rect_from_window(ws->os), color, 0, 1.f, 0.5f);
+    }
+    
     //- rjf: recurse & draw
     U64 total_heatmap_sum_count = 0;
     for(UI_Box *box = ui_root_from_state(ws->ui); !ui_box_is_nil(box);)
@@ -6320,6 +7072,7 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
         Mat3x3F32 origin2box_xform = make_translate_3x3f32(v2f32(box->rect.x0 + box_dim.x/8, box->rect.y0));
         Mat3x3F32 xform = mul_3x3f32(origin2box_xform, mul_3x3f32(scale_xform, box2origin_xform));
         d_push_xform2d(xform);
+        d_push_tex2d_sample_kind(R_Tex2DSampleKind_Linear);
       }
       
       // rjf: draw drop shadow
@@ -6549,6 +7302,13 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
             }
           }
           
+          // rjf: debug border rendering
+          if(0)
+          {
+            R_Rect2DInst *inst = d_rect(pad_2f32(b->rect, 1), v4f32(1, 0, 1, 0.25f), 0, 1.f, 1.f);
+            MemoryCopyArray(inst->corner_radii, b->corner_radii);
+          }
+          
           // rjf: draw sides
           {
             Rng2F32 r = b->rect;
@@ -6648,6 +7408,7 @@ df_window_update_and_render(Arena *arena, OS_EventList *events, DF_Window *ws, D
           if(b->squish != 0)
           {
             d_pop_xform2d();
+            d_pop_tex2d_sample_kind();
           }
           
           // rjf: pop transparency
@@ -7226,7 +7987,8 @@ df_eval_viz_windowed_row_list_from_viz_block_list(Arena *arena, DBGI_Scope *scop
         String8List display_strings = df_single_line_eval_value_strings_from_eval(scratch.arena, DF_EvalVizStringFlag_ReadOnlyDisplayRules, parse_ctx->type_graph, parse_ctx->rdi, ctrl_ctx, default_radix, font, font_size, 500, 0, block->eval, block->member, &block->cfg_table);
         String8List edit_strings = df_single_line_eval_value_strings_from_eval(scratch.arena, 0, parse_ctx->type_graph, parse_ctx->rdi, ctrl_ctx, default_radix, font, font_size, 500, 0, block->eval, block->member, &block->cfg_table);
         DF_EvalVizRow *row = df_eval_viz_row_list_push_new(arena, parse_ctx, &list, block, block->key, block->eval);
-        row->expr                = block->string;
+        row->display_expr        = block->string;
+        row->edit_expr           = block->string;
         row->display_value       = str8_list_join(arena, &display_strings, 0);
         row->edit_value          = str8_list_join(arena, &edit_strings, 0);
         row->value_ui_rule_node  = value_ui_rule_node;
@@ -7286,7 +8048,8 @@ df_eval_viz_windowed_row_list_from_viz_block_list(Arena *arena, DBGI_Scope *scop
           {
             row->flags |= DF_EvalVizRowFlag_ExprIsSpecial;
           }
-          row->expr = push_str8_copy(arena, member->name);
+          row->display_expr        = push_str8_copy(arena, member->name);
+          row->edit_expr           = push_str8f(arena, "%S.%S", block->string, member->name);
           row->display_value       = str8_list_join(arena, &display_strings, 0);
           row->edit_value          = str8_list_join(arena, &edit_strings, 0);
           row->value_ui_rule_node  = value_ui_rule_node;
@@ -7336,7 +8099,8 @@ df_eval_viz_windowed_row_list_from_viz_block_list(Arena *arena, DBGI_Scope *scop
           String8List display_strings = df_single_line_eval_value_strings_from_eval(scratch.arena, DF_EvalVizStringFlag_ReadOnlyDisplayRules, parse_ctx->type_graph, parse_ctx->rdi, ctrl_ctx, default_radix, font, font_size, 500, 0, eval, 0, &view_rule_table);
           String8List edit_strings = df_single_line_eval_value_strings_from_eval(scratch.arena, 0, parse_ctx->type_graph, parse_ctx->rdi, ctrl_ctx, default_radix, font, font_size, 500, 0, eval, 0, &view_rule_table);
           DF_EvalVizRow *row = df_eval_viz_row_list_push_new(arena, parse_ctx, &list, block, key, eval);
-          row->expr                = push_str8_copy(arena, enum_val->name);
+          row->display_expr        = push_str8_copy(arena, enum_val->name);
+          row->edit_expr           = row->display_expr;
           row->display_value       = str8_list_join(arena, &display_strings, 0);
           row->edit_value          = str8_list_join(arena, &edit_strings, 0);
           row->value_ui_rule_node  = value_ui_rule_node;
@@ -7383,7 +8147,8 @@ df_eval_viz_windowed_row_list_from_viz_block_list(Arena *arena, DBGI_Scope *scop
           String8List display_strings = df_single_line_eval_value_strings_from_eval(scratch.arena, DF_EvalVizStringFlag_ReadOnlyDisplayRules, parse_ctx->type_graph, parse_ctx->rdi, ctrl_ctx, default_radix, font, font_size, 500, 0, elem_eval, 0, &view_rule_table);
           String8List edit_strings = df_single_line_eval_value_strings_from_eval(scratch.arena, 0, parse_ctx->type_graph, parse_ctx->rdi, ctrl_ctx, default_radix, font, font_size, 500, 0, elem_eval, 0, &view_rule_table);
           DF_EvalVizRow *row = df_eval_viz_row_list_push_new(arena, parse_ctx, &list, block, key, elem_eval);
-          row->expr                = push_str8f(arena, "[%I64u]", idx);
+          row->display_expr        = push_str8f(arena, "[%I64u]", idx);
+          row->edit_expr           = push_str8f(arena, "%S[%I64u]", block->string, idx);
           row->display_value       = str8_list_join(arena, &display_strings, 0);
           row->edit_value          = str8_list_join(arena, &edit_strings, 0);
           row->value_ui_rule_node  = value_ui_rule_node;
@@ -7404,6 +8169,7 @@ df_eval_viz_windowed_row_list_from_viz_block_list(Arena *arena, DBGI_Scope *scop
       {
         DF_EvalLinkBaseChunkList link_base_chunks = df_eval_link_base_chunk_list_from_eval(scratch.arena, parse_ctx->type_graph, parse_ctx->rdi, block->link_member_type_key, block->link_member_off, ctrl_ctx, block->eval, 512);
         DF_EvalLinkBaseArray link_bases = df_eval_link_base_array_from_chunk_list(scratch.arena, &link_base_chunks);
+        String8 node_type_string = tg_string_from_key(arena, parse_ctx->type_graph, parse_ctx->rdi, block->eval.type_key);
         for(U64 idx = visible_idx_range.min; idx < visible_idx_range.max; idx += 1)
         {
           // rjf: get key for this row
@@ -7434,7 +8200,8 @@ df_eval_viz_windowed_row_list_from_viz_block_list(Arena *arena, DBGI_Scope *scop
           String8List display_strings = df_single_line_eval_value_strings_from_eval(scratch.arena, DF_EvalVizStringFlag_ReadOnlyDisplayRules, parse_ctx->type_graph, parse_ctx->rdi, ctrl_ctx, default_radix, font, font_size, 500, 0, link_eval, 0, &view_rule_table);
           String8List edit_strings = df_single_line_eval_value_strings_from_eval(scratch.arena, 0, parse_ctx->type_graph, parse_ctx->rdi, ctrl_ctx, default_radix, font, font_size, 500, 0, link_eval, 0, &view_rule_table);
           DF_EvalVizRow *row = df_eval_viz_row_list_push_new(arena, parse_ctx, &list, block, key, link_eval);
-          row->expr                = push_str8f(arena, "[%I64u]", idx);
+          row->display_expr        = push_str8f(arena, "[%I64u]", idx);
+          row->edit_expr           = push_str8f(arena, "(%S *)0xI64x", node_type_string, link_eval.offset);
           row->display_value       = str8_list_join(arena, &display_strings, 0);
           row->edit_value          = str8_list_join(arena, &edit_strings, 0);
           row->value_ui_rule_node  = value_ui_rule_node;
@@ -7457,6 +8224,7 @@ df_eval_viz_windowed_row_list_from_viz_block_list(Arena *arena, DBGI_Scope *scop
         DF_ExpandKey key = df_expand_key_make(df_hash_from_expand_key(block->parent_key), 1);
         DF_EvalVizRow *row = df_eval_viz_row_list_push_new(arena, parse_ctx, &list, block, key, block->eval);
         row->flags               = DF_EvalVizRowFlag_Canvas;
+        row->edit_expr           = block->string;
         row->size_in_rows        = dim_1u64(intersect_1u64(visible_idx_range, r1u64(0, dim_1u64(block->visual_idx_range))));
         row->skipped_size_in_rows= (visible_idx_range.min > block->visual_idx_range.min) ? visible_idx_range.min - block->visual_idx_range.min : 0;
         row->chopped_size_in_rows= (visible_idx_range.max < block->visual_idx_range.max) ? block->visual_idx_range.max - visible_idx_range.max : 0;
@@ -7496,7 +8264,8 @@ df_eval_viz_windowed_row_list_from_viz_block_list(Arena *arena, DBGI_Scope *scop
         String8List display_strings = df_single_line_eval_value_strings_from_eval(scratch.arena, DF_EvalVizStringFlag_ReadOnlyDisplayRules, parse_ctx->type_graph, parse_ctx->rdi, ctrl_ctx, default_radix, font, font_size, 500, 0, eval, 0, &view_rule_table);
         String8List edit_strings = df_single_line_eval_value_strings_from_eval(scratch.arena, 0, parse_ctx->type_graph, parse_ctx->rdi, ctrl_ctx, default_radix, font, font_size, 500, 0, eval, 0, &view_rule_table);
         DF_EvalVizRow *row = df_eval_viz_row_list_push_new(arena, parse_ctx, &list, block, key, eval);
-        row->expr = name;
+        row->display_expr = name;
+        row->edit_expr = name;
         row->display_value = str8_list_join(arena, &display_strings, 0);
         row->edit_value = str8_list_join(arena, &edit_strings, 0);
         row->value_ui_rule_node = value_ui_rule_node;
@@ -7899,7 +8668,7 @@ df_cfg_strings_from_gfx(Arena *arena, String8 root_path, DF_CfgSrc source)
           // rjf: non-root needs pct node
           if(p != root_panel)
           {
-            str8_list_pushf(arena, &strs, "%.*s%g:\n", indentation*2, indent_str.str, p->size_pct_of_parent_target.v[p->parent->split_axis]);
+            str8_list_pushf(arena, &strs, "%.*s%g:\n", indentation*2, indent_str.str, p->pct_of_parent);
             str8_list_pushf(arena, &strs, "%.*s{\n", indentation*2, indent_str.str);
             indentation += 1;
           }
@@ -7950,6 +8719,14 @@ df_cfg_strings_from_gfx(Arena *arena, String8 root_path, DF_CfgSrc source)
               if(view == df_view_from_handle(p->selected_tab_view))
               {
                 str8_list_push(arena, &strs, str8_lit("selected "));
+              }
+              if(view->query_string_size != 0 && view->spec->info.flags & DF_ViewSpecFlag_CanSerializeQuery)
+              {
+                Temp scratch = scratch_begin(&arena, 1);
+                String8 query_raw = str8(view->query_buffer, view->query_string_size);
+                String8 query_sanitized = df_cfg_escaped_from_raw_string(scratch.arena, query_raw);
+                str8_list_pushf(arena, &strs, "query:{\"%S\"} ", query_sanitized);
+                scratch_end(scratch);
               }
               if(view->spec->info.flags & DF_ViewSpecFlag_CanSerializeEntityPath)
               {
@@ -11270,6 +12047,13 @@ df_gfx_request_frame(void)
 ////////////////////////////////
 //~ rjf: Main Layer Top-Level Calls
 
+#if !defined(STBI_INCLUDE_STB_IMAGE_H)
+# define STB_IMAGE_IMPLEMENTATION
+# define STBI_ONLY_PNG
+# define STBI_ONLY_BMP
+# include "third_party/stb/stb_image.h"
+#endif
+
 internal void
 df_gfx_init(OS_WindowRepaintFunctionType *window_repaint_entry_point, DF_StateDeltaHistory *hist)
 {
@@ -11303,6 +12087,8 @@ df_gfx_init(OS_WindowRepaintFunctionType *window_repaint_entry_point, DF_StateDe
   {
     DF_GfxViewRuleSpecInfoArray array = {df_g_gfx_view_rule_spec_info_table, ArrayCount(df_g_gfx_view_rule_spec_info_table)};
     df_register_gfx_view_rule_specs(array);
+    DF_ViewSpecInfoArray tab_view_specs_array = {df_g_gfx_view_rule_tab_view_spec_info_table, ArrayCount(df_g_gfx_view_rule_tab_view_spec_info_table)};
+    df_register_view_specs(tab_view_specs_array);
   }
   
   // rjf: register cmd param slot -> view specs
@@ -11320,6 +12106,72 @@ df_gfx_init(OS_WindowRepaintFunctionType *window_repaint_entry_point, DF_StateDe
       SLLQueuePush(df_gfx_state->cmd_param_slot_view_spec_table[slot].first, df_gfx_state->cmd_param_slot_view_spec_table[slot].last, n);
       df_gfx_state->cmd_param_slot_view_spec_table[slot].count += 1;
     }
+  }
+  
+  // rjf: unpack icon image data
+  {
+    Temp scratch = scratch_begin(0, 0);
+    String8 data = df_g_icon_file_bytes;
+    U8 *ptr = data.str;
+    U8 *opl = ptr+data.size;
+    
+    // rjf: read header
+    ICO_Header hdr = {0};
+    if(ptr+sizeof(hdr) < opl)
+    {
+      MemoryCopy(&hdr, ptr, sizeof(hdr));
+      ptr += sizeof(hdr);
+    }
+    
+    // rjf: read image entries
+    U64 entries_count = hdr.num_images;
+    ICO_Entry *entries = push_array(scratch.arena, ICO_Entry, hdr.num_images);
+    {
+      U64 bytes_to_read = sizeof(ICO_Entry)*entries_count;
+      bytes_to_read = Min(bytes_to_read, opl-ptr);
+      MemoryCopy(entries, ptr, bytes_to_read);
+      ptr += bytes_to_read;
+    }
+    
+    // rjf: find largest image
+    ICO_Entry *best_entry = 0;
+    U64 best_entry_area = 0;
+    for(U64 idx = 0; idx < entries_count; idx += 1)
+    {
+      ICO_Entry *entry = &entries[idx];
+      U64 width = entry->image_width_px;
+      if(width == 0) { width = 256; }
+      U64 height = entry->image_height_px;
+      if(height == 0) { height = 256; }
+      U64 entry_area = width*height;
+      if(entry_area > best_entry_area)
+      {
+        best_entry = entry;
+        best_entry_area = entry_area;
+      }
+    }
+    
+    // rjf: deserialize raw image data from best entry's offset
+    U8 *image_data = 0;
+    Vec2S32 image_dim = {0};
+    if(best_entry != 0)
+    {
+      U8 *file_data_ptr = data.str + best_entry->image_data_off;
+      U64 file_data_size = best_entry->image_data_size;
+      int width = 0;
+      int height = 0;
+      int components = 0;
+      image_data = stbi_load_from_memory(file_data_ptr, file_data_size, &width, &height, &components, 4);
+      image_dim.x = width;
+      image_dim.y = height;
+    }
+    
+    // rjf: upload to gpu texture
+    df_gfx_state->icon_texture = r_tex2d_alloc(R_Tex2DKind_Static, image_dim, R_Tex2DFormat_RGBA8, image_data);
+    
+    // rjf: release
+    stbi_image_free(image_data);
+    scratch_end(scratch);
   }
   
   ProfEnd();
@@ -11343,7 +12195,7 @@ df_gfx_begin_frame(Arena *arena, DF_CmdList *cmds)
   }
   
   //- rjf: capture is active? -> keep rendering
-  if(ProfIsCapturing())
+  if(ProfIsCapturing() || DEV_telemetry_capture)
   {
     df_gfx_request_frame();
   }
@@ -11723,8 +12575,7 @@ df_gfx_begin_frame(Arena *arena, DF_CmdList *cmds)
               if(n == cfg_panels)
               {
                 panel = ws->root_panel;
-                panel->size_pct_of_parent.v[panel_parent->split_axis] = panel->size_pct_of_parent_target.v[panel_parent->split_axis] = 1.f;
-                panel->size_pct_of_parent.v[axis2_flip(panel_parent->split_axis)] = panel->size_pct_of_parent_target.v[axis2_flip(panel_parent->split_axis)] = 1.f;
+                panel->pct_of_parent = 1.f;
               }
               
               // rjf: allocate & insert non-root panels - these will have a numeric string, determining
@@ -11734,8 +12585,7 @@ df_gfx_begin_frame(Arena *arena, DF_CmdList *cmds)
                 panel = df_panel_alloc(ws);
                 df_panel_insert(panel_parent, panel_parent->last, panel);
                 panel->split_axis = axis2_flip(panel_parent->split_axis);
-                panel->size_pct_of_parent.v[panel_parent->split_axis] = panel->size_pct_of_parent_target.v[panel_parent->split_axis] = (F32)f64_from_str8(n->string);
-                panel->size_pct_of_parent.v[axis2_flip(panel_parent->split_axis)] = panel->size_pct_of_parent_target.v[axis2_flip(panel_parent->split_axis)] = 1.f;
+                panel->pct_of_parent = (F32)f64_from_str8(n->string);
               }
               
               // rjf: do general per-panel work
@@ -11783,6 +12633,14 @@ df_gfx_begin_frame(Arena *arena, DF_CmdList *cmds)
                     // rjf: check if this view is selected
                     view_is_selected = df_cfg_node_child_from_string(op, str8_lit("selected"), StringMatchFlag_CaseInsensitive) != &df_g_nil_cfg_node;
                     
+                    // rjf: read view query string
+                    String8 view_query = str8_lit("");
+                    if(view_spec_flags & DF_ViewSpecFlag_CanSerializeQuery)
+                    {
+                      String8 escaped_query = df_cfg_node_child_from_string(op, str8_lit("query"), StringMatchFlag_CaseInsensitive)->first->string;
+                      view_query = df_cfg_raw_from_escaped_string(scratch.arena, escaped_query);
+                    }
+                    
                     // rjf: read entity path
                     DF_Entity *entity = &df_g_nil_entity;
                     if(view_spec_flags & DF_ViewSpecFlag_CanSerializeEntityPath)
@@ -11793,7 +12651,7 @@ df_gfx_begin_frame(Arena *arena, DF_CmdList *cmds)
                     }
                     
                     // rjf: set up view
-                    df_view_equip_spec(view, view_spec, entity, str8_lit(""), op);
+                    df_view_equip_spec(ws, view, view_spec, entity, view_query, op);
                   }
                   
                   // rjf: insert
@@ -11853,7 +12711,7 @@ df_gfx_begin_frame(Arena *arena, DF_CmdList *cmds)
               {
                 if(df_panel_is_nil(panel->first))
                 {
-                  Rng2F32 rect = df_rect_from_panel(root_rect, ws->root_panel, panel);
+                  Rng2F32 rect = df_target_rect_from_panel(root_rect, ws->root_panel, panel);
                   Vec2F32 dim = dim_2f32(rect);
                   F32 area = dim.x*dim.y;
                   if(best_leaf_panel_area == 0 || area > best_leaf_panel_area)

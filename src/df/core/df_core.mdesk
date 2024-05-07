@@ -28,6 +28,9 @@ DF_EntityKindTable:
   {OverrideFileLink   override_file_link    0             0               0            0            0               0             0            1                   0                    0                  0                   0             0            0             0            0              0                        "Label"             FileOutline            "Override File Link"         }
   {PendingFileChange  pending_file_change   0             0               0            0            0               0             0            0                   0                    0                  0                   0             0            0             0            0              0                        "Label"             FileOutline            "Pending File Change"        }
   
+  //- rjf: auto view rules
+  {AutoViewRule       auto_view_rule        0             0               0            0            0               0             0            0                   0                    0                  0                   0             0            0             0            0              1                        "Label"             Binoculars             "Auto View Rule"             }
+  
   //- rjf: diagnostics log
   {DiagLog            diag_log              0             0               0            0            0               0             0            0                   0                    0                  0                   0             0            0             0            0              0                        "Label"             FileOutline            "Diagnostics Log"            }
   
@@ -85,12 +88,14 @@ DF_CmdParamSlotTable:
   {TextPoint         text_point            `TxtPt`}
   {CmdSpec           cmd_spec              `struct DF_CmdSpec *`}
   {ViewSpec          view_spec             `struct DF_ViewSpec *`}
+  {CfgNode           cfg_node              `struct DF_CfgNode *`}
   {VirtualAddr       vaddr                 `U64`}
   {VirtualOff        voff                  `U64`}
   {Index             index                 `U64`}
   {ID                id                    `U64`}
   {PreferDisassembly prefer_dasm           `B32`}
   {ForceConfirm      force_confirm         `B32`}
+  {Dir2              dir2                  `Dir2`}
 }
 
 @table(name                      lister_omit  q_slot       q_ent_kind  q_allow_files q_allow_folders  q_keep_oi   q_select_oi  q_is_code  q_required           canonical_icon        string                        display_name                                  desc                                                                                                               search_tags                      )
@@ -172,8 +177,11 @@ DF_CoreCmdTable://               |            |                  |              
   
   //- rjf: panel splitting
   {ResetToDefaultPanels           0            Null               Nil                0  0  0  0  0  0                                                           Window                "reset_to_default_panels"     "Reset To Default Panel Layout"               "Resets the window to the default panel layout."                                                                   "panel"                          }
-  {NewPanelRight                  0            Null               Nil                0  0  0  0  0  0                                                           XSplit                "new_panel_right"             "Split Panel Vertically"                      "Creates a new panel to the right of the active panel."                                                            "panel"                          }
-  {NewPanelDown                   0            Null               Nil                0  0  0  0  0  0                                                           YSplit                "new_panel_down"              "Split Panel Horizontally"                    "Creates a new panel at the bottom of the active panel."                                                           "panel"                          }
+  {NewPanelLeft                   0            Null               Nil                0  0  0  0  0  0                                                           XSplit                "new_panel_left"              "Split Panel Left"                            "Creates a new panel to the left of the active panel."                                                             "panel"                          }
+  {NewPanelUp                     0            Null               Nil                0  0  0  0  0  0                                                           YSplit                "new_panel_up"                "Split Panel Up"                              "Creates a new panel at the top of the active panel."                                                              "panel"                          }
+  {NewPanelRight                  0            Null               Nil                0  0  0  0  0  0                                                           XSplit                "new_panel_right"             "Split Panel Right"                           "Creates a new panel to the right of the active panel."                                                            "panel"                          }
+  {NewPanelDown                   0            Null               Nil                0  0  0  0  0  0                                                           YSplit                "new_panel_down"              "Split Panel Down"                            "Creates a new panel at the bottom of the active panel."                                                           "panel"                          }
+  {SplitPanel                     1            Null               Nil                0  0  0  0  0  0                                                           Null                  "split_panel"                 "Split Panel"                                 "Creates a new panel in a given direction, and moves a tab to it, if specified."                                   ""                               }
   
   //- rjf: panel rotation
   {RotatePanelColumns             0            Null               Nil                0  0  0  0  0  0                                                           Null                  "rotate_panel_columns"        "Rotate Panel Columns"                        "Rotates all panels at the closest column level of the panel hierarchy."                                           ""                               }
@@ -221,6 +229,10 @@ DF_CoreCmdTable://               |            |                  |              
   {SetFileOverrideLinkSrc         1            Null               Nil                0  0  0  0  0  0                                                           Null                  "set_file_override_link_src"  "Set File Override Link Source"               "Sets the source path for an override file link."                                                                  ""                               }
   {SetFileOverrideLinkDst         1            Null               Nil                0  0  0  0  0  0                                                           Null                  "set_file_override_link_dst"  "Set File Override Link Destination"          "Sets the destination path for an override file link."                                                             ""                               }
   {SetFileReplacementPath         1            Null               Nil                0  0  0  0  0  0                                                           Null                  "set_file_replacement_path"   "Set File Replacement Path"                   "Sets the path which should be used as the replacement for the passed file."                                       ""                               }
+  
+  //- rjf: auto view rules
+  {SetAutoViewRuleType            1            Null               Nil                0  0  0  0  0  0                                                           Null                  "set_auto_view_rule_type"     "Set Auto View Rule Type"                     "Sets the type for an auto view rule."                                                                             ""                               }
+  {SetAutoViewRuleViewRule        1            Null               Nil                0  0  0  0  0  0                                                           Null                  "set_auto_view_rule_view_rule""Set Auto View Rule View Rule"                "Sets the view rule string for an auto view rule."                                                                 ""                               }
   
   //- rjf: setting config paths
   {OpenUser                       0            FilePath           Nil                1  0  0  0  0  1                                                           Person                "open_user"                   "Open User"                                   "Opens a user file path, immediately loading it, and begins autosaving to it."                                     "load,user,profile,layout"       }
@@ -355,6 +367,7 @@ DF_CoreCmdTable://               |            |                  |              
   {Target                         1            Null               Nil                0  0  0  0  0  0                                                           Target                "target"                      "Target"                                      "Opens the editor for a target."                                                                                   ""                               }
   {Targets                        0            Null               Nil                0  0  0  0  0  0                                                           Target                "targets"                     "Targets"                                     "Opens the list of all targets."                                                                                   ""                               }
   {FilePathMap                    0            Null               Nil                0  0  0  0  0  0                                                           FileOutline           "file_path_map"               "File Path Map"                               "Opens the file path mapping editor."                                                                              ""                               }
+  {AutoViewRules                  0            Null               Nil                0  0  0  0  0  0                                                           Binoculars            "auto_view_rules"             "Auto View Rules"                             "Opens the auto view rule editor."                                                                                 ""                               }
   {Scheduler                      0            Null               Nil                0  0  0  0  0  0                                                           Scheduler             "scheduler"                   "Scheduler"                                   "Opens the scheduler view, for process and thread controls."                                                       "threads,processes,targets"      }
   {CallStack                      0            Null               Nil                0  0  0  0  0  0                                                           Thread                "call_stack"                  "Call Stack"                                  "Opens the call stack view."                                                                                       "callstack,thread"               }
   {Modules                        0            Null               Nil                0  0  0  0  0  0                                                           Module                "modules"                     "Modules"                                     "Opens the modules view."                                                                                          ""                               }
@@ -454,12 +467,10 @@ DF_CoreCmdTable://               |            |                  |              
 //                          rows, this stage offers the ability to build a ui
 //                          stretching over all of the rows.
 //
-// whole ui build, "wu"  -> sometimes, more sophisticated interfaces need to be
-//                          provided for a view rule, that stretch beyond the
-//                          limits of what could be offered inside a watch
-//                          window block. in such cases, the eval/view-rule
-//                          combo will be granted its own tab for example, and
-//                          this stage is used to fill such a ui.
+// tab ui build, "tu"    -> when a view rule also wants to implement ui for a
+//                          dedicated tab, it can supply hooks for that as well
+//                          in which case an eval/view-rule can be opened in a
+//                          fully fledged, dedicated ui
 //
 // A few other bits are included for various ways in which a view rule may be
 // applied throughout the eval visualization pipeline. A list follows:
@@ -498,6 +509,7 @@ DF_CoreViewRuleTable:
   {RGBA       rgba        "rgba"          -   x   -   x                 "Color (RGBA)"                x       "Displays as a color, interpreting the data as encoding R, G, B, and A values."                                                                                              }
   {Text       text        "text"          -   x   -   x                 "Text"                        x       "Displays as text."                                                                                                                                                          }
   {Disasm     disasm      "disasm"        -   x   -   x                 "Disassembly"                 x       "Displays as disassembled instructions, interpreting the data as raw machine code."                                                                                          }
+  {Graph      graph       "graph"         -   x   -   x                 "Graph"                       x       "Displays as a pointer graph, visualizing nodes and edges formed by pointers directly."                                                                                      }
   {Bitmap     bitmap      "bitmap"        -   x   -   x                 "Bitmap"                      x       "Displays as a bitmap, interpreting the data as raw pixel data."                                                                                                             }
   {Geo        geo         "geo"           -   x   -   x                 "Geometry"                    x       "Displays as geometry, interpreting the data as vertex data."                                                                                                                }
   {OdinMap    odin_map    "odin_map"      -   x   -   x                 "Odin map"                    x       "Specifies that a struct to be rendered as an Odin map type."                                                                                                                }

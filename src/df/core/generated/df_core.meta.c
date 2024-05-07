@@ -4,7 +4,7 @@
 //- GENERATED CODE
 
 C_LINKAGE_BEGIN
-Rng1U64 df_g_cmd_param_slot_range_table[19] =
+Rng1U64 df_g_cmd_param_slot_range_table[21] =
 {
 {0},
 {OffsetOf(DF_CmdParams, window), OffsetOf(DF_CmdParams, window) + sizeof(DF_Handle)},
@@ -19,15 +19,17 @@ Rng1U64 df_g_cmd_param_slot_range_table[19] =
 {OffsetOf(DF_CmdParams, text_point), OffsetOf(DF_CmdParams, text_point) + sizeof(TxtPt)},
 {OffsetOf(DF_CmdParams, cmd_spec), OffsetOf(DF_CmdParams, cmd_spec) + sizeof(struct DF_CmdSpec *)},
 {OffsetOf(DF_CmdParams, view_spec), OffsetOf(DF_CmdParams, view_spec) + sizeof(struct DF_ViewSpec *)},
+{OffsetOf(DF_CmdParams, cfg_node), OffsetOf(DF_CmdParams, cfg_node) + sizeof(struct DF_CfgNode *)},
 {OffsetOf(DF_CmdParams, vaddr), OffsetOf(DF_CmdParams, vaddr) + sizeof(U64)},
 {OffsetOf(DF_CmdParams, voff), OffsetOf(DF_CmdParams, voff) + sizeof(U64)},
 {OffsetOf(DF_CmdParams, index), OffsetOf(DF_CmdParams, index) + sizeof(U64)},
 {OffsetOf(DF_CmdParams, id), OffsetOf(DF_CmdParams, id) + sizeof(U64)},
 {OffsetOf(DF_CmdParams, prefer_dasm), OffsetOf(DF_CmdParams, prefer_dasm) + sizeof(B32)},
 {OffsetOf(DF_CmdParams, force_confirm), OffsetOf(DF_CmdParams, force_confirm) + sizeof(B32)},
+{OffsetOf(DF_CmdParams, dir2), OffsetOf(DF_CmdParams, dir2) + sizeof(Dir2)},
 };
 
-DF_IconKind df_g_entity_kind_icon_kind_table[26] =
+DF_IconKind df_g_entity_kind_icon_kind_table[27] =
 {
 DF_IconKind_Null,
 DF_IconKind_Null,
@@ -35,6 +37,7 @@ DF_IconKind_Machine,
 DF_IconKind_FileOutline,
 DF_IconKind_FileOutline,
 DF_IconKind_FileOutline,
+DF_IconKind_Binoculars,
 DF_IconKind_FileOutline,
 DF_IconKind_Null,
 DF_IconKind_Pin,
@@ -57,7 +60,7 @@ DF_IconKind_Null,
 DF_IconKind_Null,
 };
 
-String8 df_g_entity_kind_display_string_table[26] =
+String8 df_g_entity_kind_display_string_table[27] =
 {
 str8_lit_comp("Nil"),
 str8_lit_comp("Root"),
@@ -65,6 +68,7 @@ str8_lit_comp("Machine"),
 str8_lit_comp("File"),
 str8_lit_comp("Override File Link"),
 str8_lit_comp("Pending File Change"),
+str8_lit_comp("Auto View Rule"),
 str8_lit_comp("Diagnostics Log"),
 str8_lit_comp("Flash Marker"),
 str8_lit_comp("Watch Pin"),
@@ -87,8 +91,9 @@ str8_lit_comp("Conversion Failure"),
 str8_lit_comp("EndedProcess"),
 };
 
-String8 df_g_entity_kind_name_label_table[26] =
+String8 df_g_entity_kind_name_label_table[27] =
 {
+str8_lit_comp("Label"),
 str8_lit_comp("Label"),
 str8_lit_comp("Label"),
 str8_lit_comp("Label"),
@@ -117,7 +122,7 @@ str8_lit_comp("Label"),
 str8_lit_comp("Label"),
 };
 
-DF_EntityKindFlags df_g_entity_kind_flags_table[26] =
+DF_EntityKindFlags df_g_entity_kind_flags_table[27] =
 {
 (0*DF_EntityKindFlag_LeafMutationUserConfig | 0*DF_EntityKindFlag_LeafMutationProfileConfig | 0*DF_EntityKindFlag_LeafMutationSoftHalt | 0*DF_EntityKindFlag_LeafMutationDebugInfoMap | 0*DF_EntityKindFlag_TreeMutationUserConfig | 0*DF_EntityKindFlag_TreeMutationProfileConfig | 0*DF_EntityKindFlag_TreeMutationSoftHalt | 0*DF_EntityKindFlag_TreeMutationDebugInfoMap | 0*DF_EntityKindFlag_NameIsCode | 0*DF_EntityKindFlag_UserDefinedLifetime),
 (0*DF_EntityKindFlag_LeafMutationUserConfig | 0*DF_EntityKindFlag_LeafMutationProfileConfig | 0*DF_EntityKindFlag_LeafMutationSoftHalt | 0*DF_EntityKindFlag_LeafMutationDebugInfoMap | 0*DF_EntityKindFlag_TreeMutationUserConfig | 0*DF_EntityKindFlag_TreeMutationProfileConfig | 0*DF_EntityKindFlag_TreeMutationSoftHalt | 0*DF_EntityKindFlag_TreeMutationDebugInfoMap | 0*DF_EntityKindFlag_NameIsCode | 0*DF_EntityKindFlag_UserDefinedLifetime),
@@ -125,6 +130,7 @@ DF_EntityKindFlags df_g_entity_kind_flags_table[26] =
 (0*DF_EntityKindFlag_LeafMutationUserConfig | 0*DF_EntityKindFlag_LeafMutationProfileConfig | 0*DF_EntityKindFlag_LeafMutationSoftHalt | 0*DF_EntityKindFlag_LeafMutationDebugInfoMap | 0*DF_EntityKindFlag_TreeMutationUserConfig | 0*DF_EntityKindFlag_TreeMutationProfileConfig | 0*DF_EntityKindFlag_TreeMutationSoftHalt | 0*DF_EntityKindFlag_TreeMutationDebugInfoMap | 0*DF_EntityKindFlag_NameIsCode | 0*DF_EntityKindFlag_UserDefinedLifetime),
 (1*DF_EntityKindFlag_LeafMutationUserConfig | 0*DF_EntityKindFlag_LeafMutationProfileConfig | 0*DF_EntityKindFlag_LeafMutationSoftHalt | 0*DF_EntityKindFlag_LeafMutationDebugInfoMap | 0*DF_EntityKindFlag_TreeMutationUserConfig | 0*DF_EntityKindFlag_TreeMutationProfileConfig | 0*DF_EntityKindFlag_TreeMutationSoftHalt | 0*DF_EntityKindFlag_TreeMutationDebugInfoMap | 0*DF_EntityKindFlag_NameIsCode | 0*DF_EntityKindFlag_UserDefinedLifetime),
 (0*DF_EntityKindFlag_LeafMutationUserConfig | 0*DF_EntityKindFlag_LeafMutationProfileConfig | 0*DF_EntityKindFlag_LeafMutationSoftHalt | 0*DF_EntityKindFlag_LeafMutationDebugInfoMap | 0*DF_EntityKindFlag_TreeMutationUserConfig | 0*DF_EntityKindFlag_TreeMutationProfileConfig | 0*DF_EntityKindFlag_TreeMutationSoftHalt | 0*DF_EntityKindFlag_TreeMutationDebugInfoMap | 0*DF_EntityKindFlag_NameIsCode | 0*DF_EntityKindFlag_UserDefinedLifetime),
+(0*DF_EntityKindFlag_LeafMutationUserConfig | 0*DF_EntityKindFlag_LeafMutationProfileConfig | 0*DF_EntityKindFlag_LeafMutationSoftHalt | 0*DF_EntityKindFlag_LeafMutationDebugInfoMap | 0*DF_EntityKindFlag_TreeMutationUserConfig | 0*DF_EntityKindFlag_TreeMutationProfileConfig | 0*DF_EntityKindFlag_TreeMutationSoftHalt | 0*DF_EntityKindFlag_TreeMutationDebugInfoMap | 0*DF_EntityKindFlag_NameIsCode | 1*DF_EntityKindFlag_UserDefinedLifetime),
 (0*DF_EntityKindFlag_LeafMutationUserConfig | 0*DF_EntityKindFlag_LeafMutationProfileConfig | 0*DF_EntityKindFlag_LeafMutationSoftHalt | 0*DF_EntityKindFlag_LeafMutationDebugInfoMap | 0*DF_EntityKindFlag_TreeMutationUserConfig | 0*DF_EntityKindFlag_TreeMutationProfileConfig | 0*DF_EntityKindFlag_TreeMutationSoftHalt | 0*DF_EntityKindFlag_TreeMutationDebugInfoMap | 0*DF_EntityKindFlag_NameIsCode | 0*DF_EntityKindFlag_UserDefinedLifetime),
 (0*DF_EntityKindFlag_LeafMutationUserConfig | 0*DF_EntityKindFlag_LeafMutationProfileConfig | 0*DF_EntityKindFlag_LeafMutationSoftHalt | 0*DF_EntityKindFlag_LeafMutationDebugInfoMap | 0*DF_EntityKindFlag_TreeMutationUserConfig | 0*DF_EntityKindFlag_TreeMutationProfileConfig | 0*DF_EntityKindFlag_TreeMutationSoftHalt | 0*DF_EntityKindFlag_TreeMutationDebugInfoMap | 0*DF_EntityKindFlag_NameIsCode | 0*DF_EntityKindFlag_UserDefinedLifetime),
 (0*DF_EntityKindFlag_LeafMutationUserConfig | 0*DF_EntityKindFlag_LeafMutationProfileConfig | 0*DF_EntityKindFlag_LeafMutationSoftHalt | 0*DF_EntityKindFlag_LeafMutationDebugInfoMap | 0*DF_EntityKindFlag_TreeMutationUserConfig | 0*DF_EntityKindFlag_TreeMutationProfileConfig | 0*DF_EntityKindFlag_TreeMutationSoftHalt | 0*DF_EntityKindFlag_TreeMutationDebugInfoMap | 1*DF_EntityKindFlag_NameIsCode | 1*DF_EntityKindFlag_UserDefinedLifetime),
@@ -147,11 +153,12 @@ DF_EntityKindFlags df_g_entity_kind_flags_table[26] =
 (0*DF_EntityKindFlag_LeafMutationUserConfig | 0*DF_EntityKindFlag_LeafMutationProfileConfig | 0*DF_EntityKindFlag_LeafMutationSoftHalt | 0*DF_EntityKindFlag_LeafMutationDebugInfoMap | 0*DF_EntityKindFlag_TreeMutationUserConfig | 0*DF_EntityKindFlag_TreeMutationProfileConfig | 0*DF_EntityKindFlag_TreeMutationSoftHalt | 0*DF_EntityKindFlag_TreeMutationDebugInfoMap | 0*DF_EntityKindFlag_NameIsCode | 0*DF_EntityKindFlag_UserDefinedLifetime),
 };
 
-DF_EntityOpFlags df_g_entity_kind_op_flags_table[26] =
+DF_EntityOpFlags df_g_entity_kind_op_flags_table[27] =
 {
 (0*DF_EntityOpFlag_Delete) | (0*DF_EntityOpFlag_Freeze) | (0*DF_EntityOpFlag_Edit) | (0*DF_EntityOpFlag_Rename) | (0*DF_EntityOpFlag_Enable) | (0*DF_EntityOpFlag_Condition) | (0*DF_EntityOpFlag_Duplicate),
 (0*DF_EntityOpFlag_Delete) | (0*DF_EntityOpFlag_Freeze) | (0*DF_EntityOpFlag_Edit) | (0*DF_EntityOpFlag_Rename) | (0*DF_EntityOpFlag_Enable) | (0*DF_EntityOpFlag_Condition) | (0*DF_EntityOpFlag_Duplicate),
 (0*DF_EntityOpFlag_Delete) | (1*DF_EntityOpFlag_Freeze) | (0*DF_EntityOpFlag_Edit) | (1*DF_EntityOpFlag_Rename) | (0*DF_EntityOpFlag_Enable) | (0*DF_EntityOpFlag_Condition) | (0*DF_EntityOpFlag_Duplicate),
+(0*DF_EntityOpFlag_Delete) | (0*DF_EntityOpFlag_Freeze) | (0*DF_EntityOpFlag_Edit) | (0*DF_EntityOpFlag_Rename) | (0*DF_EntityOpFlag_Enable) | (0*DF_EntityOpFlag_Condition) | (0*DF_EntityOpFlag_Duplicate),
 (0*DF_EntityOpFlag_Delete) | (0*DF_EntityOpFlag_Freeze) | (0*DF_EntityOpFlag_Edit) | (0*DF_EntityOpFlag_Rename) | (0*DF_EntityOpFlag_Enable) | (0*DF_EntityOpFlag_Condition) | (0*DF_EntityOpFlag_Duplicate),
 (0*DF_EntityOpFlag_Delete) | (0*DF_EntityOpFlag_Freeze) | (0*DF_EntityOpFlag_Edit) | (0*DF_EntityOpFlag_Rename) | (0*DF_EntityOpFlag_Enable) | (0*DF_EntityOpFlag_Condition) | (0*DF_EntityOpFlag_Duplicate),
 (0*DF_EntityOpFlag_Delete) | (0*DF_EntityOpFlag_Freeze) | (0*DF_EntityOpFlag_Edit) | (0*DF_EntityOpFlag_Rename) | (0*DF_EntityOpFlag_Enable) | (0*DF_EntityOpFlag_Condition) | (0*DF_EntityOpFlag_Duplicate),
@@ -209,7 +216,7 @@ DF_CoreCmdKind_Null,
 DF_CoreCmdKind_Null,
 };
 
-DF_CmdSpecInfo df_g_core_cmd_kind_spec_info_table[206] =
+DF_CmdSpecInfo df_g_core_cmd_kind_spec_info_table[212] =
 {
 { str8_lit_comp(""), str8_lit_comp(""), str8_lit_comp(""), str8_lit_comp(""), (DF_CmdSpecFlag_OmitFromLists*1), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_Null},
 { str8_lit_comp("exit"), str8_lit_comp("Exits the debugger."), str8_lit_comp("quit,close,abort"), str8_lit_comp("Exit"), (DF_CmdSpecFlag_OmitFromLists*0), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_X},
@@ -263,8 +270,11 @@ DF_CmdSpecInfo df_g_core_cmd_kind_spec_info_table[206] =
 { str8_lit_comp("confirm_accept"), str8_lit_comp("Accepts the active confirmation prompt."), str8_lit_comp(""), str8_lit_comp("Confirm Accept"), (DF_CmdSpecFlag_OmitFromLists*1), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_Null},
 { str8_lit_comp("confirm_cancel"), str8_lit_comp("Cancels the active confirmation prompt."), str8_lit_comp(""), str8_lit_comp("Confirm Cancel"), (DF_CmdSpecFlag_OmitFromLists*1), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_Null},
 { str8_lit_comp("reset_to_default_panels"), str8_lit_comp("Resets the window to the default panel layout."), str8_lit_comp("panel"), str8_lit_comp("Reset To Default Panel Layout"), (DF_CmdSpecFlag_OmitFromLists*0), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_Window},
-{ str8_lit_comp("new_panel_right"), str8_lit_comp("Creates a new panel to the right of the active panel."), str8_lit_comp("panel"), str8_lit_comp("Split Panel Vertically"), (DF_CmdSpecFlag_OmitFromLists*0), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_XSplit},
-{ str8_lit_comp("new_panel_down"), str8_lit_comp("Creates a new panel at the bottom of the active panel."), str8_lit_comp("panel"), str8_lit_comp("Split Panel Horizontally"), (DF_CmdSpecFlag_OmitFromLists*0), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_YSplit},
+{ str8_lit_comp("new_panel_left"), str8_lit_comp("Creates a new panel to the left of the active panel."), str8_lit_comp("panel"), str8_lit_comp("Split Panel Left"), (DF_CmdSpecFlag_OmitFromLists*0), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_XSplit},
+{ str8_lit_comp("new_panel_up"), str8_lit_comp("Creates a new panel at the top of the active panel."), str8_lit_comp("panel"), str8_lit_comp("Split Panel Up"), (DF_CmdSpecFlag_OmitFromLists*0), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_YSplit},
+{ str8_lit_comp("new_panel_right"), str8_lit_comp("Creates a new panel to the right of the active panel."), str8_lit_comp("panel"), str8_lit_comp("Split Panel Right"), (DF_CmdSpecFlag_OmitFromLists*0), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_XSplit},
+{ str8_lit_comp("new_panel_down"), str8_lit_comp("Creates a new panel at the bottom of the active panel."), str8_lit_comp("panel"), str8_lit_comp("Split Panel Down"), (DF_CmdSpecFlag_OmitFromLists*0), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_YSplit},
+{ str8_lit_comp("split_panel"), str8_lit_comp("Creates a new panel in a given direction, and moves a tab to it, if specified."), str8_lit_comp(""), str8_lit_comp("Split Panel"), (DF_CmdSpecFlag_OmitFromLists*1), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_Null},
 { str8_lit_comp("rotate_panel_columns"), str8_lit_comp("Rotates all panels at the closest column level of the panel hierarchy."), str8_lit_comp(""), str8_lit_comp("Rotate Panel Columns"), (DF_CmdSpecFlag_OmitFromLists*0), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_Null},
 { str8_lit_comp("next_panel"), str8_lit_comp("Cycles the active panel forward."), str8_lit_comp(""), str8_lit_comp("Focus Next Panel"), (DF_CmdSpecFlag_OmitFromLists*0), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_RightArrow},
 { str8_lit_comp("prev_panel"), str8_lit_comp("Cycles the active panel backwards."), str8_lit_comp(""), str8_lit_comp("Focus Previous Panel"), (DF_CmdSpecFlag_OmitFromLists*0), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_LeftArrow},
@@ -296,6 +306,8 @@ DF_CmdSpecInfo df_g_core_cmd_kind_spec_info_table[206] =
 { str8_lit_comp("set_file_override_link_src"), str8_lit_comp("Sets the source path for an override file link."), str8_lit_comp(""), str8_lit_comp("Set File Override Link Source"), (DF_CmdSpecFlag_OmitFromLists*1), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_Null},
 { str8_lit_comp("set_file_override_link_dst"), str8_lit_comp("Sets the destination path for an override file link."), str8_lit_comp(""), str8_lit_comp("Set File Override Link Destination"), (DF_CmdSpecFlag_OmitFromLists*1), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_Null},
 { str8_lit_comp("set_file_replacement_path"), str8_lit_comp("Sets the path which should be used as the replacement for the passed file."), str8_lit_comp(""), str8_lit_comp("Set File Replacement Path"), (DF_CmdSpecFlag_OmitFromLists*1), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_Null},
+{ str8_lit_comp("set_auto_view_rule_type"), str8_lit_comp("Sets the type for an auto view rule."), str8_lit_comp(""), str8_lit_comp("Set Auto View Rule Type"), (DF_CmdSpecFlag_OmitFromLists*1), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_Null},
+{ str8_lit_comp("set_auto_view_rule_view_rule"), str8_lit_comp("Sets the view rule string for an auto view rule."), str8_lit_comp(""), str8_lit_comp("Set Auto View Rule View Rule"), (DF_CmdSpecFlag_OmitFromLists*1), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_Null},
 { str8_lit_comp("open_user"), str8_lit_comp("Opens a user file path, immediately loading it, and begins autosaving to it."), str8_lit_comp("load,user,profile,layout"), str8_lit_comp("Open User"), (DF_CmdSpecFlag_OmitFromLists*0), {DF_CmdParamSlot_FilePath, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*1)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*1)}, DF_IconKind_Person},
 { str8_lit_comp("open_profile"), str8_lit_comp("Opens a profile file path, immediately loading it, and begins autosaving to it."), str8_lit_comp("profile,project,session"), str8_lit_comp("Open Profile"), (DF_CmdSpecFlag_OmitFromLists*0), {DF_CmdParamSlot_FilePath, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*1)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*1)}, DF_IconKind_Briefcase},
 { str8_lit_comp("apply_user_data"), str8_lit_comp("Applies user data from the active user file."), str8_lit_comp(""), str8_lit_comp("Apply User Data"), (DF_CmdSpecFlag_OmitFromLists*1), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_Null},
@@ -392,6 +404,7 @@ DF_CmdSpecInfo df_g_core_cmd_kind_spec_info_table[206] =
 { str8_lit_comp("target"), str8_lit_comp("Opens the editor for a target."), str8_lit_comp(""), str8_lit_comp("Target"), (DF_CmdSpecFlag_OmitFromLists*1), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_Target},
 { str8_lit_comp("targets"), str8_lit_comp("Opens the list of all targets."), str8_lit_comp(""), str8_lit_comp("Targets"), (DF_CmdSpecFlag_OmitFromLists*0), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_Target},
 { str8_lit_comp("file_path_map"), str8_lit_comp("Opens the file path mapping editor."), str8_lit_comp(""), str8_lit_comp("File Path Map"), (DF_CmdSpecFlag_OmitFromLists*0), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_FileOutline},
+{ str8_lit_comp("auto_view_rules"), str8_lit_comp("Opens the auto view rule editor."), str8_lit_comp(""), str8_lit_comp("Auto View Rules"), (DF_CmdSpecFlag_OmitFromLists*0), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_Binoculars},
 { str8_lit_comp("scheduler"), str8_lit_comp("Opens the scheduler view, for process and thread controls."), str8_lit_comp("threads,processes,targets"), str8_lit_comp("Scheduler"), (DF_CmdSpecFlag_OmitFromLists*0), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_Scheduler},
 { str8_lit_comp("call_stack"), str8_lit_comp("Opens the call stack view."), str8_lit_comp("callstack,thread"), str8_lit_comp("Call Stack"), (DF_CmdSpecFlag_OmitFromLists*0), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_Thread},
 { str8_lit_comp("modules"), str8_lit_comp("Opens the modules view."), str8_lit_comp(""), str8_lit_comp("Modules"), (DF_CmdSpecFlag_OmitFromLists*0), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_Module},
@@ -419,11 +432,10 @@ DF_CmdSpecInfo df_g_core_cmd_kind_spec_info_table[206] =
 { str8_lit_comp("toggle_dev_menu"), str8_lit_comp("Opens and closes the developer menu."), str8_lit_comp(""), str8_lit_comp("Toggle Developer Menu"), (DF_CmdSpecFlag_OmitFromLists*0), {DF_CmdParamSlot_Null, DF_EntityKind_Nil, (DF_CmdQueryFlag_AllowFiles*0)|(DF_CmdQueryFlag_AllowFolders*0)|(DF_CmdQueryFlag_CodeInput*0)|(DF_CmdQueryFlag_KeepOldInput*0)|(DF_CmdQueryFlag_SelectOldInput*0)|(DF_CmdQueryFlag_Required*0)}, DF_IconKind_Null},
 };
 
-DF_CoreViewRuleSpecInfo df_g_core_view_rule_spec_info_table[18] =
+DF_CoreViewRuleSpecInfo df_g_core_view_rule_spec_info_table[17] =
 {
 {str8_lit_comp(""), str8_lit_comp(""), str8_lit_comp(""), (DF_CoreViewRuleSpecInfoFlag_Inherited*0)|(DF_CoreViewRuleSpecInfoFlag_Expandable*0)|(DF_CoreViewRuleSpecInfoFlag_EvalResolution*0)|(DF_CoreViewRuleSpecInfoFlag_VizBlockProd*0),  0,  0, },
 {str8_lit_comp("array"), str8_lit_comp("Array"), str8_lit_comp("Specifies that a pointer points to N elements, rather than only 1."), (DF_CoreViewRuleSpecInfoFlag_Inherited*0)|(DF_CoreViewRuleSpecInfoFlag_Expandable*0)|(DF_CoreViewRuleSpecInfoFlag_EvalResolution*1)|(DF_CoreViewRuleSpecInfoFlag_VizBlockProd*0), DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_NAME(array) ,  0, },
-{str8_lit_comp("slice"), str8_lit_comp("Slice"), str8_lit_comp("Specifies that a struct to be rendered as a slice."), (DF_CoreViewRuleSpecInfoFlag_Inherited*0)|(DF_CoreViewRuleSpecInfoFlag_Expandable*0)|(DF_CoreViewRuleSpecInfoFlag_EvalResolution*1)|(DF_CoreViewRuleSpecInfoFlag_VizBlockProd*0), DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_NAME(slice) ,  0, },
 {str8_lit_comp("list"), str8_lit_comp("List"), str8_lit_comp("Specifies that some struct, union, or class forms the top of a linked list, and the member which points at the following element in the list."), (DF_CoreViewRuleSpecInfoFlag_Inherited*0)|(DF_CoreViewRuleSpecInfoFlag_Expandable*0)|(DF_CoreViewRuleSpecInfoFlag_EvalResolution*0)|(DF_CoreViewRuleSpecInfoFlag_VizBlockProd*1),  0, DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_NAME(list) , },
 {str8_lit_comp("bswap"), str8_lit_comp("Byte Swap"), str8_lit_comp("Specifies that all integer primitives should be byte-swapped, such that their endianness is reversed."), (DF_CoreViewRuleSpecInfoFlag_Inherited*1)|(DF_CoreViewRuleSpecInfoFlag_Expandable*0)|(DF_CoreViewRuleSpecInfoFlag_EvalResolution*1)|(DF_CoreViewRuleSpecInfoFlag_VizBlockProd*0), DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_NAME(bswap) ,  0, },
 {str8_lit_comp("dec"), str8_lit_comp("Decimal Base (Base 10)"), str8_lit_comp("Specifies that all integral evaluations should appear in base-10 form."), (DF_CoreViewRuleSpecInfoFlag_Inherited*1)|(DF_CoreViewRuleSpecInfoFlag_Expandable*0)|(DF_CoreViewRuleSpecInfoFlag_EvalResolution*0)|(DF_CoreViewRuleSpecInfoFlag_VizBlockProd*0),  0,  0, },
@@ -436,9 +448,9 @@ DF_CoreViewRuleSpecInfo df_g_core_view_rule_spec_info_table[18] =
 {str8_lit_comp("rgba"), str8_lit_comp("Color (RGBA)"), str8_lit_comp("Displays as a color, interpreting the data as encoding R, G, B, and A values."), (DF_CoreViewRuleSpecInfoFlag_Inherited*0)|(DF_CoreViewRuleSpecInfoFlag_Expandable*1)|(DF_CoreViewRuleSpecInfoFlag_EvalResolution*0)|(DF_CoreViewRuleSpecInfoFlag_VizBlockProd*1),  0, DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_NAME(rgba) , },
 {str8_lit_comp("text"), str8_lit_comp("Text"), str8_lit_comp("Displays as text."), (DF_CoreViewRuleSpecInfoFlag_Inherited*0)|(DF_CoreViewRuleSpecInfoFlag_Expandable*1)|(DF_CoreViewRuleSpecInfoFlag_EvalResolution*0)|(DF_CoreViewRuleSpecInfoFlag_VizBlockProd*1),  0, DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_NAME(text) , },
 {str8_lit_comp("disasm"), str8_lit_comp("Disassembly"), str8_lit_comp("Displays as disassembled instructions, interpreting the data as raw machine code."), (DF_CoreViewRuleSpecInfoFlag_Inherited*0)|(DF_CoreViewRuleSpecInfoFlag_Expandable*1)|(DF_CoreViewRuleSpecInfoFlag_EvalResolution*0)|(DF_CoreViewRuleSpecInfoFlag_VizBlockProd*1),  0, DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_NAME(disasm) , },
+{str8_lit_comp("graph"), str8_lit_comp("Graph"), str8_lit_comp("Displays as a pointer graph, visualizing nodes and edges formed by pointers directly."), (DF_CoreViewRuleSpecInfoFlag_Inherited*0)|(DF_CoreViewRuleSpecInfoFlag_Expandable*1)|(DF_CoreViewRuleSpecInfoFlag_EvalResolution*0)|(DF_CoreViewRuleSpecInfoFlag_VizBlockProd*1),  0, DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_NAME(graph) , },
 {str8_lit_comp("bitmap"), str8_lit_comp("Bitmap"), str8_lit_comp("Displays as a bitmap, interpreting the data as raw pixel data."), (DF_CoreViewRuleSpecInfoFlag_Inherited*0)|(DF_CoreViewRuleSpecInfoFlag_Expandable*1)|(DF_CoreViewRuleSpecInfoFlag_EvalResolution*0)|(DF_CoreViewRuleSpecInfoFlag_VizBlockProd*1),  0, DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_NAME(bitmap) , },
 {str8_lit_comp("geo"), str8_lit_comp("Geometry"), str8_lit_comp("Displays as geometry, interpreting the data as vertex data."), (DF_CoreViewRuleSpecInfoFlag_Inherited*0)|(DF_CoreViewRuleSpecInfoFlag_Expandable*1)|(DF_CoreViewRuleSpecInfoFlag_EvalResolution*0)|(DF_CoreViewRuleSpecInfoFlag_VizBlockProd*1),  0, DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_NAME(geo) , },
-{str8_lit_comp("odin_map"), str8_lit_comp("Odin map"), str8_lit_comp("Specifies that a struct to be rendered as an Odin map type."), (DF_CoreViewRuleSpecInfoFlag_Inherited*0)|(DF_CoreViewRuleSpecInfoFlag_Expandable*1)|(DF_CoreViewRuleSpecInfoFlag_EvalResolution*0)|(DF_CoreViewRuleSpecInfoFlag_VizBlockProd*1),  0, DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_NAME(odin_map) , },
 };
 
 String8 df_g_icon_kind_text_table[69] =

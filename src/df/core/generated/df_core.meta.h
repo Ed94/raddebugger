@@ -23,6 +23,7 @@ DF_EntityKind_Machine,
 DF_EntityKind_File,
 DF_EntityKind_OverrideFileLink,
 DF_EntityKind_PendingFileChange,
+DF_EntityKind_AutoViewRule,
 DF_EntityKind_DiagLog,
 DF_EntityKind_FlashMarker,
 DF_EntityKind_WatchPin,
@@ -100,8 +101,11 @@ DF_CoreCmdKind_ToggleFullscreen,
 DF_CoreCmdKind_ConfirmAccept,
 DF_CoreCmdKind_ConfirmCancel,
 DF_CoreCmdKind_ResetToDefaultPanels,
+DF_CoreCmdKind_NewPanelLeft,
+DF_CoreCmdKind_NewPanelUp,
 DF_CoreCmdKind_NewPanelRight,
 DF_CoreCmdKind_NewPanelDown,
+DF_CoreCmdKind_SplitPanel,
 DF_CoreCmdKind_RotatePanelColumns,
 DF_CoreCmdKind_NextPanel,
 DF_CoreCmdKind_PrevPanel,
@@ -133,6 +137,8 @@ DF_CoreCmdKind_SwitchToPartnerFile,
 DF_CoreCmdKind_SetFileOverrideLinkSrc,
 DF_CoreCmdKind_SetFileOverrideLinkDst,
 DF_CoreCmdKind_SetFileReplacementPath,
+DF_CoreCmdKind_SetAutoViewRuleType,
+DF_CoreCmdKind_SetAutoViewRuleViewRule,
 DF_CoreCmdKind_OpenUser,
 DF_CoreCmdKind_OpenProfile,
 DF_CoreCmdKind_ApplyUserData,
@@ -229,6 +235,7 @@ DF_CoreCmdKind_Commands,
 DF_CoreCmdKind_Target,
 DF_CoreCmdKind_Targets,
 DF_CoreCmdKind_FilePathMap,
+DF_CoreCmdKind_AutoViewRules,
 DF_CoreCmdKind_Scheduler,
 DF_CoreCmdKind_CallStack,
 DF_CoreCmdKind_Modules,
@@ -348,6 +355,7 @@ DF_CoreViewRuleKind_NoAddr,
 DF_CoreViewRuleKind_RGBA,
 DF_CoreViewRuleKind_Text,
 DF_CoreViewRuleKind_Disasm,
+DF_CoreViewRuleKind_Graph,
 DF_CoreViewRuleKind_Bitmap,
 DF_CoreViewRuleKind_Geo,
 DF_CoreViewRuleKind_OdinMap,
@@ -369,12 +377,14 @@ DF_CmdParamSlot_FilePath,
 DF_CmdParamSlot_TextPoint,
 DF_CmdParamSlot_CmdSpec,
 DF_CmdParamSlot_ViewSpec,
+DF_CmdParamSlot_CfgNode,
 DF_CmdParamSlot_VirtualAddr,
 DF_CmdParamSlot_VirtualOff,
 DF_CmdParamSlot_Index,
 DF_CmdParamSlot_ID,
 DF_CmdParamSlot_PreferDisassembly,
 DF_CmdParamSlot_ForceConfirm,
+DF_CmdParamSlot_Dir2,
 DF_CmdParamSlot_COUNT,
 } DF_CmdParamSlot;
 
@@ -394,12 +404,14 @@ String8 file_path;
 TxtPt text_point;
 struct DF_CmdSpec * cmd_spec;
 struct DF_ViewSpec * view_spec;
+struct DF_CfgNode * cfg_node;
 U64 vaddr;
 U64 voff;
 U64 index;
 U64 id;
 B32 prefer_dasm;
 B32 force_confirm;
+Dir2 dir2;
 };
 
 DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(array);
@@ -411,6 +423,7 @@ DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(omit);
 DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(rgba);
 DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(text);
 DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(disasm);
+DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(graph);
 DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(bitmap);
 DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(geo);
 DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(odin_map);
@@ -1511,12 +1524,12 @@ struct {B32 *value_ptr; String8 name;} DEV_toggle_table[] =
 {&DEV_updating_indicator, str8_lit_comp("updating_indicator")},
 };
 C_LINKAGE_BEGIN
-extern Rng1U64 df_g_cmd_param_slot_range_table[19];
-extern DF_IconKind df_g_entity_kind_icon_kind_table[26];
-extern String8 df_g_entity_kind_display_string_table[26];
-extern String8 df_g_entity_kind_name_label_table[26];
-extern DF_EntityKindFlags df_g_entity_kind_flags_table[26];
-extern DF_EntityOpFlags df_g_entity_kind_op_flags_table[26];
+extern Rng1U64 df_g_cmd_param_slot_range_table[21];
+extern DF_IconKind df_g_entity_kind_icon_kind_table[27];
+extern String8 df_g_entity_kind_display_string_table[27];
+extern String8 df_g_entity_kind_name_label_table[27];
+extern DF_EntityKindFlags df_g_entity_kind_flags_table[27];
+extern DF_EntityOpFlags df_g_entity_kind_op_flags_table[27];
 extern String8 df_g_cfg_src_string_table[4];
 extern DF_CoreCmdKind df_g_cfg_src_load_cmd_kind_table[4];
 extern DF_CoreCmdKind df_g_cfg_src_write_cmd_kind_table[4];
