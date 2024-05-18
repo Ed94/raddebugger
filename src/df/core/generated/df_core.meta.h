@@ -53,6 +53,7 @@ DF_CoreCmdKind_Null,
 DF_CoreCmdKind_Exit,
 DF_CoreCmdKind_RunCommand,
 DF_CoreCmdKind_Error,
+DF_CoreCmdKind_OSEvent,
 DF_CoreCmdKind_LaunchAndRun,
 DF_CoreCmdKind_LaunchAndInit,
 DF_CoreCmdKind_Kill,
@@ -146,6 +147,9 @@ DF_CoreCmdKind_ApplyUserData,
 DF_CoreCmdKind_ApplyProfileData,
 DF_CoreCmdKind_WriteUserData,
 DF_CoreCmdKind_WriteProfileData,
+DF_CoreCmdKind_Edit,
+DF_CoreCmdKind_Accept,
+DF_CoreCmdKind_Cancel,
 DF_CoreCmdKind_MoveLeft,
 DF_CoreCmdKind_MoveRight,
 DF_CoreCmdKind_MoveUp,
@@ -170,6 +174,8 @@ DF_CoreCmdKind_MoveUpPageSelect,
 DF_CoreCmdKind_MoveDownPageSelect,
 DF_CoreCmdKind_MoveUpWholeSelect,
 DF_CoreCmdKind_MoveDownWholeSelect,
+DF_CoreCmdKind_MoveUpReorder,
+DF_CoreCmdKind_MoveDownReorder,
 DF_CoreCmdKind_MoveHome,
 DF_CoreCmdKind_MoveEnd,
 DF_CoreCmdKind_MoveHomeSelect,
@@ -380,6 +386,7 @@ DF_CmdParamSlot_TextPoint,
 DF_CmdParamSlot_CmdSpec,
 DF_CmdParamSlot_ViewSpec,
 DF_CmdParamSlot_CfgNode,
+DF_CmdParamSlot_OSEvent,
 DF_CmdParamSlot_VirtualAddr,
 DF_CmdParamSlot_VirtualOff,
 DF_CmdParamSlot_Index,
@@ -407,6 +414,7 @@ TxtPt text_point;
 struct DF_CmdSpec * cmd_spec;
 struct DF_ViewSpec * view_spec;
 struct DF_CfgNode * cfg_node;
+struct OS_Event * os_event;
 U64 vaddr;
 U64 voff;
 U64 index;
@@ -1526,7 +1534,7 @@ struct {B32 *value_ptr; String8 name;} DEV_toggle_table[] =
 {&DEV_updating_indicator, str8_lit_comp("updating_indicator")},
 };
 C_LINKAGE_BEGIN
-extern Rng1U64 df_g_cmd_param_slot_range_table[21];
+extern Rng1U64 df_g_cmd_param_slot_range_table[22];
 extern DF_IconKind df_g_entity_kind_icon_kind_table[27];
 extern String8 df_g_entity_kind_display_string_table[27];
 extern String8 df_g_entity_kind_name_label_table[27];
