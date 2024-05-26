@@ -312,7 +312,7 @@ df_vr_eval_commit_rgba(DF_Eval eval, TG_Graph *graph, RDI_Parsed *raddbg, DF_Ctr
 }
 
 internal DF_BitmapTopologyInfo
-df_view_rule_hooks__bitmap_topology_info_from_cfg(DBGI_Scope *scope, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, EVAL_String2ExprMap *macro_map, DF_CfgNode *cfg)
+df_view_rule_hooks__bitmap_topology_info_from_cfg(DI_Scope *scope, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, EVAL_String2ExprMap *macro_map, DF_CfgNode *cfg)
 {
   Temp scratch = scratch_begin(0, 0);
   DF_BitmapTopologyInfo info = {0};
@@ -359,7 +359,7 @@ df_view_rule_hooks__bitmap_topology_info_from_cfg(DBGI_Scope *scope, DF_CtrlCtx 
 }
 
 internal DF_GeoTopologyInfo
-df_view_rule_hooks__geo_topology_info_from_cfg(DBGI_Scope *scope, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, EVAL_String2ExprMap *macro_map, DF_CfgNode *cfg)
+df_view_rule_hooks__geo_topology_info_from_cfg(DI_Scope *scope, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, EVAL_String2ExprMap *macro_map, DF_CfgNode *cfg)
 {
   Temp scratch = scratch_begin(0, 0);
   DF_GeoTopologyInfo result = {0};
@@ -402,7 +402,7 @@ df_view_rule_hooks__geo_topology_info_from_cfg(DBGI_Scope *scope, DF_CtrlCtx *ct
 }
 
 internal DF_TxtTopologyInfo
-df_view_rule_hooks__txt_topology_info_from_cfg(DBGI_Scope *scope, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, EVAL_String2ExprMap *macro_map, DF_CfgNode *cfg)
+df_view_rule_hooks__txt_topology_info_from_cfg(DI_Scope *scope, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, EVAL_String2ExprMap *macro_map, DF_CfgNode *cfg)
 {
   Temp scratch = scratch_begin(0, 0);
   DF_TxtTopologyInfo result = zero_struct;
@@ -429,7 +429,7 @@ df_view_rule_hooks__txt_topology_info_from_cfg(DBGI_Scope *scope, DF_CtrlCtx *ct
 }
 
 internal DF_DisasmTopologyInfo
-df_view_rule_hooks__disasm_topology_info_from_cfg(DBGI_Scope *scope, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, EVAL_String2ExprMap *macro_map, DF_CfgNode *cfg)
+df_view_rule_hooks__disasm_topology_info_from_cfg(DI_Scope *scope, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, EVAL_String2ExprMap *macro_map, DF_CfgNode *cfg)
 {
   Temp scratch = scratch_begin(0, 0);
   DF_DisasmTopologyInfo result = zero_struct;
