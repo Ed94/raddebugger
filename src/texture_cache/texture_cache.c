@@ -213,7 +213,7 @@ tex_texture_from_hash_topology(TEX_Scope *scope, U128 hash, TEX_Topology topolog
 }
 
 internal R_Handle
-tex_texture_from_key_topology(TEX_Scope *scope, U128 key, TEX_Topology topology)
+tex_texture_from_key_topology(TEX_Scope *scope, U128 key, TEX_Topology topology, U128 *hash_out)
 {
   R_Handle handle = {0};
   for(U64 rewind_idx = 0; rewind_idx < 2; rewind_idx += 1)
@@ -222,6 +222,10 @@ tex_texture_from_key_topology(TEX_Scope *scope, U128 key, TEX_Topology topology)
     handle = tex_texture_from_hash_topology(scope, hash, topology);
     if(!r_handle_match(handle, r_handle_zero()))
     {
+      if(hash_out)
+      {
+        *hash_out = hash;
+      }
       break;
     }
   }
@@ -319,7 +323,7 @@ tex_xfer_thread__entry_point(void *p)
     R_Handle texture = {0};
     if(got_task && top.dim.x > 0 && top.dim.y > 0 && data.size >= (U64)top.dim.x*(U64)top.dim.y*(U64)r_tex2d_format_bytes_per_pixel_table[top.fmt])
     {
-      texture = r_tex2d_alloc(R_Tex2DKind_Static, v2s32(top.dim.x, top.dim.y), top.fmt, data.str);
+      texture = r_tex2d_alloc(R_ResourceKind_Static, v2s32(top.dim.x, top.dim.y), top.fmt, data.str);
     }
     
     //- rjf: commit results to cache

@@ -4,6 +4,9 @@
 ////////////////////////////////
 //~ rjf: Frontend/UI Pass Tasks
 //
+// [ ] display threads at their last exception address, rather than current
+// rip, if applicable
+//
 // [ ] editing multiple bindings for commands
 // [ ] n-row table selection, in watch window & other UIs, multi-selection
 //     ctrl+C
@@ -37,6 +40,10 @@
 ////////////////////////////////
 //~ rjf: Hot, High Priority Tasks (Complete Unusability, Crashes, Fire-Worthy)
 //
+// [ ] investigate heavy outputdebugstring usage causing major issues
+//     (both in debugger and in target application, apparently)
+// [ ] "Browse..." buttons should adopt a more relevant starting search path,
+//     if possible
 // [ ] PDB files distributed with the build are not found by DbgHelp!!!
 // [ ] Jai compiler debugging crash
 //
@@ -62,6 +69,10 @@
 //  [ ] max view rule
 //  [ ] min view rule
 //  [ ] double click on procedure in procedures tab to jump to source
+//
+// [ ] filesystem drag/drop support
+// [ ] double-click vs. single-click for folder navigation, see if we can infer
+// [ ] use backslashes on windows by default, forward slashes elsewhere
 //
 // [ ] investigate /DEBUG:FASTLINK - can we somehow alert that we do not
 //     support it?
@@ -155,7 +166,7 @@
 //      opens the context window. It seems like maybe menus should be right,
 //      and left should do the default action, more consistently?
 //
-//  [ ] It wasn't clear to me how you save a user or profile file. I can see
+//  [ ] It wasn't clear to me how you save a user or project file. I can see
 //      how to load them, but not how you save them. Obviously I can just copy
 //      the files myself in the shell, but it seemed weird that there was no
 //      "save" option in the menus.

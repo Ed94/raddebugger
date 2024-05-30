@@ -100,12 +100,13 @@ typedef U32 DF_ViewSpecFlags;
 enum
 {
   DF_ViewSpecFlag_ParameterizedByEntity      = (1<<0),
-  DF_ViewSpecFlag_CanSerialize               = (1<<1),
-  DF_ViewSpecFlag_CanSerializeEntityPath     = (1<<2),
-  DF_ViewSpecFlag_CanSerializeQuery          = (1<<3),
-  DF_ViewSpecFlag_CanFilter                  = (1<<4),
-  DF_ViewSpecFlag_FilterIsCode               = (1<<5),
-  DF_ViewSpecFlag_TypingAutomaticallyFilters = (1<<6),
+  DF_ViewSpecFlag_ProjectSpecific            = (1<<1),
+  DF_ViewSpecFlag_CanSerialize               = (1<<2),
+  DF_ViewSpecFlag_CanSerializeEntityPath     = (1<<3),
+  DF_ViewSpecFlag_CanSerializeQuery          = (1<<4),
+  DF_ViewSpecFlag_CanFilter                  = (1<<5),
+  DF_ViewSpecFlag_FilterIsCode               = (1<<6),
+  DF_ViewSpecFlag_TypingAutomaticallyFilters = (1<<7),
 };
 
 typedef enum DF_NameKind
@@ -204,6 +205,7 @@ struct DF_View
   // rjf: view kind info
   DF_ViewSpec *spec;
   DF_Handle entity;
+  DF_Handle project;
   
   // rjf: filter mode
   B32 is_filtering;
@@ -243,7 +245,7 @@ struct DF_Panel
   // rjf: tab params
   Side tab_side;
   
-  // rjf: stable view stacks (tabs)
+  // rjf: stable views (tabs)
   DF_View *first_tab_view;
   DF_View *last_tab_view;
   U64 tab_view_count;
@@ -386,9 +388,10 @@ enum
 typedef U32 DF_CodeSliceFlags;
 enum
 {
-  DF_CodeSliceFlag_Clickable = (1<<0),
-  DF_CodeSliceFlag_Margin    = (1<<1),
-  DF_CodeSliceFlag_LineNums  = (1<<2),
+  DF_CodeSliceFlag_Clickable         = (1<<0),
+  DF_CodeSliceFlag_PriorityMargin    = (1<<1),
+  DF_CodeSliceFlag_CatchallMargin    = (1<<2),
+  DF_CodeSliceFlag_LineNums          = (1<<3),
 };
 
 typedef struct DF_CodeSliceParams DF_CodeSliceParams;
@@ -410,9 +413,11 @@ struct DF_CodeSliceParams
   // rjf: visual parameters
   F_Tag font;
   F32 font_size;
+  F32 tab_size;
   String8 search_query;
   F32 line_height_px;
-  F32 margin_width_px;
+  F32 priority_margin_width_px;
+  F32 catchall_margin_width_px;
   F32 line_num_width_px;
   F32 line_text_max_width_px;
   DF_EntityList flash_ranges;
@@ -801,6 +806,7 @@ internal DF_PathQuery df_path_query_from_string(String8 string);
 //~ rjf: View Type Functions
 
 internal B32 df_view_is_nil(DF_View *view);
+internal B32 df_view_is_project_filtered(DF_View *view);
 internal DF_Handle df_handle_from_view(DF_View *view);
 internal DF_View *df_view_from_handle(DF_Handle handle);
 
@@ -837,6 +843,7 @@ internal Rng2F32 df_target_rect_from_panel(Rng2F32 root_rect, DF_Panel *root, DF
 //- rjf: view ownership insertion/removal
 internal void df_panel_insert_tab_view(DF_Panel *panel, DF_View *prev_view, DF_View *view);
 internal void df_panel_remove_tab_view(DF_Panel *panel, DF_View *view);
+internal DF_View *df_selected_tab_from_panel(DF_Panel *panel);
 
 //- rjf: icons & display strings
 internal String8 df_display_string_from_view(Arena *arena, DF_CtrlCtx ctrl_ctx, DF_View *view);

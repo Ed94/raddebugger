@@ -69,7 +69,8 @@ dasm_inst_array_idx_from_code_off__linear_scan(DASM_InstArray *array, U64 off)
   U64 result = 0;
   for(U64 idx = 0; idx < array->count; idx += 1)
   {
-    if(array->v[idx].code_off == off)
+    U64 next_off = (idx+1 < array->count ? array->v[idx+1].code_off : max_U64);
+    if(array->v[idx].code_off <= off && off < next_off)
     {
       result = idx;
       break;
@@ -355,7 +356,7 @@ dasm_u2p_dequeue_req(Arena *arena, U128 *hash_out, DASM_Params *params_out)
     }
     os_condition_variable_wait(dasm_shared->u2p_ring_cv, dasm_shared->u2p_ring_mutex, max_U64);
   }
-  os_condition_variable_broadcast(dasm_shared->u2p_ring_mutex);
+  os_condition_variable_broadcast(dasm_shared->u2p_ring_cv);
 }
 
 internal void
