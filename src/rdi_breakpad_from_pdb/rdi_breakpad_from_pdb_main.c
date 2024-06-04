@@ -1,3 +1,6 @@
+// Copyright (c) 2024 Epic Games Tools
+// Licensed under the MIT license (https://opensource.org/license/mit/)
+
 ////////////////////////////////
 //~ rjf: Build Options
 
@@ -13,12 +16,11 @@
 
 //- rjf: [lib]
 #include "lib_rdi_format/rdi_format.h"
-#include "lib_rdi_format/rdi_format_parse.h"
 #include "lib_rdi_format/rdi_format.c"
+#include "lib_rdi_format/rdi_format_parse.h"
 #include "lib_rdi_format/rdi_format_parse.c"
 #include "third_party/rad_lzb_simple/rad_lzb_simple.h"
 #include "third_party/rad_lzb_simple/rad_lzb_simple.c"
-
 
 //- rjf: [h]
 #include "base/base_inc.h"

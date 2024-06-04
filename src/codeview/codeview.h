@@ -27,7 +27,7 @@ read_only global CV_TypeId cv_type_id_variadic = 0xFFFFFFFF;
 ////////////////////////////////
 //~ rjf: Registers
 
-// X(NAME, CODE, (RDI_RegisterCode_X86) NAME, BYTE_POS, BYTE_SIZE)
+// X(NAME, CODE, (RDI_RegCode_X86) NAME, BYTE_POS, BYTE_SIZE)
 #define CV_Reg_X86_XList(X) \
 X(NONE,     0, nil, 0, 0)\
 X(AL,       1, eax, 0, 1)\
@@ -1152,6 +1152,7 @@ struct CV_SymFrameproc
 };
 
 //- (SymKind: ANNOTATION)
+
 typedef struct CV_SymAnnotation CV_SymAnnotation;
 struct CV_SymAnnotation
 {
@@ -1761,13 +1762,53 @@ struct CV_SymBuildInfo
 
 //- (SymKind: INLINESITE)
 
+typedef U32 CV_InlineBinaryAnnotation;
+typedef enum CV_InlineBinaryAnnotationEnum
+{
+  CV_InlineBinaryAnnotation_Null,
+  CV_InlineBinaryAnnotation_CodeOffset,
+  CV_InlineBinaryAnnotation_ChangeCodeOffsetBase,
+  CV_InlineBinaryAnnotation_ChangeCodeOffset,
+  CV_InlineBinaryAnnotation_ChangeCodeLength,
+  CV_InlineBinaryAnnotation_ChangeFile,
+  CV_InlineBinaryAnnotation_ChangeLineOffset,
+  CV_InlineBinaryAnnotation_ChangeLineEndDelta,
+  CV_InlineBinaryAnnotation_ChangeRangeKind,
+  CV_InlineBinaryAnnotation_ChangeColumnStart,
+  CV_InlineBinaryAnnotation_ChangeColumnEndDelta,
+  CV_InlineBinaryAnnotation_ChangeCodeOffsetAndLineOffset,
+  CV_InlineBinaryAnnotation_ChangeCodeLengthAndCodeOffset,
+  CV_InlineBinaryAnnotation_ChangeColumnEnd
+}
+CV_InlineBinaryAnnotationEnum;
+
+typedef U32 CV_InlineRangeKind;
+typedef enum CV_InlineRangeKindEnum
+{
+  CV_InlineRangeKind_Expr,
+  CV_InlineRangeKind_Stmt
+}
+CV_InlineRangeKindEnum;
+
 typedef struct CV_SymInlineSite CV_SymInlineSite;
 struct CV_SymInlineSite
 {
   U32 parent;
   U32 end;
   CV_ItemId inlinee;
-  // CV_BinaryAnnotation annotations (rest of data)
+  // U8 annotations[] (rest of data)
+};
+
+//- (SymKind: INLINESITE2)
+
+typedef struct CV_SymInlineSite2 CV_SymInlineSite2;
+struct CV_SymInlineSite2
+{
+  U32 parent_off;
+  U32 end_off;
+  CV_ItemId inlinee;
+  U32 invocations;
+  // U8 annotations[] (rest of data)
 };
 
 //- (SymKind: INLINESITE_END) (empty)
@@ -1786,7 +1827,7 @@ struct CV_SymFileStatic
 //- (SymKind: ARMSWITCHTABLE)
 
 typedef U16 CV_ArmSwitchKind;
-typedef enum
+typedef enum CV_ArmSwitchKindEnum
 {
   CV_ArmSwitchKind_INT1,
   CV_ArmSwitchKind_UINT1,
@@ -1799,7 +1840,8 @@ typedef enum
   CV_ArmSwitchKind_UINT2SHL1,
   CV_ArmSwitchKind_INT1SSHL1,
   CV_ArmSwitchKind_INT2SSHL1,
-} CV_ArmSwitchKindEnum;
+}
+CV_ArmSwitchKindEnum;
 
 typedef struct CV_SymArmSwitchTable CV_SymArmSwitchTable;
 struct CV_SymArmSwitchTable
@@ -1833,18 +1875,6 @@ struct CV_SymPogoInfo
   U64 dynamic_inst_count;
   U32 static_inst_count;
   U32 post_inline_static_inst_count;
-};
-
-//- (SymKind: INLINESITE2)
-
-typedef struct CV_SymInlineSite2 CV_SymInlineSite2;
-struct CV_SymInlineSite2
-{
-  U32 parent_off;
-  U32 end_off;
-  CV_ItemId inlinee;
-  U32 invocations;
-  // CV_BinaryAnnotation annotations (rest of data)
 };
 
 //- (SymKind: HEAPALLOCSITE)
@@ -2636,15 +2666,18 @@ X(IlLines,             0xF9)\
 X(FuncMDTokenMap,      0xFA)\
 X(TypeMDTokenMap,      0xFB)\
 X(MergedAssemblyInput, 0xFC)\
-X(CoffSymbolRVA,       0xFD)
+X(CoffSymbolRVA,       0xFD)\
+X(XfgHashType,         0xFF)\
+X(XfgHashVirtual,      0x100)
 
 typedef U32 CV_C13_SubSectionKind;
-typedef enum
+typedef enum CV_C13_SubSectionKindEnum
 {
 #define X(N,c) CV_C13_SubSectionKind_##N = c,
   CV_C13_SubSectionKindXList(X)
 #undef X
-} CV_C13_SubSectionKindEnum;
+}
+CV_C13_SubSectionKindEnum;
 
 typedef struct CV_C13_SubSectionHeader CV_C13_SubSectionHeader;
 struct CV_C13_SubSectionHeader
@@ -2656,13 +2689,14 @@ struct CV_C13_SubSectionHeader
 //- FileChksms sub-section
 
 typedef U8 CV_C13_ChecksumKind;
-typedef enum
+typedef enum CV_C13_ChecksumKindEnum
 {
   CV_C13_ChecksumKind_Null,
   CV_C13_ChecksumKind_MD5,
   CV_C13_ChecksumKind_SHA1,
   CV_C13_ChecksumKind_SHA256,
-} CV_C13_ChecksumKindEnum;
+}
+CV_C13_ChecksumKindEnum;
 
 typedef struct CV_C13_Checksum CV_C13_Checksum;
 struct CV_C13_Checksum
@@ -2740,6 +2774,26 @@ struct CV_C13_FrameData
   U16 prolog_size;
   U16 saved_reg_size;
   CV_C13_FrameDataFlags flags;
+};
+
+//- InlineLines sub-section 
+
+typedef U32 CV_C13_InlineeLinesSig;
+enum
+{
+  CV_C13_InlineeLinesSig_NORMAL,
+  CV_C13_InlineeLinesSig_EXTRA_FILES,
+};
+
+typedef struct CV_C13_InlineeSourceLineHeader CV_C13_InlineeSourceLineHeader;
+struct CV_C13_InlineeSourceLineHeader
+{
+  CV_ItemId inlinee;          // LF_FUNC_ID or LF_MFUNC_ID
+  U32 file_off;               // offset into FileChksms sub-section
+  U32 first_source_ln;        // base source line number for binary annotations
+  // if sig set to CV_C13_InlineeLinesSig_EXTRA_FILES
+  //  U32 extra_file_count;
+  //  U32 files[];
 };
 
 #pragma pack(pop)
@@ -2891,7 +2945,6 @@ struct CV_TypeIdArray
   U64 count;
 };
 
-
 ////////////////////////////////
 //~ CodeView Common Functions
 
@@ -2904,6 +2957,12 @@ internal B32              cv_numeric_fits_in_f64(CV_NumericParsed *num);
 internal U64              cv_u64_from_numeric(CV_NumericParsed *num);
 internal S64              cv_s64_from_numeric(CV_NumericParsed *num);
 internal F64              cv_f64_from_numeric(CV_NumericParsed *num);
+
+////////////////////////////////
+//~ Inline Binary Annotation Helpers
+
+internal U64 cv_decode_inline_annot_u32(String8 data, U64 offset, U32 *out_value);
+internal U64 cv_decode_inline_annot_s32(String8 data, U64 offset, S32 *out_value);
 
 ////////////////////////////////
 //~ CodeView Sym/Leaf Parser Functions

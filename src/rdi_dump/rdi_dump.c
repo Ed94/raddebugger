@@ -5,77 +5,87 @@
 //~ rjf: RDI Enum -> String Functions
 
 internal String8
-rdi_string_from_data_section_tag(RDI_DataSectionTag tag){
-  String8 result = {0};
-  switch (tag){
-#define X(N,C) case C: result = str8_lit(#N); break;
-#define Y(N)
-    RDI_DataSectionTagXList(X,Y)
-#undef X
-#undef Y
-  }
-  return(result);
-}
-
-internal String8
-rdi_string_from_arch(RDI_Arch arch){
-  String8 result = {0};
-  switch (arch){
-    default:           result = str8_lit("<invalid-arch>"); break;
-    case RDI_Arch_X86: result = str8_lit("x86"); break;
-    case RDI_Arch_X64: result = str8_lit("x64"); break;
-  }
-  return(result);
-}
-
-internal String8
-rdi_string_from_language(RDI_Language language){
-  String8 result = {0};
-  switch (language){
-#define X(name,code) case code: result = str8_lit(#name); break;
-    RDI_LanguageXList(X)
+rdi_string_from_data_section_tag(RDI_DataSectionTag v)
+{
+  String8 result = str8_lit("<invalid RDI_DataSectionTag>");
+  switch(v)
+  {
+    default:{}break;
+#define X(name) case RDI_DataSectionTag_##name:{result = str8_lit(#name);}break;
+    RDI_DataSectionTag_XList
 #undef X
   }
-  return(result);
+  return result;
 }
 
 internal String8
-rdi_string_from_type_kind(RDI_TypeKind type_kind){
-  String8 result = {0};
-  switch (type_kind){
-    default: result = str8_lit("<invalid-type-kind>"); break;
-#define X(name,code) case code: result = str8_lit(#name); break;
-#define XZ(name,code,size) X(name,code)
-#define Y(a,n)
-    RDI_TypeKindXList(X,XZ,Y)
-#undef X
-#undef XZ
-#undef Y
-  }
-  return(result);
-}
-
-internal String8
-rdi_string_from_member_kind(RDI_MemberKind member_kind){
-  String8 result = {0};
-  switch (member_kind){
-    default: result = str8_lit("<invalid-member-kind>"); break;
-#define X(N,C) case C: result = str8_lit(#N); break;
-    RDI_MemberKindXList(X)
+rdi_string_from_arch(RDI_Arch v)
+{
+  String8 result = str8_lit("<invalid RDI_Arch>");
+  switch(v)
+  {
+    default:{}break;
+#define X(name) case RDI_Arch_##name:{result = str8_lit(#name);}break;
+    RDI_Arch_XList
 #undef X
   }
-  return(result);
+  return result;
 }
 
 internal String8
-rdi_string_from_local_kind(RDI_LocalKind local_kind){
-  String8 result = {0};
-  switch (local_kind){
-    default:                         result = str8_lit("<invalid-local-kind>"); break;
-    case RDI_LocalKind_Parameter: result = str8_lit("Parameter");            break;
-    case RDI_LocalKind_Variable:  result = str8_lit("Variable");             break;
+rdi_string_from_language(RDI_Language v)
+{
+  String8 result = str8_lit("<invalid RDI_Language>");
+  switch(v)
+  {
+    default:{}break;
+#define X(name) case RDI_Language_##name:{result = str8_lit(#name);}break;
+    RDI_Language_XList
+#undef X
   }
-  return(result);
+  return result;
+}
+
+internal String8
+rdi_string_from_type_kind(RDI_TypeKind v)
+{
+  String8 result = str8_lit("<invalid RDI_TypeKind>");
+  switch(v)
+  {
+    default:{}break;
+#define X(name) case RDI_TypeKind_##name:{result = str8_lit(#name);}break;
+    RDI_TypeKind_XList
+#undef X
+  }
+  return result;
+}
+
+internal String8
+rdi_string_from_member_kind(RDI_MemberKind v)
+{
+  String8 result = str8_lit("<invalid RDI_MemberKind>");
+  switch(v)
+  {
+    default:{}break;
+#define X(name) case RDI_MemberKind_##name:{result = str8_lit(#name);}break;
+    RDI_MemberKind_XList
+#undef X
+  }
+  return result;
+}
+
+internal String8
+rdi_string_from_local_kind(RDI_LocalKind v)
+{
+  String8 result = str8_lit("<invalid RDI_LocalKind>");
+  switch(v)
+  {
+    default:{}break;
+#define X(name) case RDI_LocalKind_##name:{result = str8_lit(#name);}break;
+    RDI_LocalKind_XList
+#undef X
+  }
+  return result;
 }
 
 ////////////////////////////////
@@ -113,12 +123,12 @@ rdi_stringize_type_modifier_flags(Arena *arena, String8List *out,
 }
 
 internal void
-rdi_stringize_user_defined_type_flags(Arena *arena, String8List *out,
-                                      RDI_UserDefinedTypeFlags flags){
+rdi_stringize_udt_flags(Arena *arena, String8List *out,
+                        RDI_UDTFlags flags){
   if (flags == 0){
     str8_list_push(arena, out, str8_lit("0"));
   }
-  if (flags & RDI_UserDefinedTypeFlag_EnumMembers){
+  if (flags & RDI_UDTFlag_EnumMembers){
     str8_list_push(arena, out, str8_lit("EnumMembers "));
   }
 }
@@ -160,11 +170,11 @@ rdi_stringize_data_sections(Arena *arena, String8List *out, RDI_Parsed *parsed,
 internal void
 rdi_stringize_top_level_info(Arena *arena, String8List *out, RDI_Parsed *parsed,
                              RDI_TopLevelInfo *tli, U32 indent_level){
-  String8 arch_str = rdi_string_from_arch(tli->architecture);
+  String8 arch_str = rdi_string_from_arch(tli->arch);
   String8 exe_name = {0};
   exe_name.str = rdi_string_from_idx(parsed, tli->exe_name_string_idx, &exe_name.size);
   
-  str8_list_pushf(arena, out, "%.*sarchitecture=%.*s\n",
+  str8_list_pushf(arena, out, "%.*sarch=%.*s\n",
                   indent_level, rdi_stringize_spaces, str8_varg(arch_str));
   str8_list_pushf(arena, out, "%.*sexe_name='%.*s'\n",
                   indent_level, rdi_stringize_spaces, str8_varg(exe_name));
@@ -239,6 +249,11 @@ rdi_stringize_source_file(Arena *arena, String8List *out, RDI_Parsed *parsed,
   // extract line map data
   RDI_ParsedLineMap line_map = {0};
   rdi_line_map_from_source_file(parsed, source_file, &line_map);
+  
+  // normal source path
+  String8 path = {0};
+  path.str = rdi_string_from_idx(parsed, source_file->normal_full_path_string_idx, &path.size);
+  str8_list_pushf(arena, out, "%.*spath: \"%S\"\n", indent_level, rdi_stringize_spaces, path);
   
   // stringize line map data
   str8_list_pushf(arena, out, "%.*slines:\n", indent_level, rdi_stringize_spaces);
@@ -447,7 +462,7 @@ rdi_stringize_udt(Arena *arena, String8List *out, RDI_Parsed *parsed,
                   indent_level, rdi_stringize_spaces, udt->self_type_idx);
   
   str8_list_pushf(arena, out, "%.*sflags=", indent_level, rdi_stringize_spaces);
-  rdi_stringize_user_defined_type_flags(arena, out, udt->flags);
+  rdi_stringize_udt_flags(arena, out, udt->flags);
   str8_list_push(arena, out, str8_lit("\n"));
   
   if (udt->file_idx != 0){
@@ -457,7 +472,7 @@ rdi_stringize_udt(Arena *arena, String8List *out, RDI_Parsed *parsed,
   }
   
   // enum members
-  if (udt->flags & RDI_UserDefinedTypeFlag_EnumMembers){
+  if (udt->flags & RDI_UDTFlag_EnumMembers){
     U32 first_raw = udt->member_first;
     U32 opl_raw = first_raw + udt->member_count;
     U32 opl = ClampTop(opl_raw, member_bundle->enum_member_count);
@@ -707,38 +722,38 @@ rdi_stringize_scope(Arena *arena, String8List *out, RDI_Parsed *parsed,
                   str8_list_pushf(arena, out, "\n");
                 }break;
                 
-                case RDI_LocationKind_AddrRegisterPlusU16:
+                case RDI_LocationKind_AddrRegPlusU16:
                 {
-                  if (loc_base_ptr + sizeof(RDI_LocationRegisterPlusU16) > loc_data_opl){
-                    str8_list_pushf(arena, out, "AddrRegisterPlusU16( <invalid-encoding> )\n");
+                  if (loc_base_ptr + sizeof(RDI_LocationRegPlusU16) > loc_data_opl){
+                    str8_list_pushf(arena, out, "AddrRegPlusU16( <invalid-encoding> )\n");
                   }
                   else{
-                    RDI_LocationRegisterPlusU16 *loc = (RDI_LocationRegisterPlusU16*)loc_base_ptr;
-                    str8_list_pushf(arena, out, "AddrRegisterPlusU16(reg: %u, off: %u)\n",
-                                    loc->register_code, loc->offset);
+                    RDI_LocationRegPlusU16 *loc = (RDI_LocationRegPlusU16*)loc_base_ptr;
+                    str8_list_pushf(arena, out, "AddrRegPlusU16(reg: %u, off: %u)\n",
+                                    loc->reg_code, loc->offset);
                   }
                 }break;
                 
-                case RDI_LocationKind_AddrAddrRegisterPlusU16:
+                case RDI_LocationKind_AddrAddrRegPlusU16:
                 {
-                  if (loc_base_ptr + sizeof(RDI_LocationRegisterPlusU16) > loc_data_opl){
-                    str8_list_pushf(arena, out, "AddrAddrRegisterPlusU16( <invalid-encoding> )\n");
+                  if (loc_base_ptr + sizeof(RDI_LocationRegPlusU16) > loc_data_opl){
+                    str8_list_pushf(arena, out, "AddrAddrRegPlusU16( <invalid-encoding> )\n");
                   }
                   else{
-                    RDI_LocationRegisterPlusU16 *loc = (RDI_LocationRegisterPlusU16*)loc_base_ptr;
+                    RDI_LocationRegPlusU16 *loc = (RDI_LocationRegPlusU16*)loc_base_ptr;
                     str8_list_pushf(arena, out, "AddrAddrRegisterPlusU16(reg: %u, off: %u)\n",
-                                    loc->register_code, loc->offset);
+                                    loc->reg_code, loc->offset);
                   }
                 }break;
                 
-                case RDI_LocationKind_ValRegister:
+                case RDI_LocationKind_ValReg:
                 {
-                  if (loc_base_ptr + sizeof(RDI_LocationRegister) > loc_data_opl){
-                    str8_list_pushf(arena, out, "ValRegister( <invalid-encoding> )\n");
+                  if (loc_base_ptr + sizeof(RDI_LocationReg) > loc_data_opl){
+                    str8_list_pushf(arena, out, "ValReg( <invalid-encoding> )\n");
                   }
                   else{
-                    RDI_LocationRegister *loc = (RDI_LocationRegister*)loc_base_ptr;
-                    str8_list_pushf(arena, out, "ValRegister(reg: %u)\n", loc->register_code);
+                    RDI_LocationReg *loc = (RDI_LocationReg*)loc_base_ptr;
+                    str8_list_pushf(arena, out, "ValReg(reg: %u)\n", loc->reg_code);
                   }
                 }break;
               }

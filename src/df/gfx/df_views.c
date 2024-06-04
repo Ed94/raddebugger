@@ -1142,6 +1142,12 @@ df_watch_view_build(DF_Window *ws, DF_Panel *panel, DF_View *view, DF_WatchViewS
               String8 string = str8(edit_state->input_buffer, edit_state->input_size);
               UI_TxtOp op = ui_single_line_txt_op_from_event(scratch.arena, evt, string, edit_state->cursor, edit_state->mark);
               
+              // rjf: copy
+              if(op.flags & UI_TxtOpFlag_Copy && selection_tbl.min.x == selection_tbl.max.x && selection_tbl.min.y == selection_tbl.max.y)
+              {
+                os_set_clipboard_text(op.copy);
+              }
+              
               // rjf: any valid op & autocomplete hint? -> perform autocomplete first, then re-compute op
               if(autocomplete_hint_string.size != 0)
               {
@@ -2805,12 +2811,9 @@ DF_VIEW_UI_FUNCTION_DEF(FileSystem)
       if(ui_clicked(sig))
       {
         String8 new_path = str8_chop_last_slash(str8_chop_last_slash(path_query.path));
-        if(new_path.size != 0)
-        {
-          new_path = path_normalized_from_string(scratch.arena, new_path);
-          String8 new_cmd = push_str8f(scratch.arena, "%S/", new_path);
-          df_view_equip_spec(ws, view, view->spec, df_entity_from_handle(view->entity), new_cmd, &df_g_nil_cfg_node);
-        }
+        new_path = path_normalized_from_string(scratch.arena, new_path);
+        String8 new_cmd = push_str8f(scratch.arena, "%S%s", new_path, new_path.size != 0 ? "/" : "");
+        df_view_equip_spec(ws, view, view->spec, df_entity_from_handle(view->entity), new_cmd, &df_g_nil_cfg_node);
       }
     }
     
@@ -2887,11 +2890,11 @@ DF_VIEW_UI_FUNCTION_DEF(FileSystem)
       if(ui_clicked(file_sig))
       {
         String8 existing_path = str8_chop_last_slash(path_query.path);
-        String8 new_path = push_str8f(scratch.arena, "%S/%S/", existing_path, file->filename);
+        String8 new_path = push_str8f(scratch.arena, "%S%s%S/", existing_path, existing_path.size != 0 ? "/" : "", file->filename);
         new_path = path_normalized_from_string(scratch.arena, new_path);
         if(file->props.flags & FilePropertyFlag_IsFolder)
         {
-          String8 new_cmd = push_str8f(scratch.arena, "%S/", new_path);
+          String8 new_cmd = push_str8f(scratch.arena, "%S%s", new_path, new_path.size != 0 ? "/" : "");
           df_view_equip_spec(ws, view, view->spec, df_entity_from_handle(view->entity), new_cmd, &df_g_nil_cfg_node);
         }
         else
@@ -3270,7 +3273,7 @@ DF_VIEW_UI_FUNCTION_DEF(SymbolLister)
     for(U64 idx = 0; idx < rdis_count; idx += 1)
     {
       rdis[idx] = di_rdi_from_key(di_scope, &dbgi_keys.v[idx], endt_us);
-      graphs[idx] = tg_graph_begin(rdi_addr_size_from_arch(rdis[idx]->top_level_info->architecture), 256);
+      graphs[idx] = tg_graph_begin(rdi_addr_size_from_arch(rdis[idx]->top_level_info->arch), 256);
     }
   }
   
@@ -4933,7 +4936,7 @@ DF_VIEW_UI_FUNCTION_DEF(CallStack)
           TG_Key type_key = tg_key_ext(tg_kind_from_rdi_type_kind(type_node->kind), procedure->type_idx);
           U64 name_size = 0;
           U8 *name_ptr = rdi_string_from_idx(rdi, procedure->name_string_idx, &name_size);
-          TG_Graph *graph = tg_graph_begin(rdi_addr_size_from_arch(rdi->top_level_info->architecture), 256);
+          TG_Graph *graph = tg_graph_begin(rdi_addr_size_from_arch(rdi->top_level_info->arch), 256);
           symbol_name = str8(name_ptr, name_size);
           symbol_type_string = tg_string_from_key(scratch.arena, graph, rdi, type_key);
         }

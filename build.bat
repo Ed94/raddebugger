@@ -42,7 +42,7 @@ if "%asan%"=="1"      set auto_compile_flags=%auto_compile_flags% -fsanitize=add
 
 :: --- Compile/Link Line Definitions ------------------------------------------
 set cl_common=     /I..\src\ /I..\local\ /nologo /FC /Z7
-set clang_common=  -I..\src\ -I..\local\ -gcodeview -fdiagnostics-absolute-paths -Wall -Wno-unknown-warning-option -Wno-missing-braces -Wno-unused-function -Wno-writable-strings -Wno-unused-value -Wno-unused-variable -Wno-unused-local-typedef -Wno-deprecated-register -Wno-deprecated-declarations -Wno-unused-but-set-variable -Wno-single-bit-bitfield-constant-conversion -Xclang -flto-visibility-public-std -D_USE_MATH_DEFINES -Dstrdup=_strdup -Dgnu_printf=printf
+set clang_common=  -I..\src\ -I..\local\ -gcodeview -fdiagnostics-absolute-paths -Wall -Wno-unknown-warning-option -Wno-missing-braces -Wno-unused-function -Wno-writable-strings -Wno-unused-value -Wno-unused-variable -Wno-unused-local-typedef -Wno-deprecated-register -Wno-deprecated-declarations -Wno-unused-but-set-variable -Wno-single-bit-bitfield-constant-conversion -Wno-compare-distinct-pointer-types -Xclang -flto-visibility-public-std -D_USE_MATH_DEFINES -Dstrdup=_strdup -Dgnu_printf=printf
 set cl_debug=      call cl /Od /DBUILD_DEBUG=1 %cl_common% %auto_compile_flags%
 set cl_release=    call cl /O2 /DBUILD_DEBUG=0 %cl_common% %auto_compile_flags%
 set clang_debug=   call clang -g -O0 -DBUILD_DEBUG=1 %clang_common% %auto_compile_flags%
@@ -59,9 +59,9 @@ if "%clang%"=="1"   set only_compile=-c
 if "%msvc%"=="1"    set EHsc=/EHsc
 if "%clang%"=="1"   set EHsc=
 if "%msvc%"=="1"    set no_aslr=/DYNAMICBASE:NO
-if "%clang%"=="1"   set no_aslr=
-if "%msvc%"=="1"  set rc=call rc
-if "%clang%"=="1" set rc=call llvm-rc
+if "%clang%"=="1"   set no_aslr=-Wl,/DYNAMICBASE:NO
+if "%msvc%"=="1"    set rc=call rc
+if "%clang%"=="1"   set rc=call llvm-rc
 
 :: --- Choose Compile/Link Lines ----------------------------------------------
 if "%msvc%"=="1"      set compile_debug=%cl_debug%
@@ -98,7 +98,7 @@ if not "%no_meta%"=="1" (
 
 :: --- Build Everything (@build_targets) --------------------------------------
 pushd build
-if "%raddbg%"=="1"                     %compile% %gfx%       ..\src\raddbg\raddbg_main.cpp                                                %compile_link% %out%raddbg.exe || exit /b 1
+if "%raddbg%"=="1"                     %compile% %gfx%       ..\src\raddbg\raddbg_main.c                                                  %compile_link% %out%raddbg.exe || exit /b 1
 if "%rdi_from_pdb%"=="1"               %compile%             ..\src\rdi_from_pdb\rdi_from_pdb_main.c                                      %compile_link% %out%rdi_from_pdb.exe || exit /b 1
 if "%rdi_from_dwarf%"=="1"             %compile%             ..\src\rdi_from_dwarf\rdi_from_dwarf.c                                       %compile_link% %out%rdi_from_dwarf.exe || exit /b 1
 if "%rdi_dump%"=="1"                   %compile%             ..\src\rdi_dump\rdi_dump_main.c                                              %compile_link% %out%rdi_dump.exe || exit /b 1

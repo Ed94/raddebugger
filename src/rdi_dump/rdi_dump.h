@@ -41,19 +41,19 @@ struct RDI_ScopeBundle
 ////////////////////////////////
 //~ rjf: RDI Enum -> String Functions
 
-internal String8 rdi_string_from_data_section_tag(RDI_DataSectionTag tag);
-internal String8 rdi_string_from_arch(RDI_Arch arch);
-internal String8 rdi_string_from_language(RDI_Language language);
-internal String8 rdi_string_from_type_kind(RDI_TypeKind type_kind);
-internal String8 rdi_string_from_member_kind(RDI_MemberKind member_kind);
-internal String8 rdi_string_from_local_kind(RDI_LocalKind local_kind);
+internal String8 rdi_string_from_data_section_tag(RDI_DataSectionTag v);
+internal String8 rdi_string_from_arch(RDI_Arch v);
+internal String8 rdi_string_from_language(RDI_Language v);
+internal String8 rdi_string_from_type_kind(RDI_TypeKind v);
+internal String8 rdi_string_from_member_kind(RDI_MemberKind v);
+internal String8 rdi_string_from_local_kind(RDI_LocalKind v);
 
 ////////////////////////////////
 //~ rjf: RDI Flags -> String Functions
 
 internal void rdi_stringize_binary_section_flags(Arena *arena, String8List *out, RDI_BinarySectionFlags flags);
 internal void rdi_stringize_type_modifier_flags(Arena *arena, String8List *out, RDI_TypeModifierFlags flags);
-internal void rdi_stringize_user_defined_type_flags(Arena *arena, String8List *out, RDI_UserDefinedTypeFlags flags);
+internal void rdi_stringize_udt_flags(Arena *arena, String8List *out, RDI_UDTFlags flags);
 internal void rdi_stringize_link_flags(Arena *arena, String8List *out, RDI_LinkFlags flags);
 
 ////////////////////////////////
