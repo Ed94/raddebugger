@@ -667,8 +667,8 @@ struct DF_OdinMapData
 
 internal B32 df_odin_map_data(Arena *arena, EVAL_ParseCtx *parse_ctx, DF_CtrlCtx *ctrl_ctx, DF_Eval eval, DF_OdinMapData *md)
 {
-  B32 ok = false;
-  *md = zero_struct;
+  B32 ok = 0;
+  *md = (DF_OdinMapData){};
 
   TG_Key type_key = eval.type_key;
   TG_Kind type_kind = tg_kind_from_key(type_key);
@@ -731,7 +731,7 @@ internal B32 df_odin_map_data(Arena *arena, EVAL_ParseCtx *parse_ctx, DF_CtrlCtx
       md->value_ptr = df_odin_map_cell_index(md->key_ptr,   &md->key_cell_info,   md->cap);
       md->hash_ptr  = df_odin_map_cell_index(md->value_ptr, &md->value_cell_info, md->cap);
 
-      ok = true;
+      ok = 1;
     }
   }
 
@@ -797,7 +797,7 @@ DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(odin_map)
 
       if (row_expanded)
       {
-        DF_EvalVizBlock * value_block = df_eval_viz_block_begin(arena, DF_EvalVizBlockKind_Root, row_key, zero_struct, depth+2);
+        DF_EvalVizBlock * value_block = df_eval_viz_block_begin(arena, DF_EvalVizBlockKind_Root, row_key, (DF_ExpandKey)zero_struct, depth+2);
         value_block->eval                        = addr_value;
         value_block->cfg_table                   = child_cfg;
         value_block->string                      = push_str8f(arena, "value");
@@ -809,7 +809,7 @@ DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(odin_map)
         eval_hash.type_key = md.hash;
         eval_hash.mode = EVAL_EvalMode_Value;
         eval_hash.imm_u64 = h;
-        DF_EvalVizBlock * hash_block = df_eval_viz_block_begin(arena, DF_EvalVizBlockKind_Root, row_key, zero_struct, depth+2);
+        DF_EvalVizBlock * hash_block = df_eval_viz_block_begin(arena, DF_EvalVizBlockKind_Root, row_key, (DF_ExpandKey)zero_struct, depth+2);
         hash_block->eval                        = eval_hash;
         hash_block->cfg_table                   = child_cfg;
         hash_block->string                      = push_str8f(arena, "hash");
@@ -855,7 +855,7 @@ DF_VIEW_SETUP_FUNCTION_DEF(odin_map)
 
 DF_VIEW_STRING_FROM_STATE_FUNCTION_DEF(odin_map)
 {
-  String8 result {};
+  String8 result = (String8){};
   return result;
 }
 
