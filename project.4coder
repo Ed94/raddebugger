@@ -47,6 +47,7 @@ commands =
 {
   .rjf_f1 =
   {
+    //.win = "build rdi_from_pdb rdi_dump && pushd build && rdi_from_pdb --pdb:mule_main.pdb --out:mule_main.rdi && rdi_dump mule_main.rdi > mule_main.dump && popd",
     .win = "build raddbg telemetry",
     .linux = "",
     .out = "*compilation*",
@@ -56,7 +57,7 @@ commands =
   },
   .rjf_f2 =
   {
-    .win = "build mule_peb_trample",
+    .win = "build rdi_from_pdb rdi_dump && pushd build && rdi_from_pdb --pdb:mule_main.pdb --out:mule_main.rdi && rdi_dump mule_main.rdi > mule_main.dump && popd",
     .linux = "",
     .out = "*compilation*",
     .footer_panel = true,
@@ -74,7 +75,7 @@ commands =
   },
   .rjf_f4 =
   {
-    .win = "build rdi_from_pdb release telemetry && pushd build && rdi_from_pdb.exe --exe:UnrealEditorFortnite.exe --pdb:UnrealEditorFortnite.pdb --out:UnrealEditorFortnite.rdi --capture && popd",
+    .win = "build rdi_from_pdb release telemetry && pushd build && rdi_from_pdb.exe --pdb:UnrealEditorFortnite.pdb --out:profile.rdi --capture && popd",
     .linux = "",
     .out = "*compilation*",
     .footer_panel = true,

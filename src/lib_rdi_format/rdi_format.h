@@ -41,61 +41,70 @@ typedef int64_t  RDI_S64;
 #endif
 
 ////////////////////////////////////////////////////////////////
+//~ Overridable Enabling/Disabling Of Table Index Typechecking
+
+#if !defined(RDI_DISABLE_TABLE_INDEX_TYPECHECKING)
+# define RDI_DISABLE_TABLE_INDEX_TYPECHECKING 0
+#endif
+
+////////////////////////////////////////////////////////////////
 //~ Format Constants
 
 // \"raddbg\0\0\"
 #define RDI_MAGIC_CONSTANT   0x0000676264646172
-#define RDI_ENCODING_VERSION 1
+#define RDI_ENCODING_VERSION 6
 
 ////////////////////////////////////////////////////////////////
 //~ Format Types & Functions
 
-typedef RDI_U32 RDI_DataSectionTag;
-typedef enum RDI_DataSectionTagEnum
+typedef RDI_U32 RDI_SectionKind;
+typedef enum RDI_SectionKindEnum
 {
-RDI_DataSectionTag_NULL                 = 0x0000,
-RDI_DataSectionTag_TopLevelInfo         = 0x0001,
-RDI_DataSectionTag_StringData           = 0x0002,
-RDI_DataSectionTag_StringTable          = 0x0003,
-RDI_DataSectionTag_IndexRuns            = 0x0004,
-RDI_DataSectionTag_BinarySections       = 0x0005,
-RDI_DataSectionTag_FilePathNodes        = 0x0006,
-RDI_DataSectionTag_SourceFiles          = 0x0007,
-RDI_DataSectionTag_Units                = 0x0008,
-RDI_DataSectionTag_UnitVmap             = 0x0009,
-RDI_DataSectionTag_TypeNodes            = 0x000A,
-RDI_DataSectionTag_UDTs                 = 0x000B,
-RDI_DataSectionTag_Members              = 0x000C,
-RDI_DataSectionTag_EnumMembers          = 0x000D,
-RDI_DataSectionTag_GlobalVariables      = 0x000E,
-RDI_DataSectionTag_GlobalVmap           = 0x000F,
-RDI_DataSectionTag_ThreadVariables      = 0x0010,
-RDI_DataSectionTag_Procedures           = 0x0011,
-RDI_DataSectionTag_Scopes               = 0x0012,
-RDI_DataSectionTag_ScopeVoffData        = 0x0013,
-RDI_DataSectionTag_ScopeVmap            = 0x0014,
-RDI_DataSectionTag_Locals               = 0x0015,
-RDI_DataSectionTag_LocationBlocks       = 0x0016,
-RDI_DataSectionTag_LocationData         = 0x0017,
-RDI_DataSectionTag_NameMaps             = 0x0018,
-RDI_DataSectionTag_PRIMARY_COUNT        = 0x0019,
-RDI_DataSectionTag_SECONDARY            = 0x80000000,
-RDI_DataSectionTag_LineInfoVoffs        = RDI_DataSectionTag_SECONDARY|0x0001,
-RDI_DataSectionTag_LineInfoData         = RDI_DataSectionTag_SECONDARY|0x0002,
-RDI_DataSectionTag_LineInfoColumns      = RDI_DataSectionTag_SECONDARY|0x0003,
-RDI_DataSectionTag_LineMapNumbers       = RDI_DataSectionTag_SECONDARY|0x0004,
-RDI_DataSectionTag_LineMapRanges        = RDI_DataSectionTag_SECONDARY|0x0005,
-RDI_DataSectionTag_LineMapVoffs         = RDI_DataSectionTag_SECONDARY|0x0006,
-RDI_DataSectionTag_NameMapBuckets       = RDI_DataSectionTag_SECONDARY|0x0007,
-RDI_DataSectionTag_NameMapNodes         = RDI_DataSectionTag_SECONDARY|0x0008,
-} RDI_DataSectionTagEnum;
+RDI_SectionKind_NULL                 = 0x0000,
+RDI_SectionKind_TopLevelInfo         = 0x0001,
+RDI_SectionKind_StringData           = 0x0002,
+RDI_SectionKind_StringTable          = 0x0003,
+RDI_SectionKind_IndexRuns            = 0x0004,
+RDI_SectionKind_BinarySections       = 0x0005,
+RDI_SectionKind_FilePathNodes        = 0x0006,
+RDI_SectionKind_SourceFiles          = 0x0007,
+RDI_SectionKind_LineTables           = 0x0008,
+RDI_SectionKind_LineInfoVOffs        = 0x0009,
+RDI_SectionKind_LineInfoLines        = 0x000A,
+RDI_SectionKind_LineInfoColumns      = 0x000B,
+RDI_SectionKind_SourceLineMaps       = 0x000C,
+RDI_SectionKind_SourceLineMapNumbers = 0x000D,
+RDI_SectionKind_SourceLineMapRanges  = 0x000E,
+RDI_SectionKind_SourceLineMapVOffs   = 0x000F,
+RDI_SectionKind_Units                = 0x0010,
+RDI_SectionKind_UnitVMap             = 0x0011,
+RDI_SectionKind_TypeNodes            = 0x0012,
+RDI_SectionKind_UDTs                 = 0x0013,
+RDI_SectionKind_Members              = 0x0014,
+RDI_SectionKind_EnumMembers          = 0x0015,
+RDI_SectionKind_GlobalVariables      = 0x0016,
+RDI_SectionKind_GlobalVMap           = 0x0017,
+RDI_SectionKind_ThreadVariables      = 0x0018,
+RDI_SectionKind_Procedures           = 0x0019,
+RDI_SectionKind_Scopes               = 0x001A,
+RDI_SectionKind_ScopeVOffData        = 0x001B,
+RDI_SectionKind_ScopeVMap            = 0x001C,
+RDI_SectionKind_InlineSites          = 0x001D,
+RDI_SectionKind_Locals               = 0x001E,
+RDI_SectionKind_LocationBlocks       = 0x001F,
+RDI_SectionKind_LocationData         = 0x0020,
+RDI_SectionKind_NameMaps             = 0x0021,
+RDI_SectionKind_NameMapBuckets       = 0x0022,
+RDI_SectionKind_NameMapNodes         = 0x0023,
+RDI_SectionKind_COUNT                = 0x0024,
+} RDI_SectionKindEnum;
 
-typedef RDI_U32 RDI_DataSectionEncoding;
-typedef enum RDI_DataSectionEncodingEnum
+typedef RDI_U32 RDI_SectionEncoding;
+typedef enum RDI_SectionEncodingEnum
 {
-RDI_DataSectionEncoding_Unpacked   = 0,
-RDI_DataSectionEncoding_LZB        = 1,
-} RDI_DataSectionEncodingEnum;
+RDI_SectionEncoding_Unpacked   = 0,
+RDI_SectionEncoding_LZB        = 1,
+} RDI_SectionEncodingEnum;
 
 typedef RDI_U32 RDI_Arch;
 typedef enum RDI_ArchEnum
@@ -485,56 +494,133 @@ RDI_NameMapKind_NormalSourcePaths    = 6,
 RDI_NameMapKind_COUNT                = 7,
 } RDI_NameMapKindEnum;
 
-#define RDI_DataSectionTag_XList \
-X(NULL)\
-X(TopLevelInfo)\
-X(StringData)\
-X(StringTable)\
-X(IndexRuns)\
-X(BinarySections)\
-X(FilePathNodes)\
-X(SourceFiles)\
-X(Units)\
-X(UnitVmap)\
-X(TypeNodes)\
-X(UDTs)\
-X(Members)\
-X(EnumMembers)\
-X(GlobalVariables)\
-X(GlobalVmap)\
-X(ThreadVariables)\
-X(Procedures)\
-X(Scopes)\
-X(ScopeVoffData)\
-X(ScopeVmap)\
-X(Locals)\
-X(LocationBlocks)\
-X(LocationData)\
-X(NameMaps)\
-X(PRIMARY_COUNT)\
-X(SECONDARY)\
-X(LineInfoVoffs)\
-X(LineInfoData)\
-X(LineInfoColumns)\
-X(LineMapNumbers)\
-X(LineMapRanges)\
-X(LineMapVoffs)\
-X(NameMapBuckets)\
-X(NameMapNodes)\
+#define RDI_Header_XList \
+X(RDI_U64, magic)\
+X(RDI_U32, encoding_version)\
+X(RDI_U32, data_section_off)\
+X(RDI_U32, data_section_count)\
 
-#define RDI_DataSectionEncoding_XList \
+#define RDI_SectionKind_XList \
+X(NULL, null, RDI_U8)\
+X(TopLevelInfo, top_level_info, RDI_TopLevelInfo)\
+X(StringData, string_data, RDI_U8)\
+X(StringTable, string_table, RDI_U32)\
+X(IndexRuns, index_runs, RDI_U32)\
+X(BinarySections, binary_sections, RDI_BinarySection)\
+X(FilePathNodes, file_path_nodes, RDI_FilePathNode)\
+X(SourceFiles, source_files, RDI_SourceFile)\
+X(LineTables, line_tables, RDI_LineTable)\
+X(LineInfoVOffs, line_info_voffs, RDI_U64)\
+X(LineInfoLines, line_info_lines, RDI_Line)\
+X(LineInfoColumns, line_info_columns, RDI_Column)\
+X(SourceLineMaps, source_line_maps, RDI_SourceLineMap)\
+X(SourceLineMapNumbers, source_line_map_numbers, RDI_U32)\
+X(SourceLineMapRanges, source_line_map_ranges, RDI_U32)\
+X(SourceLineMapVOffs, source_line_map_voffs, RDI_U64)\
+X(Units, units, RDI_Unit)\
+X(UnitVMap, unit_vmap, RDI_VMapEntry)\
+X(TypeNodes, type_nodes, RDI_TypeNode)\
+X(UDTs, udts, RDI_UDT)\
+X(Members, members, RDI_Member)\
+X(EnumMembers, enum_members, RDI_EnumMember)\
+X(GlobalVariables, global_variables, RDI_GlobalVariable)\
+X(GlobalVMap, global_vmap, RDI_VMapEntry)\
+X(ThreadVariables, thread_variables, RDI_ThreadVariable)\
+X(Procedures, procedures, RDI_Procedure)\
+X(Scopes, scopes, RDI_Scope)\
+X(ScopeVOffData, scope_voff_data, RDI_U64)\
+X(ScopeVMap, scope_vmap, RDI_VMapEntry)\
+X(InlineSites, inline_sites, RDI_InlineSite)\
+X(Locals, locals, RDI_Local)\
+X(LocationBlocks, location_blocks, RDI_LocationBlock)\
+X(LocationData, location_data, RDI_U8)\
+X(NameMaps, name_maps, RDI_NameMap)\
+X(NameMapBuckets, name_map_buckets, RDI_NameMapBucket)\
+X(NameMapNodes, name_map_nodes, RDI_NameMapNode)\
+
+#define RDI_SectionEncoding_XList \
 X(Unpacked)\
 X(LZB)\
+
+#define RDI_Section_XList \
+X(RDI_SectionEncoding, encoding)\
+X(RDI_U32, pad)\
+X(RDI_U64, off)\
+X(RDI_U64, encoded_size)\
+X(RDI_U64, unpacked_size)\
+
+#define RDI_VMapEntry_XList \
+X(RDI_U64, voff)\
+X(RDI_U64, idx)\
 
 #define RDI_Arch_XList \
 X(NULL)\
 X(X86)\
 X(X64)\
 
+#define RDI_TopLevelInfo_XList \
+X(RDI_Arch, arch)\
+X(RDI_U32, exe_name_string_idx)\
+X(RDI_U64, exe_hash)\
+X(RDI_U64, voff_max)\
+X(RDI_U32, producer_name_string_idx)\
+
 #define RDI_BinarySectionFlags_XList \
-X(NULL)\
-X(X86)\
-X(X64)\
+X(Read)\
+X(Write)\
+X(Execute)\
+
+#define RDI_BinarySection_XList \
+X(RDI_U32, name_string_idx)\
+X(RDI_BinarySectionFlags, flags)\
+X(RDI_U64, voff_first)\
+X(RDI_U64, voff_opl)\
+X(RDI_U64, foff_first)\
+X(RDI_U64, foff_opl)\
+
+#define RDI_FilePathNode_XList \
+X(RDI_U32, name_string_idx)\
+X(RDI_U32, parent_path_node)\
+X(RDI_U32, first_child)\
+X(RDI_U32, next_sibling)\
+X(RDI_U32, source_file_idx)\
+
+#define RDI_SourceFile_XList \
+X(RDI_U32, file_path_node_idx)\
+X(RDI_U32, normal_full_path_string_idx)\
+X(RDI_U32, source_line_map_idx)\
+
+#define RDI_Unit_XList \
+X(RDI_U32, unit_name_string_idx)\
+X(RDI_U32, compiler_name_string_idx)\
+X(RDI_U32, source_file_path_node)\
+X(RDI_U32, object_file_path_node)\
+X(RDI_U32, archive_file_path_node)\
+X(RDI_U32, build_path_node)\
+X(RDI_Language, language)\
+X(RDI_U32, line_table_idx)\
+
+#define RDI_LineTable_XList \
+X(RDI_U32, voffs_base_idx)\
+X(RDI_U32, lines_base_idx)\
+X(RDI_U32, cols_base_idx)\
+X(RDI_U32, lines_count)\
+X(RDI_U32, cols_count)\
+
+#define RDI_Line_XList \
+X(RDI_U32, file_idx)\
+X(RDI_U32, line_num)\
+
+#define RDI_Column_XList \
+X(RDI_U16, col_first)\
+X(RDI_U16, col_opl)\
+
+#define RDI_SourceLineMapMemberTable \
+X(RDI_U32, line_count)\
+X(RDI_U32, voff_count)\
+X(RDI_U32, line_map_nums_base_idx)\
+X(RDI_U32, line_map_range_base_idx)\
+X(RDI_U32, line_map_voff_base_idx)\
 
 #define RDI_Language_XList \
 X(NULL)\
@@ -602,8 +688,22 @@ X(Variadic)\
 X(Const)\
 X(Volatile)\
 
-#define RDI_UDTFlag_XList \
+#define RDI_TypeNode_XList \
+X(RDI_TypeKind, kind)\
+X(RDI_U16, flags)\
+X(RDI_U32, byte_size)\
+
+#define RDI_UDTFlags_XList \
 X(EnumMembers)\
+
+#define RDI_UDT_XList \
+X(RDI_U32, self_type_idx)\
+X(RDI_UDTFlags, flags)\
+X(RDI_U32, member_first)\
+X(RDI_U32, member_count)\
+X(RDI_U32, file_idx)\
+X(RDI_U32, line)\
+X(RDI_U32, col)\
 
 #define RDI_MemberKind_XList \
 X(NULL)\
@@ -616,6 +716,18 @@ X(VTablePtr)\
 X(Base)\
 X(VirtualBase)\
 X(NestedType)\
+
+#define RDI_Member_XList \
+X(RDI_MemberKind, kind)\
+X(RDI_U16, pad)\
+X(RDI_U32, name_string_idx)\
+X(RDI_U32, type_idx)\
+X(RDI_U32, off)\
+
+#define RDI_EnumMember_XList \
+X(RDI_U32, name_string_idx)\
+X(RDI_U32, pad)\
+X(RDI_U64, val)\
 
 #define RDI_LinkFlags_XList \
 X(External)\
@@ -634,6 +746,72 @@ X(ValBytecodeStream)\
 X(AddrRegPlusU16)\
 X(AddrAddrRegPlusU16)\
 X(ValReg)\
+
+#define RDI_GlobalVariable_XList \
+X(RDI_U32, name_string_idx)\
+X(RDI_LinkFlags, link_flags)\
+X(RDI_U64, voff)\
+X(RDI_U32, type_idx)\
+X(RDI_U32, container_idx)\
+
+#define RDI_ThreadVariable_XList \
+X(RDI_U32, name_string_idx)\
+X(RDI_LinkFlags, link_flags)\
+X(RDI_U32, tls_off)\
+X(RDI_U32, type_idx)\
+X(RDI_U32, container_idx)\
+
+#define RDI_Procedure_XList \
+X(RDI_U32, name_string_idx)\
+X(RDI_U32, link_name_string_idx)\
+X(RDI_LinkFlags, link_flags)\
+X(RDI_U32, type_idx)\
+X(RDI_U32, root_scope_idx)\
+X(RDI_U32, container_idx)\
+
+#define RDI_Scope_XList \
+X(RDI_U32, proc_idx)\
+X(RDI_U32, parent_scope_idx)\
+X(RDI_U32, first_child_scope_idx)\
+X(RDI_U32, next_sibling_scope_idx)\
+X(RDI_U32, voff_range_first)\
+X(RDI_U32, voff_range_opl)\
+X(RDI_U32, local_first)\
+X(RDI_U32, local_count)\
+X(RDI_U32, static_local_idx_run_first)\
+X(RDI_U32, static_local_count)\
+X(RDI_U32, inline_site_idx)\
+
+#define RDI_InlineSite_XList \
+X(RDI_U32, name_string_idx)\
+X(RDI_U32, type_idx)\
+X(RDI_U32, owner_type_idx)\
+X(RDI_U32, line_table_idx)\
+
+#define RDI_Local_XList \
+X(RDI_LocalKind, kind)\
+X(RDI_U32, name_string_idx)\
+X(RDI_U32, type_idx)\
+X(RDI_U32, pad)\
+X(RDI_U32, location_first)\
+X(RDI_U32, location_opl)\
+
+#define RDI_LocationBlock_XList \
+X(RDI_U32, scope_off_first)\
+X(RDI_U32, scope_off_opl)\
+X(RDI_U32, location_data_off)\
+
+#define RDI_LocationBytecodeStream_XList \
+X(RDI_LocationKind, kind)\
+
+#define RDI_LocationRegPlusU16_XList \
+X(RDI_LocationKind, kind)\
+X(RDI_RegCode, reg_code)\
+X(RDI_U16, offset)\
+
+#define RDI_LocationReg_XList \
+X(RDI_LocationKind, kind)\
+X(RDI_RegCode, reg_code)\
 
 #define RDI_EvalOp_XList \
 X(Stop)\
@@ -708,6 +886,87 @@ X(LinkNameProcedures)\
 X(NormalSourcePaths)\
 X(COUNT)\
 
+#define RDI_NameMap_XList \
+X(RDI_U32, bucket_base_idx)\
+X(RDI_U32, node_base_idx)\
+X(RDI_U32, bucket_count)\
+X(RDI_U32, node_count)\
+
+#define RDI_NameMapBucket_XList \
+X(RDI_U32, first_node)\
+X(RDI_U32, node_count)\
+
+#define RDI_NameMapNode_XList \
+X(RDI_U32, string_idx)\
+X(RDI_U32, match_count)\
+X(RDI_U32, match_idx_or_idx_run_first)\
+
+#if !RDI_DISABLE_TABLE_INDEX_TYPECHECKING
+typedef struct RDI_U32_StringTable                 { RDI_U32 v; } RDI_U32_StringTable;
+typedef struct RDI_U32_IndexRuns                   { RDI_U32 v; } RDI_U32_IndexRuns;
+typedef struct RDI_U32_BinarySections              { RDI_U32 v; } RDI_U32_BinarySections;
+typedef struct RDI_U32_FilePathNodes               { RDI_U32 v; } RDI_U32_FilePathNodes;
+typedef struct RDI_U32_SourceFiles                 { RDI_U32 v; } RDI_U32_SourceFiles;
+typedef struct RDI_U32_LineTables                  { RDI_U32 v; } RDI_U32_LineTables;
+typedef struct RDI_U32_LineInfoVOffs               { RDI_U32 v; } RDI_U32_LineInfoVOffs;
+typedef struct RDI_U32_LineInfoLines               { RDI_U32 v; } RDI_U32_LineInfoLines;
+typedef struct RDI_U32_LineInfoColumns             { RDI_U32 v; } RDI_U32_LineInfoColumns;
+typedef struct RDI_U32_SourceLineMaps              { RDI_U32 v; } RDI_U32_SourceLineMaps;
+typedef struct RDI_U32_SourceLineMapNumbers        { RDI_U32 v; } RDI_U32_SourceLineMapNumbers;
+typedef struct RDI_U32_SourceLineMapRanges         { RDI_U32 v; } RDI_U32_SourceLineMapRanges;
+typedef struct RDI_U32_SourceLineMapVOffs          { RDI_U32 v; } RDI_U32_SourceLineMapVOffs;
+typedef struct RDI_U32_Units                       { RDI_U32 v; } RDI_U32_Units;
+typedef struct RDI_U32_TypeNodes                   { RDI_U32 v; } RDI_U32_TypeNodes;
+typedef struct RDI_U32_UDTs                        { RDI_U32 v; } RDI_U32_UDTs;
+typedef struct RDI_U32_Members                     { RDI_U32 v; } RDI_U32_Members;
+typedef struct RDI_U32_EnumMembers                 { RDI_U32 v; } RDI_U32_EnumMembers;
+typedef struct RDI_U32_GlobalVariables             { RDI_U32 v; } RDI_U32_GlobalVariables;
+typedef struct RDI_U32_ThreadVariables             { RDI_U32 v; } RDI_U32_ThreadVariables;
+typedef struct RDI_U32_Procedures                  { RDI_U32 v; } RDI_U32_Procedures;
+typedef struct RDI_U32_Scopes                      { RDI_U32 v; } RDI_U32_Scopes;
+typedef struct RDI_U32_ScopeVOffData               { RDI_U32 v; } RDI_U32_ScopeVOffData;
+typedef struct RDI_U32_InlineSites                 { RDI_U32 v; } RDI_U32_InlineSites;
+typedef struct RDI_U32_Locals                      { RDI_U32 v; } RDI_U32_Locals;
+typedef struct RDI_U32_LocationBlocks              { RDI_U32 v; } RDI_U32_LocationBlocks;
+typedef struct RDI_U32_LocationData                { RDI_U32 v; } RDI_U32_LocationData;
+typedef struct RDI_U32_NameMaps                    { RDI_U32 v; } RDI_U32_NameMaps;
+typedef struct RDI_U32_NameMapBuckets              { RDI_U32 v; } RDI_U32_NameMapBuckets;
+typedef struct RDI_U32_NameMapNodes                { RDI_U32 v; } RDI_U32_NameMapNodes;
+#else
+typedef struct RDI_U32_Table { RDI_U32 v; } RDI_U32_Table;
+typedef struct RDI_U64_Table { RDI_U64 v; } RDI_U64_Table;
+typedef RDI_U32_Table RDI_U32_StringTable;
+typedef RDI_U32_Table RDI_U32_IndexRuns;
+typedef RDI_U32_Table RDI_U32_BinarySections;
+typedef RDI_U32_Table RDI_U32_FilePathNodes;
+typedef RDI_U32_Table RDI_U32_SourceFiles;
+typedef RDI_U32_Table RDI_U32_LineTables;
+typedef RDI_U32_Table RDI_U32_LineInfoVOffs;
+typedef RDI_U32_Table RDI_U32_LineInfoLines;
+typedef RDI_U32_Table RDI_U32_LineInfoColumns;
+typedef RDI_U32_Table RDI_U32_SourceLineMaps;
+typedef RDI_U32_Table RDI_U32_SourceLineMapNumbers;
+typedef RDI_U32_Table RDI_U32_SourceLineMapRanges;
+typedef RDI_U32_Table RDI_U32_SourceLineMapVOffs;
+typedef RDI_U32_Table RDI_U32_Units;
+typedef RDI_U32_Table RDI_U32_TypeNodes;
+typedef RDI_U32_Table RDI_U32_UDTs;
+typedef RDI_U32_Table RDI_U32_Members;
+typedef RDI_U32_Table RDI_U32_EnumMembers;
+typedef RDI_U32_Table RDI_U32_GlobalVariables;
+typedef RDI_U32_Table RDI_U32_ThreadVariables;
+typedef RDI_U32_Table RDI_U32_Procedures;
+typedef RDI_U32_Table RDI_U32_Scopes;
+typedef RDI_U32_Table RDI_U32_ScopeVOffData;
+typedef RDI_U32_Table RDI_U32_InlineSites;
+typedef RDI_U32_Table RDI_U32_Locals;
+typedef RDI_U32_Table RDI_U32_LocationBlocks;
+typedef RDI_U32_Table RDI_U32_LocationData;
+typedef RDI_U32_Table RDI_U32_NameMaps;
+typedef RDI_U32_Table RDI_U32_NameMapBuckets;
+typedef RDI_U32_Table RDI_U32_NameMapNodes;
+#endif
+
 #define RDI_EVAL_CTRLBITS(decodeN,popN,pushN) ((decodeN) | ((popN) << 4) | ((pushN) << 6))
 #define RDI_DECODEN_FROM_CTRLBITS(ctrlbits)   ((ctrlbits) & 0xf)
 #define RDI_POPN_FROM_CTRLBITS(ctrlbits)      (((ctrlbits) >> 4) & 0x3)
@@ -723,11 +982,11 @@ RDI_U32 data_section_off;
 RDI_U32 data_section_count;
 };
 
-typedef struct RDI_DataSection RDI_DataSection;
-struct RDI_DataSection
+typedef struct RDI_Section RDI_Section;
+struct RDI_Section
 {
-RDI_DataSectionTag tag;
-RDI_DataSectionEncoding encoding;
+RDI_SectionEncoding encoding;
+RDI_U32 pad;
 RDI_U64 off;
 RDI_U64 encoded_size;
 RDI_U64 unpacked_size;
@@ -747,6 +1006,7 @@ RDI_Arch arch;
 RDI_U32 exe_name_string_idx;
 RDI_U64 exe_hash;
 RDI_U64 voff_max;
+RDI_U32 producer_name_string_idx;
 };
 
 typedef struct RDI_BinarySection RDI_BinarySection;
@@ -775,10 +1035,7 @@ struct RDI_SourceFile
 {
 RDI_U32 file_path_node_idx;
 RDI_U32 normal_full_path_string_idx;
-RDI_U32 line_map_count;
-RDI_U32 line_map_nums_data_idx;
-RDI_U32 line_map_range_data_idx;
-RDI_U32 line_map_voff_data_idx;
+RDI_U32 source_line_map_idx;
 };
 
 typedef struct RDI_Unit RDI_Unit;
@@ -791,10 +1048,17 @@ RDI_U32 object_file_path_node;
 RDI_U32 archive_file_path_node;
 RDI_U32 build_path_node;
 RDI_Language language;
-RDI_U32 line_info_voffs_data_idx;
-RDI_U32 line_info_data_idx;
-RDI_U32 line_info_col_data_idx;
-RDI_U32 line_info_count;
+RDI_U32 line_table_idx;
+};
+
+typedef struct RDI_LineTable RDI_LineTable;
+struct RDI_LineTable
+{
+RDI_U32 voffs_base_idx;
+RDI_U32 lines_base_idx;
+RDI_U32 cols_base_idx;
+RDI_U32 lines_count;
+RDI_U32 cols_count;
 };
 
 typedef struct RDI_Line RDI_Line;
@@ -809,6 +1073,16 @@ struct RDI_Column
 {
 RDI_U16 col_first;
 RDI_U16 col_opl;
+};
+
+typedef struct RDI_SourceLineMap RDI_SourceLineMap;
+struct RDI_SourceLineMap
+{
+RDI_U32 line_count;
+RDI_U32 voff_count;
+RDI_U32 line_map_nums_base_idx;
+RDI_U32 line_map_range_base_idx;
+RDI_U32 line_map_voff_base_idx;
 };
 
 typedef struct RDI_TypeNode RDI_TypeNode;
@@ -831,13 +1105,15 @@ RDI_U32 byte_size;
     {
       RDI_U32 direct_type_idx;
       RDI_U32 count;
-      union{
+      union
+      {
         // when kind is 'Function' or 'Method'
         RDI_U32 param_idx_run_first;
         // when kind is 'MemberPtr'
         RDI_U32 owner_type_idx;
       };
-    } constructed;
+    }
+    constructed;
     
     // kind is 'user defined'
     struct
@@ -845,7 +1121,8 @@ RDI_U32 byte_size;
       RDI_U32 name_string_idx;
       RDI_U32 direct_type_idx;
       RDI_U32 udt_idx;
-    } user_defined;
+    }
+    user_defined;
     
     // (kind = Bitfield)
     struct
@@ -853,7 +1130,8 @@ RDI_U32 byte_size;
       RDI_U32 direct_type_idx;
       RDI_U32 off;
       RDI_U32 size;
-    } bitfield;
+    }
+    bitfield;
   }
   ;
 };
@@ -932,6 +1210,16 @@ RDI_U32 local_first;
 RDI_U32 local_count;
 RDI_U32 static_local_idx_run_first;
 RDI_U32 static_local_count;
+RDI_U32 inline_site_idx;
+};
+
+typedef struct RDI_InlineSite RDI_InlineSite;
+struct RDI_InlineSite
+{
+RDI_U32 name_string_idx;
+RDI_U32 type_idx;
+RDI_U32 owner_type_idx;
+RDI_U32 line_table_idx;
 };
 
 typedef struct RDI_Local RDI_Local;
@@ -977,9 +1265,10 @@ RDI_RegCode reg_code;
 typedef struct RDI_NameMap RDI_NameMap;
 struct RDI_NameMap
 {
-RDI_NameMapKind kind;
-RDI_U32 bucket_data_idx;
-RDI_U32 node_data_idx;
+RDI_U32 bucket_base_idx;
+RDI_U32 node_base_idx;
+RDI_U32 bucket_count;
+RDI_U32 node_count;
 };
 
 typedef struct RDI_NameMapBucket RDI_NameMapBucket;
@@ -997,6 +1286,42 @@ RDI_U32 match_count;
 RDI_U32 match_idx_or_idx_run_first;
 };
 
+typedef RDI_TopLevelInfo                 RDI_SectionElementType_TopLevelInfo;
+typedef RDI_U8                           RDI_SectionElementType_StringData;
+typedef RDI_U32                          RDI_SectionElementType_StringTable;
+typedef RDI_U32                          RDI_SectionElementType_IndexRuns;
+typedef RDI_BinarySection                RDI_SectionElementType_BinarySections;
+typedef RDI_FilePathNode                 RDI_SectionElementType_FilePathNodes;
+typedef RDI_SourceFile                   RDI_SectionElementType_SourceFiles;
+typedef RDI_LineTable                    RDI_SectionElementType_LineTables;
+typedef RDI_U64                          RDI_SectionElementType_LineInfoVOffs;
+typedef RDI_Line                         RDI_SectionElementType_LineInfoLines;
+typedef RDI_Column                       RDI_SectionElementType_LineInfoColumns;
+typedef RDI_SourceLineMap                RDI_SectionElementType_SourceLineMaps;
+typedef RDI_U32                          RDI_SectionElementType_SourceLineMapNumbers;
+typedef RDI_U32                          RDI_SectionElementType_SourceLineMapRanges;
+typedef RDI_U64                          RDI_SectionElementType_SourceLineMapVOffs;
+typedef RDI_Unit                         RDI_SectionElementType_Units;
+typedef RDI_VMapEntry                    RDI_SectionElementType_UnitVMap;
+typedef RDI_TypeNode                     RDI_SectionElementType_TypeNodes;
+typedef RDI_UDT                          RDI_SectionElementType_UDTs;
+typedef RDI_Member                       RDI_SectionElementType_Members;
+typedef RDI_EnumMember                   RDI_SectionElementType_EnumMembers;
+typedef RDI_GlobalVariable               RDI_SectionElementType_GlobalVariables;
+typedef RDI_VMapEntry                    RDI_SectionElementType_GlobalVMap;
+typedef RDI_ThreadVariable               RDI_SectionElementType_ThreadVariables;
+typedef RDI_Procedure                    RDI_SectionElementType_Procedures;
+typedef RDI_Scope                        RDI_SectionElementType_Scopes;
+typedef RDI_U64                          RDI_SectionElementType_ScopeVOffData;
+typedef RDI_VMapEntry                    RDI_SectionElementType_ScopeVMap;
+typedef RDI_InlineSite                   RDI_SectionElementType_InlineSites;
+typedef RDI_Local                        RDI_SectionElementType_Locals;
+typedef RDI_LocationBlock                RDI_SectionElementType_LocationBlocks;
+typedef RDI_U8                           RDI_SectionElementType_LocationData;
+typedef RDI_NameMap                      RDI_SectionElementType_NameMaps;
+typedef RDI_NameMapBucket                RDI_SectionElementType_NameMapBuckets;
+typedef RDI_NameMapNode                  RDI_SectionElementType_NameMapNodes;
+
 RDI_PROC RDI_U64 rdi_hash(RDI_U8 *ptr, RDI_U64 size);
 RDI_PROC RDI_U32 rdi_size_from_basic_type_kind(RDI_TypeKind kind);
 RDI_PROC RDI_U32 rdi_addr_size_from_arch(RDI_Arch arch);
@@ -1004,6 +1329,8 @@ RDI_PROC RDI_EvalConversionKind rdi_eval_conversion_kind_from_typegroups(RDI_Eva
 RDI_PROC RDI_S32 rdi_eval_op_typegroup_are_compatible(RDI_EvalOp op, RDI_EvalTypeGroup group);
 RDI_PROC RDI_U8 *rdi_explanation_string_from_eval_conversion_kind(RDI_EvalConversionKind kind, RDI_U64 *size_out);
 
+extern RDI_U16 rdi_section_element_size_table[37];
+extern RDI_U8 rdi_section_is_required_table[37];
 extern RDI_U8 rdi_eval_op_ctrlbits_table[45];
 
 #endif // RDI_FORMAT_H

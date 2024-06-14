@@ -1515,6 +1515,34 @@ extern "C"{
 }
 
 ////////////////////////////////
+//~ rjf: Basic Inline Line Info Tests
+
+#if defined(_MSC_VER)
+# define FORCE_INLINE __forceinline
+#elif defined(__clang__)
+# define FORCE_INLINE  __attribute__((always_inline))
+#else
+# error need force inline for this compiler
+#endif
+
+static FORCE_INLINE void
+basic_inlinee(int inlinee_param_x, int inlinee_param_y, int inlinee_param_z)
+{
+  OutputDebugStringA("A\n");
+  OutputDebugStringA("B\n");
+  OutputDebugStringA("C\n");
+  OutputDebugStringA("D\n");
+}
+
+static void
+basic_inline_tests(void)
+{
+  OutputDebugStringA("{\n");
+  basic_inlinee(12, 34, 56);
+  OutputDebugStringA("}\n");
+}
+
+////////////////////////////////
 //~ rjf: Fancy Visualization Eval Tests
 
 static unsigned int
@@ -2269,6 +2297,14 @@ debug_string_tests(void)
   {
     OutputDebugStringA("Hello, World!\n");
   }
+  char message[65409+1];
+	memset(&message[0], '=', sizeof(message));
+	for(int i = 1; i < sizeof(message); i += 128)
+	{
+		message[i] = '\n';
+	}
+	message[sizeof(message) - 1] = 0;
+  OutputDebugStringA(message);
 #endif
 }
 
@@ -2594,6 +2630,8 @@ mule_main(int argc, char** argv){
   indirect_call_jump_stepping_tests();
   
   alloca_stepping_tests();
+  
+  basic_inline_tests();
   
   inline_stepping_tests();
   

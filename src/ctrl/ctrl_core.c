@@ -418,11 +418,11 @@ ctrl_event_list_concat_in_place(CTRL_EventList *dst, CTRL_EventList *to_push)
 //- rjf: serialization
 
 internal String8
-ctrl_serialized_string_from_event(Arena *arena, CTRL_Event *event)
+ctrl_serialized_string_from_event(Arena *arena, CTRL_Event *event, U64 max)
 {
   Temp scratch = scratch_begin(&arena, 1);
   String8List srl = {0};
-  str8_serial_begin(scratch.arena, &srl);;
+  str8_serial_begin(scratch.arena, &srl);
   {
     str8_serial_push_struct(scratch.arena, &srl, &event->kind);
     str8_serial_push_struct(scratch.arena, &srl, &event->cause);
@@ -440,8 +440,10 @@ ctrl_serialized_string_from_event(Arena *arena, CTRL_Event *event)
     str8_serial_push_struct(scratch.arena, &srl, &event->tls_root);
     str8_serial_push_struct(scratch.arena, &srl, &event->timestamp);
     str8_serial_push_struct(scratch.arena, &srl, &event->exception_code);
-    str8_serial_push_struct(scratch.arena, &srl, &event->string.size);
-    str8_serial_push_data(scratch.arena, &srl, event->string.str, event->string.size);
+    String8 string = event->string;
+    string.size = Min(string.size, max-srl.total_size);
+    str8_serial_push_struct(scratch.arena, &srl, &string.size);
+    str8_serial_push_data(scratch.arena, &srl, string.str, string.size);
   }
   String8 string = str8_serial_end(arena, &srl);
   scratch_end(scratch);
@@ -913,6 +915,7 @@ ctrl_init(void)
   ctrl_state->u2c_ring_mutex = os_mutex_alloc();
   ctrl_state->u2c_ring_cv = os_condition_variable_alloc();
   ctrl_state->c2u_ring_size = KB(64);
+  ctrl_state->c2u_ring_max_string_size = ctrl_state->c2u_ring_size/2;
   ctrl_state->c2u_ring_base = push_array_no_zero(arena, U8, ctrl_state->c2u_ring_size);
   ctrl_state->c2u_ring_mutex = os_mutex_alloc();
   ctrl_state->c2u_ring_cv = os_condition_variable_alloc();
@@ -2757,7 +2760,7 @@ ctrl_c2u_push_events(CTRL_EventList *events)
     for(CTRL_EventNode *n = events->first; n != 0; n = n ->next)
     {
       Temp scratch = scratch_begin(0, 0);
-      String8 event_srlzed = ctrl_serialized_string_from_event(scratch.arena, &n->v);
+      String8 event_srlzed = ctrl_serialized_string_from_event(scratch.arena, &n->v, ctrl_state->c2u_ring_size-sizeof(U64));
       OS_MutexScope(ctrl_state->c2u_ring_mutex) for(;;)
       {
         U64 unconsumed_size = (ctrl_state->c2u_ring_write_pos-ctrl_state->c2u_ring_read_pos);
@@ -2944,11 +2947,11 @@ ctrl_thread__append_resolved_module_user_bp_traps(Arena *arena, CTRL_MachineID m
         // rjf: filename -> src_id
         U32 src_id = 0;
         {
-          RDI_NameMap *mapptr = rdi_name_map_from_kind(rdi, RDI_NameMapKind_NormalSourcePaths);
+          RDI_NameMap *mapptr = rdi_element_from_name_idx(rdi, NameMaps, RDI_NameMapKind_NormalSourcePaths);
           if(mapptr != 0)
           {
             RDI_ParsedNameMap map = {0};
-            rdi_name_map_parse(rdi, mapptr, &map);
+            rdi_parsed_from_name_map(rdi, mapptr, &map);
             RDI_NameMapNode *node = rdi_name_map_lookup(rdi, &map, filename_normalized.str, filename_normalized.size);
             if(node != 0)
             {
@@ -2964,9 +2967,10 @@ ctrl_thread__append_resolved_module_user_bp_traps(Arena *arena, CTRL_MachineID m
         
         // rjf: src_id * pt -> push
         {
-          RDI_SourceFile *src = rdi_element_from_idx(rdi, source_files, src_id);
-          RDI_ParsedLineMap line_map = {0};
-          rdi_line_map_from_source_file(rdi, src, &line_map);
+          RDI_SourceFile *src = rdi_element_from_name_idx(rdi, SourceFiles, src_id);
+          RDI_SourceLineMap *src_line_map = rdi_element_from_name_idx(rdi, SourceLineMaps, src->source_line_map_idx);
+          RDI_ParsedSourceLineMap line_map = {0};
+          rdi_parsed_from_source_line_map(rdi, src_line_map, &line_map);
           U32 voff_count = 0;
           U64 *voffs = rdi_line_voffs_from_num(&line_map, pt.line, &voff_count);
           for(U32 i = 0; i < voff_count; i += 1)
@@ -2983,26 +2987,21 @@ ctrl_thread__append_resolved_module_user_bp_traps(Arena *arena, CTRL_MachineID m
       {
         String8 symbol_name = bp->string;
         U64 voff = bp->u64;
-        if(rdi != 0 && rdi->procedures != 0)
+        RDI_NameMap *mapptr = rdi_element_from_name_idx(rdi, NameMaps, RDI_NameMapKind_Procedures);
+        RDI_ParsedNameMap map = {0};
+        rdi_parsed_from_name_map(rdi, mapptr, &map);
+        RDI_NameMapNode *node = rdi_name_map_lookup(rdi, &map, symbol_name.str, symbol_name.size);
+        if(node != 0)
         {
-          RDI_NameMap *mapptr = rdi_name_map_from_kind(rdi, RDI_NameMapKind_Procedures);
-          if(mapptr != 0)
+          U32 id_count = 0;
+          U32 *ids = rdi_matches_from_map_node(rdi, node, &id_count);
+          for(U32 match_i = 0; match_i < id_count; match_i += 1)
           {
-            RDI_ParsedNameMap map = {0};
-            rdi_name_map_parse(rdi, mapptr, &map);
-            RDI_NameMapNode *node = rdi_name_map_lookup(rdi, &map, symbol_name.str, symbol_name.size);
-            if(node != 0)
-            {
-              U32 id_count = 0;
-              U32 *ids = rdi_matches_from_map_node(rdi, node, &id_count);
-              for(U32 match_i = 0; match_i < id_count; match_i += 1)
-              {
-                U64 proc_voff = rdi_first_voff_from_proc(rdi, ids[match_i]);
-                U64 proc_vaddr = proc_voff + base_vaddr;
-                DMN_Trap trap = {process, proc_vaddr + voff, (U64)bp};
-                dmn_trap_chunk_list_push(arena, traps_out, 256, &trap);
-              }
-            }
+            RDI_Procedure *procedure = rdi_element_from_name_idx(rdi, Procedures, ids[match_i]);
+            U64 proc_voff = rdi_first_voff_from_procedure(rdi, procedure);
+            U64 proc_vaddr = proc_voff + base_vaddr;
+            DMN_Trap trap = {process, proc_vaddr + voff, (U64)bp};
+            dmn_trap_chunk_list_push(arena, traps_out, 256, &trap);
           }
         }
       }break;
@@ -3445,11 +3444,10 @@ ctrl_thread__next_dmn_event(Arena *arena, DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg, 
                 CTRL_Entity *dbg_path = ctrl_entity_child_from_kind(module, CTRL_EntityKind_DebugInfoPath);
                 DI_Key dbgi_key = {dbg_path->string, dbg_path->timestamp};
                 RDI_Parsed *rdi = di_rdi_from_key(di_scope, &dbgi_key, max_U64);
-                RDI_NameMap *unparsed_map = rdi_name_map_from_kind(rdi, RDI_NameMapKind_GlobalVariables);
-                if(rdi->global_variables != 0 && unparsed_map != 0)
+                RDI_NameMap *unparsed_map = rdi_element_from_name_idx(rdi, NameMaps, RDI_NameMapKind_GlobalVariables);
                 {
                   RDI_ParsedNameMap map = {0};
-                  rdi_name_map_parse(rdi, unparsed_map, &map);
+                  rdi_parsed_from_name_map(rdi, unparsed_map, &map);
                   String8 name = str8_lit("__asan_shadow_memory_dynamic_address");
                   RDI_NameMapNode *node = rdi_name_map_lookup(rdi, &map, name.str, name.size);
                   if(node != 0)
@@ -3458,7 +3456,7 @@ ctrl_thread__next_dmn_event(Arena *arena, DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg, 
                     U32 *ids = rdi_matches_from_map_node(rdi, node, &id_count);
                     if(id_count > 0)
                     {
-                      RDI_GlobalVariable *global_var = rdi_element_from_idx(rdi, global_variables, ids[0]);
+                      RDI_GlobalVariable *global_var = rdi_element_from_name_idx(rdi, GlobalVariables, ids[0]);
                       U64 global_var_voff = global_var->voff;
                       U64 global_var_vaddr = global_var->voff + module->vaddr_range.min;
                       Architecture arch = process->arch;
@@ -3672,13 +3670,17 @@ ctrl_thread__next_dmn_event(Arena *arena, DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg, 
     }break;
     case DMN_EventKind_DebugString:
     {
-      CTRL_Event *out_evt = ctrl_event_list_push(scratch.arena, &evts);
-      out_evt->kind       = CTRL_EventKind_DebugString;
-      out_evt->msg_id     = msg->msg_id;
-      out_evt->machine_id = CTRL_MachineID_Local;
-      out_evt->entity     = event->thread;
-      out_evt->parent     = event->process;
-      out_evt->string     = event->string;
+      U64 num_strings = (event->string.size + ctrl_state->c2u_ring_max_string_size-1) / ctrl_state->c2u_ring_max_string_size;
+      for(U64 string_idx = 0; string_idx < num_strings; string_idx += 1)
+      {
+        CTRL_Event *out_evt = ctrl_event_list_push(scratch.arena, &evts);
+        out_evt->kind       = CTRL_EventKind_DebugString;
+        out_evt->msg_id     = msg->msg_id;
+        out_evt->machine_id = CTRL_MachineID_Local;
+        out_evt->entity     = event->thread;
+        out_evt->parent     = event->process;
+        out_evt->string     = str8_substr(event->string, r1u64(string_idx*ctrl_state->c2u_ring_max_string_size, (string_idx+1)*ctrl_state->c2u_ring_max_string_size));
+      }
     }break;
     case DMN_EventKind_SetThreadName:
     {
@@ -4247,9 +4249,9 @@ ctrl_thread__run(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg)
         CTRL_Entity *dbg_path = ctrl_entity_child_from_kind(module, CTRL_EntityKind_DebugInfoPath);
         DI_Key dbgi_key = {dbg_path->string, dbg_path->timestamp};
         RDI_Parsed *rdi = di_rdi_from_key(di_scope, &dbgi_key, max_U64);
-        RDI_NameMap *unparsed_map = rdi_name_map_from_kind(rdi, RDI_NameMapKind_Procedures);
+        RDI_NameMap *unparsed_map = rdi_element_from_name_idx(rdi, NameMaps, RDI_NameMapKind_Procedures);
         RDI_ParsedNameMap map = {0};
-        rdi_name_map_parse(rdi, unparsed_map, &map);
+        rdi_parsed_from_name_map(rdi, unparsed_map, &map);
         
         //- rjf: add traps for user-specified entry points on this message, if specified
         B32 entries_found = 0;
@@ -4268,7 +4270,8 @@ ctrl_thread__run(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg)
                 procedure_id = ids[0];
               }
             }
-            U64 voff = rdi_first_voff_from_proc(rdi, procedure_id);
+            RDI_Procedure *procedure = rdi_element_from_name_idx(rdi, Procedures, procedure_id);
+            U64 voff = rdi_first_voff_from_procedure(rdi, procedure);
             if(voff != 0)
             {
               entries_found = 1;
@@ -4296,7 +4299,8 @@ ctrl_thread__run(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg)
                   procedure_id = ids[0];
                 }
               }
-              U64 voff = rdi_first_voff_from_proc(rdi, procedure_id);
+              RDI_Procedure *procedure = rdi_element_from_name_idx(rdi, Procedures, procedure_id);
+              U64 voff = rdi_first_voff_from_procedure(rdi, procedure);
               if(voff != 0)
               {
                 entries_found = 1;
@@ -4323,7 +4327,8 @@ ctrl_thread__run(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg)
                 procedure_id = ids[0];
               }
             }
-            U64 voff = rdi_first_voff_from_proc(rdi, procedure_id);
+            RDI_Procedure *procedure = rdi_element_from_name_idx(rdi, Procedures, procedure_id);
+            U64 voff = rdi_first_voff_from_procedure(rdi, procedure);
             if(voff != 0)
             {
               DMN_Trap trap = {process->handle, module_base_vaddr + voff};
@@ -4356,7 +4361,8 @@ ctrl_thread__run(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg)
                 procedure_id = ids[0];
               }
             }
-            U64 voff = rdi_first_voff_from_proc(rdi, procedure_id);
+            RDI_Procedure *procedure = rdi_element_from_name_idx(rdi, Procedures, procedure_id);
+            U64 voff = rdi_first_voff_from_procedure(rdi, procedure);
             if(voff != 0)
             {
               entries_found = 1;
@@ -4400,7 +4406,8 @@ ctrl_thread__run(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg)
                 procedure_id = ids[0];
               }
             }
-            U64 voff = rdi_first_voff_from_proc(rdi, procedure_id);
+            RDI_Procedure *procedure = rdi_element_from_name_idx(rdi, Procedures, procedure_id);
+            U64 voff = rdi_first_voff_from_procedure(rdi, procedure);
             if(voff != 0)
             {
               entries_found = 1;

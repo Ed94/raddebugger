@@ -3272,8 +3272,10 @@ DF_VIEW_UI_FUNCTION_DEF(SymbolLister)
   {
     for(U64 idx = 0; idx < rdis_count; idx += 1)
     {
-      rdis[idx] = di_rdi_from_key(di_scope, &dbgi_keys.v[idx], endt_us);
-      graphs[idx] = tg_graph_begin(rdi_addr_size_from_arch(rdis[idx]->top_level_info->arch), 256);
+      RDI_Parsed *rdi = di_rdi_from_key(di_scope, &dbgi_keys.v[idx], endt_us);
+      RDI_TopLevelInfo *tli = rdi_element_from_name_idx(rdi, TopLevelInfo, 0);
+      rdis[idx] = rdi;
+      graphs[idx] = tg_graph_begin(rdi_addr_size_from_arch(tli->arch), 256);
     }
   }
   
@@ -3302,9 +3304,11 @@ DF_VIEW_UI_FUNCTION_DEF(SymbolLister)
     for(U64 rdi_idx = 0; rdi_idx < rdis_count; rdi_idx += 1)
     {
       RDI_Parsed *rdi = rdis[rdi_idx];
-      if(base_idx <= item->idx && item->idx < base_idx + rdi->procedures_count)
+      U64 rdi_procedures_count = 0;
+      rdi_section_raw_table_from_kind(rdi, RDI_SectionKind_Procedures, &rdi_procedures_count);
+      if(base_idx <= item->idx && item->idx < base_idx + rdi_procedures_count)
       {
-        RDI_Procedure *procedure = rdi_element_from_idx(rdi, procedures, item->idx-base_idx);
+        RDI_Procedure *procedure = rdi_element_from_name_idx(rdi, Procedures, item->idx-base_idx);
         U64 name_size = 0;
         U8 *name_base = rdi_string_from_idx(rdi, procedure->name_string_idx, &name_size);
         String8 name = str8(name_base, name_size);
@@ -3317,7 +3321,7 @@ DF_VIEW_UI_FUNCTION_DEF(SymbolLister)
         }
         break;
       }
-      base_idx += rdi->procedures_count;
+      base_idx += rdi_procedures_count;
     }
   }
   
@@ -3360,23 +3364,25 @@ DF_VIEW_UI_FUNCTION_DEF(SymbolLister)
       {
         for(U64 rdi_idx = 0; rdi_idx < rdis_count; rdi_idx += 1)
         {
-          if(base_idx <= item->idx && item->idx < base_idx + rdis[rdi_idx]->procedures_count)
+          U64 procedures_count = 0;
+          rdi_section_raw_table_from_kind(rdis[rdi_idx], RDI_SectionKind_Procedures, &procedures_count);
+          if(base_idx <= item->idx && item->idx < base_idx + procedures_count)
           {
             dbgi_key = dbgi_keys.v[rdi_idx];
             rdi = rdis[rdi_idx];
             graph = graphs[rdi_idx];
             break;
           }
-          base_idx += rdis[rdi_idx]->procedures_count;
+          base_idx += procedures_count;
         }
       }
       
       //- rjf: unpack this item's info
-      RDI_Procedure *procedure = rdi_element_from_idx(rdi, procedures, item->idx-base_idx);
+      RDI_Procedure *procedure = rdi_element_from_name_idx(rdi, Procedures, item->idx-base_idx);
       U64 name_size = 0;
       U8 *name_base = rdi_string_from_idx(rdi, procedure->name_string_idx, &name_size);
       String8 name = str8(name_base, name_size);
-      RDI_TypeNode *type_node = rdi_element_from_idx(rdi, type_nodes, procedure->type_idx);
+      RDI_TypeNode *type_node = rdi_element_from_name_idx(rdi, TypeNodes, procedure->type_idx);
       TG_Key type_key = tg_key_ext(tg_kind_from_rdi_type_kind(type_node->kind), procedure->type_idx);
       
       //- rjf: build item button
@@ -3411,7 +3417,7 @@ DF_VIEW_UI_FUNCTION_DEF(SymbolLister)
       if(ui_hovering(sig)) UI_Tooltip
       {
         U64 binary_voff = df_voff_from_dbgi_key_symbol_name(&dbgi_key, name);
-        DF_TextLineDasm2SrcInfo dasm2src_info = df_text_line_dasm2src_info_from_dbgi_key_voff(&dbgi_key, binary_voff);
+        DF_TextLineDasm2SrcInfo dasm2src_info = df_text_line_dasm2src_info_from_dbgi_key_voff(&dbgi_key, binary_voff, 0);
         String8 file_path = df_full_path_from_entity(scratch.arena, dasm2src_info.file);
         S64 line_num = dasm2src_info.pt.line;
         df_code_label(1.f, 0, df_rgba_from_theme_color(DF_ThemeColor_CodeFunction), name);
@@ -3461,8 +3467,9 @@ DF_VIEW_CMD_FUNCTION_DEF(Target)
   {
     DF_Cmd *cmd = &n->cmd;
     
-    // rjf: mismatched view => skip
-    if(df_panel_from_handle(cmd->params.panel) != panel)
+    // rjf: mismatched window/panel => skip
+    if(df_window_from_handle(cmd->params.window) != ws ||
+       df_panel_from_handle(cmd->params.panel) != panel)
     {
       continue;
     }
@@ -4801,7 +4808,7 @@ DF_VIEW_UI_FUNCTION_DEF(Scheduler)
               DF_Entity *module = df_module_from_process_vaddr(process, rip_vaddr);
               U64 rip_voff = df_voff_from_vaddr(module, rip_vaddr);
               DI_Key dbgi_key = df_dbgi_key_from_module(module);
-              DF_TextLineDasm2SrcInfo line_info = df_text_line_dasm2src_info_from_dbgi_key_voff(&dbgi_key, rip_voff);
+              DF_TextLineDasm2SrcInfo line_info = df_text_line_dasm2src_info_from_dbgi_key_voff(&dbgi_key, rip_voff, 0);
               if(!df_entity_is_nil(line_info.file))
               {
                 UI_PrefWidth(ui_children_sum(0)) df_entity_src_loc_button(ws, line_info.file, line_info.pt);
@@ -4835,14 +4842,15 @@ DF_VIEW_UI_FUNCTION_DEF(CallStack)
   DI_Scope *scope = di_scope_open();
   DF_CtrlCtx ctrl_ctx = df_ctrl_ctx_from_view(ws, view);
   DF_Entity *thread = df_entity_from_handle(ctrl_ctx.thread);
-  U64 selected_unwind_count = ctrl_ctx.unwind_count;
+  Architecture arch = df_architecture_from_entity(thread);
   DF_Entity *process = thread->parent;
   Vec4F32 thread_color = df_rgba_from_theme_color(DF_ThemeColor_PlainText);
   if(thread->flags & DF_EntityFlag_HasColor)
   {
     thread_color = df_rgba_from_entity(thread);
   }
-  CTRL_Unwind unwind = df_query_cached_unwind_from_thread(thread);
+  CTRL_Unwind base_unwind = df_query_cached_unwind_from_thread(thread);
+  DF_Unwind rich_unwind = df_unwind_from_ctrl_unwind(scratch.arena, scope, process, &base_unwind);
   
   //- rjf: grab state
   typedef struct DF_CallStackViewState DF_CallStackViewState;
@@ -4873,8 +4881,8 @@ DF_VIEW_UI_FUNCTION_DEF(CallStack)
     scroll_list_params.flags         = UI_ScrollListFlag_All;
     scroll_list_params.row_height_px = floor_f32(ui_top_font_size()*2.5f);
     scroll_list_params.dim_px        = dim_2f32(rect);
-    scroll_list_params.cursor_range  = r2s64(v2s64(0, 0), v2s64(3, unwind.frames.count));
-    scroll_list_params.item_range    = r1s64(0, unwind.frames.count+1);
+    scroll_list_params.cursor_range  = r2s64(v2s64(0, 0), v2s64(3, rich_unwind.frames.count));
+    scroll_list_params.item_range    = r1s64(0, rich_unwind.frames.count+1);
     scroll_list_params.cursor_min_is_empty_selection[Axis2_Y] = 1;
   }
   UI_ScrollListSignal scroll_list_sig = {0};
@@ -4907,7 +4915,9 @@ DF_VIEW_UI_FUNCTION_DEF(CallStack)
       }
       
       //- rjf: frame rows
-      for(S64 row_num = visible_row_range.min; row_num <= visible_row_range.max && row_num <= unwind.frames.count; row_num += 1)
+      for(S64 row_num = visible_row_range.min;
+          row_num <= visible_row_range.max && row_num <= rich_unwind.frames.count;
+          row_num += 1)
       {
         if(row_num == 0)
         {
@@ -4917,28 +4927,24 @@ DF_VIEW_UI_FUNCTION_DEF(CallStack)
         
         // rjf: unpack frame
         U64 frame_idx = row_num-1;
-        CTRL_UnwindFrame *frame = &unwind.frames.v[frame_idx];
+        DF_UnwindFrame *frame = &rich_unwind.frames.v[frame_idx];
         U64 rip_vaddr = regs_rip_from_arch_block(thread->arch, frame->regs);
         DF_Entity *module = df_module_from_process_vaddr(process, rip_vaddr);
         B32 frame_valid = (rip_vaddr != 0);
-        U64 rip_voff = df_voff_from_vaddr(module, rip_vaddr);
-        DI_Key dbgi_key = df_dbgi_key_from_module(module);
-        RDI_Parsed *rdi = di_rdi_from_key(scope, &dbgi_key, 0);
+        TG_Graph *graph = tg_graph_begin(bit_size_from_arch(thread->arch)/8, 256);
         String8 symbol_name = {0};
         String8 symbol_type_string = {0};
-        if(rdi->scope_vmap != 0)
+        if(frame->procedure != 0)
         {
-          U64 scope_idx = rdi_vmap_idx_from_voff(rdi->scope_vmap, rdi->scope_vmap_count, rip_voff);
-          RDI_Scope *scope = rdi_element_from_idx(rdi, scopes, scope_idx);
-          U64 proc_idx = scope->proc_idx;
-          RDI_Procedure *procedure = &rdi->procedures[proc_idx];
-          RDI_TypeNode *type_node = rdi_element_from_idx(rdi, type_nodes, procedure->type_idx);
-          TG_Key type_key = tg_key_ext(tg_kind_from_rdi_type_kind(type_node->kind), procedure->type_idx);
-          U64 name_size = 0;
-          U8 *name_ptr = rdi_string_from_idx(rdi, procedure->name_string_idx, &name_size);
-          TG_Graph *graph = tg_graph_begin(rdi_addr_size_from_arch(rdi->top_level_info->arch), 256);
-          symbol_name = str8(name_ptr, name_size);
-          symbol_type_string = tg_string_from_key(scratch.arena, graph, rdi, type_key);
+          symbol_name.str = rdi_name_from_procedure(frame->rdi, frame->procedure, &symbol_name.size);
+          RDI_TypeNode *type = rdi_element_from_name_idx(frame->rdi, TypeNodes, frame->procedure->type_idx);
+          symbol_type_string = tg_string_from_key(scratch.arena, graph, frame->rdi, tg_key_ext(tg_kind_from_rdi_type_kind(type->kind), frame->procedure->type_idx));
+        }
+        if(frame->inline_site != 0)
+        {
+          symbol_name.str = rdi_string_from_idx(frame->rdi, frame->inline_site->name_string_idx, &symbol_name.size);
+          RDI_TypeNode *type = rdi_element_from_name_idx(frame->rdi, TypeNodes, frame->inline_site->type_idx);
+          symbol_type_string = tg_string_from_key(scratch.arena, graph, frame->rdi, tg_key_ext(tg_kind_from_rdi_type_kind(type->kind), frame->inline_site->type_idx));
         }
         
         // rjf: build row
@@ -4953,7 +4959,12 @@ DF_VIEW_UI_FUNCTION_DEF(CallStack)
             UI_TextAlignment(UI_TextAlign_Center)
             UI_FocusHot((row_selected && cs->cursor.x == 0) ? UI_FocusKind_On : UI_FocusKind_Off)
           {
-            String8 selected_string = selected_unwind_count == frame_idx ? df_g_icon_kind_text_table[DF_IconKind_RightArrow] : str8_lit("");
+            String8 selected_string = {0};
+            if(ctrl_ctx.unwind_count == frame->base_unwind_idx &&
+               ctrl_ctx.inline_unwind_count == frame->inline_unwind_idx)
+            {
+              selected_string = df_g_icon_kind_text_table[DF_IconKind_RightArrow];
+            }
             UI_Box *box = ui_build_box_from_stringf(UI_BoxFlag_Clickable|UI_BoxFlag_DrawText, "%S###selection_%i", selected_string,
                                                     (int)frame_idx);
             UI_Signal sig = ui_signal_from_box(box);
@@ -4966,8 +4977,10 @@ DF_VIEW_UI_FUNCTION_DEF(CallStack)
             if(ui_double_clicked(sig) || sig.f&UI_SignalFlag_KeyboardPressed)
             {
               DF_CmdParams params = df_cmd_params_from_view(ws, panel, view);
-              params.index = frame_idx;
-              df_cmd_params_mark_slot(&params, DF_CmdParamSlot_Index);
+              df_cmd_params_mark_slot(&params, DF_CmdParamSlot_BaseUnwindIndex);
+              df_cmd_params_mark_slot(&params, DF_CmdParamSlot_InlineUnwindIndex);
+              params.base_unwind_index = frame->base_unwind_idx;
+              params.inline_unwind_index = frame->inline_unwind_idx;
               df_push_cmd__root(&params, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_SelectUnwind));
             }
           }
@@ -5000,6 +5013,14 @@ DF_VIEW_UI_FUNCTION_DEF(CallStack)
             UI_Box *box = ui_build_box_from_stringf(UI_BoxFlag_Clickable|UI_BoxFlag_Clip, "frame_%I64x", frame_idx);
             UI_Parent(box)
             {
+              if(frame->inline_site != 0)
+              {
+                UI_PrefWidth(ui_text_dim(10, 1))
+                {
+                  ui_set_next_text_color(df_rgba_from_theme_color(DF_ThemeColor_WeakText));
+                  ui_label(str8_lit("[inlined]"));
+                }
+              }
               if(symbol_name.size == 0)
               {
                 ui_set_next_text_color(df_rgba_from_theme_color(DF_ThemeColor_WeakText));
@@ -5028,8 +5049,10 @@ DF_VIEW_UI_FUNCTION_DEF(CallStack)
             if(ui_double_clicked(sig) || sig.f&UI_SignalFlag_KeyboardPressed)
             {
               DF_CmdParams params = df_cmd_params_from_view(ws, panel, view);
-              params.index = frame_idx;
-              df_cmd_params_mark_slot(&params, DF_CmdParamSlot_Index);
+              df_cmd_params_mark_slot(&params, DF_CmdParamSlot_BaseUnwindIndex);
+              df_cmd_params_mark_slot(&params, DF_CmdParamSlot_InlineUnwindIndex);
+              params.base_unwind_index = frame->base_unwind_idx;
+              params.inline_unwind_index = frame->inline_unwind_idx;
               df_push_cmd__root(&params, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_SelectUnwind));
             }
           }
@@ -5049,8 +5072,10 @@ DF_VIEW_UI_FUNCTION_DEF(CallStack)
             if(ui_double_clicked(sig) || sig.f&UI_SignalFlag_KeyboardPressed)
             {
               DF_CmdParams params = df_cmd_params_from_view(ws, panel, view);
-              params.index = frame_idx;
-              df_cmd_params_mark_slot(&params, DF_CmdParamSlot_Index);
+              df_cmd_params_mark_slot(&params, DF_CmdParamSlot_BaseUnwindIndex);
+              df_cmd_params_mark_slot(&params, DF_CmdParamSlot_InlineUnwindIndex);
+              params.base_unwind_index = frame->base_unwind_idx;
+              params.inline_unwind_index = frame->inline_unwind_idx;
               df_push_cmd__root(&params, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_SelectUnwind));
             }
           }
@@ -5932,13 +5957,14 @@ DF_VIEW_UI_FUNCTION_DEF(Code)
       {
         DF_Entity *thread = thread_n->entity;
         DF_Entity *process = df_entity_ancestor_from_kind(thread, DF_EntityKind_Process);
-        U64 unwind_count = (thread == selected_thread) ? ctrl_ctx.unwind_count : 0;
+        U64 base_unwind_count = (thread == selected_thread) ? ctrl_ctx.unwind_count : 0;
+        U64 inline_unwind_count = (thread == selected_thread) ? ctrl_ctx.inline_unwind_count : 0;
         U64 rip_vaddr = df_query_cached_rip_from_thread_unwind(thread, unwind_count);
         U64 last_inst_on_unwound_rip_vaddr = rip_vaddr - !!unwind_count;
         DF_Entity *module = df_module_from_process_vaddr(process, last_inst_on_unwound_rip_vaddr);
         U64 rip_voff = df_voff_from_vaddr(module, last_inst_on_unwound_rip_vaddr);
         DI_Key dbgi_key = df_dbgi_key_from_module(module);
-        DF_TextLineDasm2SrcInfo dasm2src_info = df_text_line_dasm2src_info_from_dbgi_key_voff(&dbgi_key, rip_voff);
+        DF_TextLineDasm2SrcInfo dasm2src_info = df_text_line_dasm2src_info_from_dbgi_key_voff(&dbgi_key, rip_voff, inline_unwind_count);
         if(dasm2src_info.file == entity && visible_line_num_range.min <= dasm2src_info.pt.line && dasm2src_info.pt.line <= visible_line_num_range.max)
         {
           U64 slice_line_idx = dasm2src_info.pt.line-visible_line_num_range.min;
@@ -6614,10 +6640,10 @@ DF_VIEW_CMD_FUNCTION_DEF(Disassembly)
   //
   DF_Entity *process = df_entity_from_handle(dv->process);
   Architecture arch = df_architecture_from_entity(process);
-  U64 dasm_base_vaddr = AlignDownPow2(dv->base_vaddr, KB(64));
+  U64 dasm_base_vaddr = AlignDownPow2(dv->base_vaddr, KB(16));
   DF_Entity *dasm_module = df_module_from_process_vaddr(process, dasm_base_vaddr);
   DI_Key dasm_dbgi_key = df_dbgi_key_from_module(dasm_module);
-  Rng1U64 dasm_vaddr_range = r1u64(dasm_base_vaddr, dasm_base_vaddr+KB(64));
+  Rng1U64 dasm_vaddr_range = r1u64(dasm_base_vaddr, dasm_base_vaddr+KB(16));
   U128 dasm_key = ctrl_hash_store_key_from_process_vaddr_range(process->ctrl_machine_id, process->ctrl_handle, dasm_vaddr_range, 0);
   U128 dasm_data_hash = {0};
   DASM_Params dasm_params = {0};
@@ -7078,7 +7104,7 @@ DF_VIEW_UI_FUNCTION_DEF(Disassembly)
         DF_TextLineDasm2SrcInfoNode *dasm2src_n = push_array(scratch.arena, DF_TextLineDasm2SrcInfoNode, 1);
         SLLQueuePush(code_slice_params.line_dasm2src[slice_idx].first, code_slice_params.line_dasm2src[slice_idx].last, dasm2src_n);
         code_slice_params.line_dasm2src[slice_idx].count += 1;
-        dasm2src_n->v = df_text_line_dasm2src_info_from_dbgi_key_voff(&dbgi_key, voff);
+        dasm2src_n->v = df_text_line_dasm2src_info_from_dbgi_key_voff(&dbgi_key, voff, 0);
       }
     }
   }
@@ -7250,7 +7276,7 @@ DF_VIEW_UI_FUNCTION_DEF(Disassembly)
       DF_Entity *module = df_module_from_process_vaddr(process, vaddr);
       DI_Key dbgi_key = df_dbgi_key_from_module(module);
       U64 voff = df_voff_from_vaddr(module, vaddr);
-      DF_TextLineDasm2SrcInfo dasm2src = df_text_line_dasm2src_info_from_dbgi_key_voff(&dbgi_key, voff);
+      DF_TextLineDasm2SrcInfo dasm2src = df_text_line_dasm2src_info_from_dbgi_key_voff(&dbgi_key, voff, 0);
       String8 file_path = df_full_path_from_entity(scratch.arena, dasm2src.file);
       DF_CmdParams params = df_cmd_params_from_view(ws, panel, view);
       params.text_point = dasm2src.pt;
