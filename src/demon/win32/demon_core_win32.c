@@ -580,6 +580,7 @@ internal B32
 dmn_w32_thread_read_reg_block(Architecture arch, HANDLE thread, void *reg_block)
 {
   B32 result = 0;
+  ProfBeginFunction();
   switch(arch)
   {
     ////////////////////////////
@@ -817,6 +818,7 @@ dmn_w32_thread_read_reg_block(Architecture arch, HANDLE thread, void *reg_block)
       scratch_end(scratch);
     }break;
   }
+  ProfEnd();
   return result;
 }
 
@@ -824,6 +826,7 @@ internal B32
 dmn_w32_thread_write_reg_block(Architecture arch, HANDLE thread, void *reg_block)
 {
   B32 result = 0;
+  ProfBeginFunction();
   switch(arch)
   {
     ////////////////////////////
@@ -1050,6 +1053,7 @@ dmn_w32_thread_write_reg_block(Architecture arch, HANDLE thread, void *reg_block
     }break;
   }
   ins_atomic_u64_inc_eval(&dmn_w32_shared->reg_gen);
+  ProfEnd();
   return result;
 }
 
@@ -1342,7 +1346,9 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
     B32 any_processes_live = dmn_w32_shared->new_process_pending;
     if(!any_processes_live)
     {
-      for(DMN_W32_Entity *process = dmn_w32_shared->entities_base->first; process != &dmn_w32_entity_nil; process = process->next)
+      for(DMN_W32_Entity *process = dmn_w32_shared->entities_base->first;
+          process != &dmn_w32_entity_nil;
+          process = process->next)
       {
         if(process->kind == DMN_W32_EntityKind_Process)
         {
@@ -1380,9 +1386,37 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
       Temp scratch = scratch_begin(&arena, 1);
       
       //////////////////////////
+      //- rjf: get single step thread's context (x64 single-step-set fast path)
+      //
+      CONTEXT *single_step_thread_ctx = 0;
+      if(!dmn_handle_match(ctrls->single_step_thread, dmn_handle_zero()))
+      {
+        DMN_W32_Entity *thread = dmn_w32_entity_from_handle(ctrls->single_step_thread);
+        Architecture arch = thread->arch;
+        switch(arch)
+        {
+          default:{}break;
+          case Architecture_x64:
+          {
+            U32 ctx_flags = DMN_W32_CTX_X64|DMN_W32_CTX_INTEL_CONTROL;
+            DWORD size = 0;
+            InitializeContext(0, ctx_flags, 0, &size);
+            if(GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+            {
+              void *ctx_memory = push_array(scratch.arena, U8, size);
+              if(!InitializeContext(ctx_memory, ctx_flags, &single_step_thread_ctx, &size))
+              {
+                single_step_thread_ctx = 0;
+              }
+            }
+          }break;
+        }
+      }
+      
+      //////////////////////////
       //- rjf: set single step bit
       //
-      if(!dmn_handle_match(ctrls->single_step_thread, dmn_handle_zero()))
+      if(!dmn_handle_match(ctrls->single_step_thread, dmn_handle_zero())) ProfScope("set single step bit")
       {
         DMN_W32_Entity *thread = dmn_w32_entity_from_handle(ctrls->single_step_thread);
         Architecture arch = thread->arch;
@@ -1396,7 +1430,7 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
           case Architecture_arm32:
           {NotImplemented;}break;
           
-          //- rjf: x86/64
+          //- rjf: x86
           case Architecture_x86:
           {
             REGS_RegBlockX86 regs = {0};
@@ -1404,12 +1438,22 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
             regs.eflags.u32 |= 0x100;
             dmn_thread_write_reg_block(ctrls->single_step_thread, &regs);
           }break;
+          
+          //- rjf: x64
           case Architecture_x64:
           {
-            REGS_RegBlockX64 regs = {0};
-            dmn_thread_read_reg_block(ctrls->single_step_thread, &regs);
-            regs.rflags.u64 |= 0x100;
-            dmn_thread_write_reg_block(ctrls->single_step_thread, &regs);
+            if(!GetThreadContext(thread->handle, single_step_thread_ctx))
+            {
+              single_step_thread_ctx = 0;
+            }
+            if(single_step_thread_ctx != 0)
+            {
+              U64 rflags = single_step_thread_ctx->EFlags|0x2;
+              U64 new_rflags = rflags | 0x100;
+              single_step_thread_ctx->EFlags = new_rflags;
+              SetThreadContext(thread->handle, single_step_thread_ctx);
+              ins_atomic_u64_inc_eval(&dmn_w32_shared->reg_gen);
+            }
           }break;
         }
       }
@@ -1473,10 +1517,9 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
             B32 is_frozen = 0;
             {
               // rjf: single-step? freeze if not the single-step thread.
-              if(!dmn_handle_match(dmn_handle_zero(), ctrls->single_step_thread) &&
-                 !dmn_handle_match(dmn_w32_handle_from_entity(thread), ctrls->single_step_thread))
+              if(!dmn_handle_match(dmn_handle_zero(), ctrls->single_step_thread))
               {
-                is_frozen = 1;
+                is_frozen = !dmn_handle_match(dmn_w32_handle_from_entity(thread), ctrls->single_step_thread);
               }
               
               // rjf: not single-stepping? determine based on run controls freezing info
@@ -1566,9 +1609,14 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
         {
           if(dmn_w32_shared->exception_not_handled && !ctrls->ignore_previous_exception)
           {
-            dmn_w32_shared->exception_not_handled = 0;
+            log_infof("using DBG_EXCEPTION_NOT_HANDLED\n");
             resume_code = DBG_EXCEPTION_NOT_HANDLED;
           }
+          else
+          {
+            log_infof("using DBG_CONTINUE\n");
+          }
+          dmn_w32_shared->exception_not_handled = 0;
         }
         
         ////////////////////////
@@ -1981,19 +2029,53 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
               B32 should_do_rollback = (hit_user_trap || (is_trap && !hit_explicit_trap));
               
               //- rjf: roll back thread's instruction pointer
-              U64 post_trap_rip = 0;
-              if(should_do_rollback)
+              if(should_do_rollback) ProfScope("roll back thread's instruction pointer")
               {
-                Temp temp = temp_begin(scratch.arena);
-                U64 regs_block_size = regs_block_size_from_architecture(thread->arch);
-                void *regs_block = push_array(scratch.arena, U8, regs_block_size);
-                if(dmn_w32_thread_read_reg_block(thread->arch, thread->handle, regs_block))
+                switch(thread->arch)
                 {
-                  post_trap_rip = regs_rip_from_arch_block(thread->arch, regs_block);
-                  regs_arch_block_write_rip(thread->arch, regs_block, instruction_pointer);
-                  dmn_w32_thread_write_reg_block(thread->arch, thread->handle, regs_block);
+                  //- rjf: default, general path
+                  default:
+                  {
+                    Temp temp = temp_begin(scratch.arena);
+                    U64 regs_block_size = regs_block_size_from_architecture(thread->arch);
+                    void *regs_block = push_array(scratch.arena, U8, regs_block_size);
+                    if(dmn_w32_thread_read_reg_block(thread->arch, thread->handle, regs_block))
+                    {
+                      regs_arch_block_write_rip(thread->arch, regs_block, instruction_pointer);
+                      dmn_w32_thread_write_reg_block(thread->arch, thread->handle, regs_block);
+                    }
+                    temp_end(temp);
+                  }break;
+                  
+                  //- rjf: x64 (fastpath)
+                  case Architecture_x64:
+                  {
+                    CONTEXT *ctx = 0;
+                    U32 ctx_flags = DMN_W32_CTX_X64|DMN_W32_CTX_INTEL_CONTROL;
+                    DWORD size = 0;
+                    InitializeContext(0, ctx_flags, 0, &size);
+                    if(GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+                    {
+                      void *ctx_memory = push_array(scratch.arena, U8, size);
+                      if(!InitializeContext(ctx_memory, ctx_flags, &ctx, &size))
+                      {
+                        ctx = 0;
+                      }
+                    }
+                    if(!GetThreadContext(thread->handle, ctx))
+                    {
+                      ctx = 0;
+                    }
+                    if(ctx != 0)
+                    {
+                      U64 rip = ctx->Rip;
+                      U64 new_rip = instruction_pointer;
+                      ctx->Rip = new_rip;
+                      SetThreadContext(thread->handle, ctx);
+                      ins_atomic_u64_inc_eval(&dmn_w32_shared->reg_gen);
+                    }
+                  }break;
                 }
-                temp_end(temp);
               }
               
               //- rjf: not a user trap, not an explicit trap, then it's a trap that
@@ -2345,10 +2427,18 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
           }break;
           case Architecture_x64:
           {
-            REGS_RegBlockX64 regs = {0};
-            dmn_thread_read_reg_block(ctrls->single_step_thread, &regs);
-            regs.rflags.u64 &= ~0x100;
-            dmn_thread_write_reg_block(ctrls->single_step_thread, &regs);
+            if(!GetThreadContext(thread->handle, single_step_thread_ctx))
+            {
+              single_step_thread_ctx = 0;
+            }
+            if(ctx != 0)
+            {
+              U64 rflags = single_step_thread_ctx->EFlags|0x2;
+              U64 new_rflags = rflags & ~0x100;
+              single_step_thread_ctx->EFlags = new_rflags;
+              SetThreadContext(thread->handle, single_step_thread_ctx);
+              ins_atomic_u64_inc_eval(&dmn_w32_shared->reg_gen);
+            }
           }break;
         }
       }
@@ -2495,6 +2585,73 @@ dmn_access_close(void)
 }
 
 //- rjf: processes
+
+internal U64
+dmn_process_memory_reserve(DMN_Handle process, U64 vaddr, U64 size)
+{
+  U64 result = 0;
+  DMN_AccessScope
+  {
+    DMN_W32_Entity *process_entity = dmn_w32_entity_from_handle(process);
+    result = (U64)VirtualAllocEx(process_entity->handle, (void *)vaddr, size, MEM_RESERVE, PAGE_READWRITE);
+    if(result == 0)
+    {
+      result = (U64)VirtualAllocEx(process_entity->handle, 0, size, MEM_RESERVE, PAGE_READWRITE);
+    }
+  }
+  return result;
+}
+
+internal void
+dmn_process_memory_commit(DMN_Handle process, U64 vaddr, U64 size)
+{
+  DMN_AccessScope
+  {
+    DMN_W32_Entity *process_entity = dmn_w32_entity_from_handle(process);
+    (U64)VirtualAllocEx(process_entity->handle, (void *)vaddr, size, MEM_COMMIT, PAGE_READWRITE);
+  }
+}
+
+internal void
+dmn_process_memory_decommit(DMN_Handle process, U64 vaddr, U64 size)
+{
+  DMN_AccessScope
+  {
+    DMN_W32_Entity *process_entity = dmn_w32_entity_from_handle(process);
+    VirtualFreeEx(process_entity->handle, (void *)vaddr, size, MEM_DECOMMIT);
+  }
+}
+
+internal void
+dmn_process_memory_release(DMN_Handle process, U64 vaddr, U64 size)
+{
+  DMN_AccessScope
+  {
+    DMN_W32_Entity *process_entity = dmn_w32_entity_from_handle(process);
+    VirtualFreeEx(process_entity->handle, (void *)vaddr, 0, MEM_RELEASE);
+  }
+}
+
+internal void
+dmn_process_memory_protect(DMN_Handle process, U64 vaddr, U64 size, OS_AccessFlags flags)
+{
+  DMN_AccessScope
+  {
+    DMN_W32_Entity *process_entity = dmn_w32_entity_from_handle(process);
+    DWORD old_flags = 0;
+    DWORD new_flags = PAGE_NOACCESS;
+    switch(flags)
+    {
+      default:{}break;
+      case OS_AccessFlag_Execute:{new_flags = PAGE_EXECUTE;}break;
+      case OS_AccessFlag_Execute|OS_AccessFlag_Read:{new_flags = PAGE_EXECUTE_READ;}break;
+      case OS_AccessFlag_Execute|OS_AccessFlag_Read|OS_AccessFlag_Write:{new_flags = PAGE_EXECUTE_READWRITE;}break;
+      case OS_AccessFlag_Read:{new_flags = PAGE_READONLY;}break;
+      case OS_AccessFlag_Read|OS_AccessFlag_Write:{new_flags = PAGE_READWRITE;}break;
+    }
+    VirtualProtectEx(process_entity->handle, (void *)vaddr, size, new_flags, &old_flags);
+  }
+}
 
 internal U64
 dmn_process_read(DMN_Handle process, Rng1U64 range, void *dst)

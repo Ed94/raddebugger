@@ -637,6 +637,7 @@ read_only global CTRL_Entity ctrl_entity_nil =
 internal U64 ctrl_hash_from_string(String8 string);
 internal U64 ctrl_hash_from_machine_id_handle(CTRL_MachineID machine_id, DMN_Handle handle);
 internal CTRL_EventCause ctrl_event_cause_from_dmn_event_kind(DMN_EventKind event_kind);
+internal String8 ctrl_string_from_event_kind(CTRL_EventKind kind);
 internal String8 ctrl_string_from_msg_kind(CTRL_MsgKind kind);
 
 ////////////////////////////////
@@ -743,6 +744,7 @@ internal B32 ctrl_process_write(CTRL_MachineID machine_id, DMN_Handle process, R
 internal void *ctrl_query_cached_reg_block_from_thread(Arena *arena, CTRL_EntityStore *store, CTRL_MachineID machine_id, DMN_Handle thread);
 internal U64 ctrl_query_cached_tls_root_vaddr_from_thread(CTRL_EntityStore *store, CTRL_MachineID machine_id, DMN_Handle thread);
 internal U64 ctrl_query_cached_rip_from_thread(CTRL_EntityStore *store, CTRL_MachineID machine_id, DMN_Handle thread);
+internal U64 ctrl_query_cached_rsp_from_thread(CTRL_EntityStore *store, CTRL_MachineID machine_id, DMN_Handle thread);
 
 //- rjf: thread register writing
 internal B32 ctrl_thread_write_reg_block(CTRL_MachineID machine_id, DMN_Handle thread, void *block);
@@ -809,7 +811,7 @@ internal void ctrl_thread__append_resolved_process_user_bp_traps(Arena *arena, C
 
 //- rjf: module lifetime open/close work
 internal void ctrl_thread__module_open(CTRL_MachineID machine_id, DMN_Handle process, DMN_Handle module, Rng1U64 vaddr_range, String8 path);
-internal void ctrl_thread__module_close(CTRL_MachineID machine_id, DMN_Handle module, String8 path);
+internal void ctrl_thread__module_close(CTRL_MachineID machine_id, DMN_Handle module);
 
 //- rjf: attached process running/event gathering
 internal DMN_Event *ctrl_thread__next_dmn_event(Arena *arena, DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg, DMN_RunCtrls *run_ctrls, CTRL_Spoof *spoof);
