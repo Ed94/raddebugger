@@ -837,7 +837,7 @@ DF_GFX_VIEW_RULE_ROW_UI_FUNCTION_DEF(odin_map)
   DF_OdinMapData md = zero_struct;
   df_odin_map_data(scratch.arena, parse_ctx, ctrl_ctx, eval, &md);
 
-  UI_Font(df_font_from_slot(DF_FontSlot_Code)) UI_TextColor(df_rgba_from_theme_color(DF_ThemeColor_WeakText))
+  UI_Font(df_font_from_slot(DF_FontSlot_Code)) UI_FlagsAdd(UI_BoxFlag_DrawTextWeak)
     ui_labelf("0x%I64x -> Odin map len: %I64u cap: %I64u", base_vaddr, md.len, md.cap);
 
   scratch_end(scratch);
