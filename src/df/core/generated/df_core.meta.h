@@ -23,7 +23,6 @@ DF_EntityKind_Machine,
 DF_EntityKind_File,
 DF_EntityKind_OverrideFileLink,
 DF_EntityKind_AutoViewRule,
-DF_EntityKind_FlashMarker,
 DF_EntityKind_WatchPin,
 DF_EntityKind_Breakpoint,
 DF_EntityKind_Condition,
@@ -75,8 +74,6 @@ DF_CoreCmdKind_StepInto,
 DF_CoreCmdKind_StepOver,
 DF_CoreCmdKind_RunToCursor,
 DF_CoreCmdKind_SetNextStatement,
-DF_CoreCmdKind_EnableSoloSteppingMode,
-DF_CoreCmdKind_DisableSoloSteppingMode,
 DF_CoreCmdKind_SelectThread,
 DF_CoreCmdKind_SelectThreadWindow,
 DF_CoreCmdKind_SelectThreadView,
@@ -131,10 +128,10 @@ DF_CoreCmdKind_TabBarTop,
 DF_CoreCmdKind_TabBarBottom,
 DF_CoreCmdKind_SetCurrentPath,
 DF_CoreCmdKind_Open,
-DF_CoreCmdKind_Reload,
-DF_CoreCmdKind_ReloadActive,
 DF_CoreCmdKind_Switch,
 DF_CoreCmdKind_SwitchToPartnerFile,
+DF_CoreCmdKind_GoToDisassembly,
+DF_CoreCmdKind_GoToSource,
 DF_CoreCmdKind_SetFileOverrideLinkSrc,
 DF_CoreCmdKind_SetFileOverrideLinkDst,
 DF_CoreCmdKind_SetFileReplacementPath,
@@ -262,7 +259,7 @@ DF_CoreCmdKind_Disassembly,
 DF_CoreCmdKind_Breakpoints,
 DF_CoreCmdKind_WatchPins,
 DF_CoreCmdKind_ExceptionFilters,
-DF_CoreCmdKind_Theme,
+DF_CoreCmdKind_Settings,
 DF_CoreCmdKind_PickFile,
 DF_CoreCmdKind_PickFolder,
 DF_CoreCmdKind_PickFileOrFolder,
@@ -1540,11 +1537,11 @@ struct {B32 *value_ptr; String8 name;} DEV_toggle_table[] =
 };
 C_LINKAGE_BEGIN
 extern Rng1U64 df_g_cmd_param_slot_range_table[24];
-extern DF_IconKind df_g_entity_kind_icon_kind_table[26];
-extern String8 df_g_entity_kind_display_string_table[26];
-extern String8 df_g_entity_kind_name_label_table[26];
-extern DF_EntityKindFlags df_g_entity_kind_flags_table[26];
-extern DF_EntityOpFlags df_g_entity_kind_op_flags_table[26];
+extern DF_IconKind df_g_entity_kind_icon_kind_table[25];
+extern String8 df_g_entity_kind_display_string_table[25];
+extern String8 df_g_entity_kind_name_label_table[25];
+extern DF_EntityKindFlags df_g_entity_kind_flags_table[25];
+extern DF_EntityOpFlags df_g_entity_kind_op_flags_table[25];
 extern String8 df_g_cfg_src_string_table[4];
 extern DF_CoreCmdKind df_g_cfg_src_load_cmd_kind_table[4];
 extern DF_CoreCmdKind df_g_cfg_src_write_cmd_kind_table[4];

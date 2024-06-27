@@ -4,20 +4,28 @@
 ////////////////////////////////
 //~ rjf: Frontend/UI Pass Tasks
 //
-// [ ] mouse-driven way to complete file/folder selection, or more generally
-// query completion
-// [ ] display threads at their last exception address, rather than current
-// rip, if applicable
-//
+// [ ] auto-scroll output window
+// [ ] inline breakpoint hit_count
+//  [ ] to count hit counts, resolve all bps to addresses, check addresses
+//      against stopper thread's
 // [ ] editing multiple bindings for commands
+// [ ] theme lister -> fonts & font sizes
+// [ ] "Browse..." buttons should adopt a more relevant starting search path,
+//     if possible
+// [ ] move breakpoints to being a global thing, not nested to particular files
+// [ ] visualize all breakpoints everywhere - source view should show up in
+//     disasm, disasm should show up in source view, function should show up in
+//     both, etc.
+//  [ ] ** Function breakpoints should show up in the source listing. Without
+//      them being visible, it is confusing when you run and you stop there,
+//      because you're like "wait why did it stop" and then you later remember
+//      that's because there was a function breakpoint there.
+//
 // [ ] n-row table selection, in watch window & other UIs, multi-selection
 //     ctrl+C
 //
-// [ ] theme colors -> more explicit about e.g. opaque backgrounds vs. floating
-//     & scrollbars etc.
 // [ ] target/breakpoint/watch-pin reordering
-// [ ] visualize remapped files (via path map)
-// [ ] theme lister -> fonts & font sizes
+//
 // [ ] font lister
 // [ ] per-panel font size overrides
 //
@@ -31,45 +39,36 @@
 //     that you use to tag them. Just some way that would make it easier to
 //     focus on your own threads.
 //
-//  [ ]  it would be nice to have "show in explorer" for right click on source
-//       file tab (opens explorer & selects the file)
-//
-//  [ ]  what's up with decimal number coloring where every group of 3 are in
-//       different color? can I turn it off? And why sometimes digits in number
-//       start with brighter color, but sometimes with darker - shouldn't it
-//       always have the same color ordering?
+// [ ] "concept key stack"; basically, any point in UI builder path has a stack
+//     of active "concept keys", which can be used to e.g. build context menus
+//     automatically (could just be a per-box attachment; right-click any
+//     point, search up the tree and see the concept keys)
+// [ ] ui_next_event(...), built-in focus filtering, no need to manually check
+//     if(ui_is_focus_active())
 
 ////////////////////////////////
 //~ rjf: Hot, High Priority Tasks (Complete Unusability, Crashes, Fire-Worthy)
 //
-// [ ] asan stepping breakage
-// [ ] "Browse..." buttons should adopt a more relevant starting search path,
-//     if possible
 // [ ] PDB files distributed with the build are not found by DbgHelp!!!
 // [ ] Jai compiler debugging crash
-//
-// [ ] Jump table thunks, on code w/o /INCREMENTAL:NO
+
+////////////////////////////////
+//~ rjf: Hot, Medium Priority Tasks (Low-Hanging-Fruit Features, UI Jank, Cleanup)
 //
 // [ ] Setting the code_font/main_font values to a font name doesn't work.
 //     Should probably make note that you have to set it to a path to a TTF,
 //     since that's not normally how Windows fonts work.
-
-////////////////////////////////
-//~ rjf: Hot, Medium Priority Tasks (Low-Hanging-Fruit Features, UI Jank, Cleanup)
 //
 // [ ] "root" concept in hash store, which buckets keys & allows usage code to
 //     jettison a collection of keys in retained mode fashion
 //
 // [ ] Jeff Notes
-//  [ ] highlighted text & ctrl+f -> auto-fill search query
-//  [ ] double-click any part of frame in callstack view -> snap to function
 //  [ ] sort locals by appearance in source code (or maybe just debug info)
 //  [ ] sum view rule
 //  [ ] plot view rule
 //  [ ] histogram view rule
 //  [ ] max view rule
 //  [ ] min view rule
-//  [ ] double click on procedure in procedures tab to jump to source
 //
 // [ ] filesystem drag/drop support
 // [ ] double-click vs. single-click for folder navigation, see if we can infer
@@ -89,6 +88,10 @@
 //      sense once I use the debugger more, but I just thought I'd make a note
 //      to say that I was confused about it after reading the manual, so
 //      perhaps you could elaborate a little more on it in there.
+//  [ ] It wasn't clear to me how you save a user or project file. I can see
+//      how to load them, but not how you save them. Obviously I can just copy
+//      the files myself in the shell, but it seemed weird that there was no
+//      "save" option in the menus.
 //
 // [ ] Right-clicking on a thread in the Scheduler window pops up a context
 //     menu, but you can't actually see it because the tooltip for the thread
@@ -100,11 +103,6 @@
 //      actual items (ie., it doesn't resize the listing based on what's
 //      actually visible)
 //
-//  [ ] ** Function breakpoints should show up in the source listing. Without
-//      them being visible, it is confusing when you run and you stop there,
-//      because you're like "wait why did it stop" and then you later remember
-//      that's because there was a function breakpoint there.
-//
 //  [ ] ** One very nice feature of RemedyBG that I use all the time is the
 //      ability to put "$err, hr" into the watch window, which will just show
 //      the value of GetLastError() as a string. This is super useful for
@@ -113,10 +111,6 @@
 //  [ ] Tooltip Coverage:
 //   [ ] lock icon
 //   [ ] "rotation arrow" icon next to executables
-//
-//  [ ] Using the word "symbol" in "Code (Symbol)" seems like a bad idea, since
-//      you're referring to non-identifier characters, but in a debugger
-//      "symbol" usually means something defined in the debug information.
 //
 //  [ ] I LOVE ALT-W to add watch under cursor, but I would prefer to have it
 //      add what's under the MOUSE cursor instead of the keyboard cursor. Can
@@ -127,23 +121,6 @@
 //      color to white (or the inverse of the background color, or whatever) so
 //      that the user can see what things on the screen use that theme color.
 //
-//  [ ] I couldn't figure out how to affect the "dim" color in constants that
-//      have alternating bright/dim letters to show sections of a number. Is
-//      this in the theme colors somewhere?
-//
-//  [ ] ** Scrollbars are barely visible for me, for some reason. I could not
-//      find anything in the theme that would fill them with a solid, bright
-//      color. Instead they are just a thin outline and the same color as the
-//      scroll bar background.
-//
-//  [ ] Many of the UI elements, like the menus, would like better if they had
-//      a little bit of margin. Having the text right next to the edges, and
-//      with no line spacing, makes it harder to read things quickly.
-//
-//  [ ] Menus take too long to show up. I would prefer it if they were instant.
-//      The animation doesn't really provide any useful cues, since I know
-//      where the menu came from.
-//
 //  [ ] Theme window should include font scaling. I was able to find the
 //      command for increasing the font scale, but I imagine most people
 //      wouldn't think to look there.
@@ -153,46 +130,12 @@
 //  [ ] It'd be nice to have a "goto byte" option for source views, for jumping
 //      to error messages that are byte-based instead of line-based.
 //
-//  [ ] Pressing the left mouse button on the menu bar and dragging does not
-//      move through the menus as expected - instead, it opens the one you
-//      clicked down on, then does nothing until you release, at which point it
-//      opens the menu you released on.
-//  [ ] Similarly, pressing the left mouse button on a menu and dragging to an
-//      item, then releasing, does not trigger that item as expected. Instead,
-//      it is a nop, and it waits for you to click again on the item.
-//
-//  [ ] I found the "context menu" convention to be confusing. For example, if
-//      I left-click on a tab, it selects the tab. If I right-click on a tab,
-//      it opens the context menu. However, if I left-click on a module, it
-//      opens the context window. It seems like maybe menus should be right,
-//      and left should do the default action, more consistently?
-//
-//  [ ] It wasn't clear to me how you save a user or project file. I can see
-//      how to load them, but not how you save them. Obviously I can just copy
-//      the files myself in the shell, but it seemed weird that there was no
-//      "save" option in the menus.
-//
 // [ ] @feature debug info overrides (both path-based AND module-based)
-// [ ] configure tab size
-// [ ] auto-scroll output window
 //
 // [ ] C++ virtual inheritance member visualization in watch window
 
 ////////////////////////////////
 //~ rjf: Hot, Low Priority Tasks (UI Opinions, Less-Serious Jank, Preferences, Cleanup)
-//
-//  [ ] ** In the call stack, I would like to be able to click quickly and move
-//      around the stack. Right now, you can do that with the first and third
-//      column, but the second column drops down a context menu. Since right
-//      click is already for context menus, can it not just be that double-
-//      clicking any column jumps to that stack frame?
-//
-//  [ ] ** I find it really hard to read the code with the heavyweight lines
-//      running through it for breakpoints and stepping and things. Is there a
-//      way to turn the lines off? AFAICT they are based on thread and
-//      breakpoint color, so you can't really control the line drawing? I might
-//      be fine with them, but they would have to be much more light (like
-//      alpha 0.1 or something)
 //
 //  [ ] The hex format for color values in the config file was a real
 //      mindbender. It's prefixed with "0x", so I was assuming it was either
@@ -205,16 +148,6 @@
 //      that is "page up" / "page down", but here it is "smooth scroll upward"
 //      / "smooth scroll downward" for some reason?
 //
-//  [ ] Hitting ESC during a color picker drag should abort the color picking
-//      and revert to the previous color. Currently, it just accepts the last
-//      drag result as the new color.
-//
-//  [ ] It was not clear to me why a small "tab picker" appeared when I got to
-//      a certain number of tabs. It seemed to appear even if the tabs were
-//      quite large, and there was no need to a drop-down menu to pick them. It
-//      feels like either it should always be there, or it should only show up
-//      if at least one tab gets small enough to have its name cut off?
-//
 //  [ ]  can it ignore stepping into _RTC_CheckStackVars generated functions?
 //  [ ]  mouse back button should make view to go back after I double clicked
 //       on function to open it
@@ -225,18 +158,22 @@
 //  [ ]  default font size is too small for me - not only source code, but
 //       menus/tab/watch names (which don't resize). Maybe you could query
 //       Windows for initial font size?
-//  [ ]  zooming behaves very strangely - sometimes it zooms source code,
-//       sometimes both source code and menu/tab/watch font size, sometimes
-//       just menu/tab/watch font size not source size.
 //  [ ]  icon fonts glyphs sometimes disappear for specific font size, but they
 //       reappear if you go +1 higher or -1 lower. Mostly red triangle in watch
 //       values for "unknown identifier". But also yellow arrow in call stack
 //       disappears if font size gets too large.
 //  [ ]  undo close tab would be nice. If not for everything, then at least
 //       just for source files
+// [ ] Jump table thunks, on code w/o /INCREMENTAL:NO
 
 ////////////////////////////////
 //~ rjf: Hot, Feature Tasks (Not really "low priority" but less urgent than fixes)
+//
+// [ ] @eval_upgrade
+//  [ ] new eval system; support strings, many address spaces, many debug
+//      infos, wide/async transforms (e.g. diff(blob1, blob2))
+//  [ ] collapse frontend visualization systems - source view, disasm view,
+//      callstack, modules, scheduler, should *all* be flavors of watch view
 //
 // [ ] Fancy View Rules
 //  [ ] table column boundaries should be checked against *AFTER* table
@@ -388,6 +325,91 @@
 //     path - must invalidate naturally when new filetime occurs)
 // [x] rdi file regeneration too strict
 // [x] raddbg jai.exe my_file.jai -- foobar -> raddbg consumes `--` incorrectly
+// [x] mouse-driven way to complete file/folder selection, or more generally
+// query completion
+//  [x]  it would be nice to have "show in explorer" for right click on source
+//       file tab (opens explorer & selects the file)
+// [x] asan stepping breakage
+//  [x]  what's up with decimal number coloring where every group of 3 are in
+//       different color? can I turn it off? And why sometimes digits in number
+//       start with brighter color, but sometimes with darker - shouldn't it
+//       always have the same color ordering?
+// [x] fix tabs-on-bottom positioning
+// [x] colors: consistent tooltip styles (colors, font flags, etc.)
+// [x] colors: scroll bars
+// [x] colors: watch window navigation visuals
+// [x] floating source view margin background/placement
+// [x] "interaction root", or "group" ui_key, or something; used for menu bar interactions
+// [x] theme colors -> more explicit about e.g. opaque backgrounds vs. floating
+//     & scrollbars etc.
+//  [x] Pressing the left mouse button on the menu bar and dragging does not
+//      move through the menus as expected - instead, it opens the one you
+//      clicked down on, then does nothing until you release, at which point it
+//      opens the menu you released on.
+//  [x] Similarly, pressing the left mouse button on a menu and dragging to an
+//      item, then releasing, does not trigger that item as expected. Instead,
+//      it is a nop, and it waits for you to click again on the item.
+//  [x] Using the word "symbol" in "Code (Symbol)" seems like a bad idea, since
+//      you're referring to non-identifier characters, but in a debugger
+//      "symbol" usually means something defined in the debug information.
+//  [x] I couldn't figure out how to affect the "dim" color in constants that
+//      have alternating bright/dim letters to show sections of a number. Is
+//      this in the theme colors somewhere?
+//
+//  [x] ** Scrollbars are barely visible for me, for some reason. I could not
+//      find anything in the theme that would fill them with a solid, bright
+//      color. Instead they are just a thin outline and the same color as the
+//      scroll bar background.
+//
+//  [x] Many of the UI elements, like the menus, would like better if they had
+//      a little bit of margin. Having the text right next to the edges, and
+//      with no line spacing, makes it harder to read things quickly.
+// [x] colors: memory view
+//  [x] Hitting ESC during a color picker drag should abort the color picking
+//      and revert to the previous color. Currently, it just accepts the last
+//      drag result as the new color.
+//  [x] It was not clear to me why a small "tab picker" appeared when I got to
+//      a certain number of tabs. It seemed to appear even if the tabs were
+//      quite large, and there was no need to a drop-down menu to pick them. It
+//      feels like either it should always be there, or it should only show up
+//      if at least one tab gets small enough to have its name cut off?
+//  [x] I found the "context menu" convention to be confusing. For example, if
+//      I left-click on a tab, it selects the tab. If I right-click on a tab,
+//      it opens the context menu. However, if I left-click on a module, it
+//      opens the context window. It seems like maybe menus should be right,
+//      and left should do the default action, more consistently?
+//
+//  [x] double click on procedure in procedures tab to jump to source
+//  [x] highlighted text & ctrl+f -> auto-fill search query
+//  [x] double-click any part of frame in callstack view -> snap to function
+//  [x] Menus take too long to show up. I would prefer it if they were instant.
+//      The animation doesn't really provide any useful cues, since I know
+//      where the menu came from.
+// [x] user settings (ui & functionality - generally need a story for it)
+//  [x] hover animations
+//  [x] press animations
+//  [x] focus animations
+//  [x] tooltip animations
+//  [x] context menu animations
+//  [x] scrolling animations
+//  [x] background blur
+//  [x] tab width
+//  [x] ** In the call stack, I would like to be able to click quickly and move
+//      around the stack. Right now, you can do that with the first and third
+//      column, but the second column drops down a context menu. Since right
+//      click is already for context menus, can it not just be that double-
+//      clicking any column jumps to that stack frame?
+//
+//  [x] ** I find it really hard to read the code with the heavyweight lines
+//      running through it for breakpoints and stepping and things. Is there a
+//      way to turn the lines off? AFAICT they are based on thread and
+//      breakpoint color, so you can't really control the line drawing? I might
+//      be fine with them, but they would have to be much more light (like
+//      alpha 0.1 or something)
+//  [x]  zooming behaves very strangely - sometimes it zooms source code,
+//       sometimes both source code and menu/tab/watch font size, sometimes
+//       just menu/tab/watch font size not source size.
+// [x] colors: fill out rest of theme presets for new theme setup
 
 #ifndef RADDBG_H
 #define RADDBG_H

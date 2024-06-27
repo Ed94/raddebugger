@@ -6,7 +6,7 @@
 
 #define BUILD_VERSION_MAJOR 0
 #define BUILD_VERSION_MINOR 9
-#define BUILD_VERSION_PATCH 10
+#define BUILD_VERSION_PATCH 11
 #define BUILD_RELEASE_PHASE_STRING_LITERAL "ALPHA"
 #define BUILD_TITLE "The RAD Debugger"
 #define OS_FEATURE_GRAPHICAL 1
@@ -36,8 +36,8 @@
 #include "hash_store/hash_store.h"
 #include "file_stream/file_stream.h"
 #include "text_cache/text_cache.h"
+#include "mutable_text/mutable_text.h"
 #include "path/path.h"
-#include "txti/txti.h"
 #include "coff/coff.h"
 #include "pe/pe.h"
 #include "codeview/codeview.h"
@@ -76,8 +76,8 @@
 #include "hash_store/hash_store.c"
 #include "file_stream/file_stream.c"
 #include "text_cache/text_cache.c"
+#include "mutable_text/mutable_text.c"
 #include "path/path.c"
-#include "txti/txti.c"
 #include "coff/coff.c"
 #include "pe/pe.c"
 #include "codeview/codeview.c"

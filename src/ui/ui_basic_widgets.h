@@ -68,7 +68,7 @@ struct UI_ScrollListSignal
 ////////////////////////////////
 //~ rjf: Basic Widgets
 
-internal UI_Signal ui_spacer(UI_Size size);
+internal void ui_divider(UI_Size size);
 internal UI_Signal ui_label(String8 string);
 internal UI_Signal ui_labelf(char *fmt, ...);
 internal void ui_label_multiline(F32 max, String8 string);
@@ -89,8 +89,6 @@ internal UI_Signal ui_imagef(R_Handle texture, R_Tex2DSampleKind sample_kind, Rn
 ////////////////////////////////
 //~ rjf: Special Buttons
 
-internal UI_Signal ui_close_button(String8 string);
-internal UI_Signal ui_close_buttonf(char *fmt, ...);
 internal UI_Signal ui_expander(B32 is_expanded, String8 string);
 internal UI_Signal ui_expanderf(B32 is_expanded, char *fmt, ...);
 internal UI_Signal ui_sort_header(B32 sorting, B32 ascending, String8 string);
@@ -132,7 +130,7 @@ internal void ui_named_column_end(void);
 
 internal UI_Box *ui_pane_begin(Rng2F32 rect, String8 string);
 internal UI_Box *ui_pane_beginf(Rng2F32 rect, char *fmt, ...);
-internal void ui_pane_end(void);
+internal UI_Signal ui_pane_end(void);
 
 ////////////////////////////////
 //~ rjf: Tables

@@ -908,13 +908,13 @@ DF_GFX_VIEW_RULE_ROW_UI_FUNCTION_DEF(rgba)
     text_box = ui_build_box_from_key(UI_BoxFlag_DrawText, ui_key_zero());
     D_FancyStringList fancy_strings = {0};
     {
-      D_FancyString open_paren = {ui_top_font(), str8_lit("("), ui_top_text_color(), ui_top_font_size(), 0, 0};
-      D_FancyString comma = {ui_top_font(), str8_lit(", "), ui_top_text_color(), ui_top_font_size(), 0, 0};
+      D_FancyString open_paren = {ui_top_font(), str8_lit("("), ui_top_palette()->text, ui_top_font_size(), 0, 0};
+      D_FancyString comma = {ui_top_font(), str8_lit(", "), ui_top_palette()->text, ui_top_font_size(), 0, 0};
       D_FancyString r_fstr = {ui_top_font(), push_str8f(scratch.arena, "%.2f", rgba.x), v4f32(1.f, 0.25f, 0.25f, 1.f), ui_top_font_size(), 4.f, 0};
       D_FancyString g_fstr = {ui_top_font(), push_str8f(scratch.arena, "%.2f", rgba.y), v4f32(0.25f, 1.f, 0.25f, 1.f), ui_top_font_size(), 4.f, 0};
       D_FancyString b_fstr = {ui_top_font(), push_str8f(scratch.arena, "%.2f", rgba.z), v4f32(0.25f, 0.25f, 1.f, 1.f), ui_top_font_size(), 4.f, 0};
       D_FancyString a_fstr = {ui_top_font(), push_str8f(scratch.arena, "%.2f", rgba.w), v4f32(1.f,   1.f,   1.f, 1.f), ui_top_font_size(), 4.f, 0};
-      D_FancyString clse_paren = {ui_top_font(), str8_lit(")"), ui_top_text_color(), ui_top_font_size(), 0, 0};
+      D_FancyString clse_paren = {ui_top_font(), str8_lit(")"), ui_top_palette()->text, ui_top_font_size(), 0, 0};
       d_fancy_string_list_push(scratch.arena, &fancy_strings, &open_paren);
       d_fancy_string_list_push(scratch.arena, &fancy_strings, &r_fstr);
       d_fancy_string_list_push(scratch.arena, &fancy_strings, &comma);
@@ -925,7 +925,7 @@ DF_GFX_VIEW_RULE_ROW_UI_FUNCTION_DEF(rgba)
       d_fancy_string_list_push(scratch.arena, &fancy_strings, &a_fstr);
       d_fancy_string_list_push(scratch.arena, &fancy_strings, &clse_paren);
     }
-    ui_box_equip_display_fancy_strings(text_box, 0, &fancy_strings);
+    ui_box_equip_display_fancy_strings(text_box, &fancy_strings);
   }
   
   //- rjf: build color box
@@ -935,7 +935,7 @@ DF_GFX_VIEW_RULE_ROW_UI_FUNCTION_DEF(rgba)
     color_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable, "color_box");
     UI_Parent(color_box) UI_PrefHeight(ui_em(1.875f, 1.f)) UI_Padding(ui_pct(1, 0))
     {
-      UI_BackgroundColor(rgba) UI_CornerRadius(ui_top_font_size()*0.5f)
+      UI_Palette(ui_build_palette(ui_top_palette(), .background = rgba)) UI_CornerRadius(ui_top_font_size()*0.5f)
         ui_build_box_from_key(UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder, ui_key_zero());
     }
   }
@@ -993,7 +993,7 @@ DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_DEF(rgba)
       UI_Signal h_sig  = ui_hue_pickerf(&hsva.x, hsva.y, hsva.z, "hue_picker");
       commit = commit || ui_released(h_sig);
     }
-    UI_PrefWidth(ui_children_sum(1)) UI_Column UI_PrefWidth(ui_text_dim(10, 1)) UI_Font(df_font_from_slot(DF_FontSlot_Code)) UI_TextColor(df_rgba_from_theme_color(DF_ThemeColor_WeakText))
+    UI_PrefWidth(ui_children_sum(1)) UI_Column UI_PrefWidth(ui_text_dim(10, 1)) UI_Font(df_font_from_slot(DF_FontSlot_Code)) UI_FlagsAdd(UI_BoxFlag_DrawTextWeak)
     {
       ui_labelf("Hex");
       ui_labelf("R");
@@ -1105,9 +1105,10 @@ DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_DEF(text)
   String8 data = {0};
   TXT_TextInfo info = {0};
   TXT_LineTokensSlice line_tokens_slice = {0};
+  U128 text_key = {0};
   {
     U128 text_hash = {0};
-    U128 text_key = ctrl_hash_store_key_from_process_vaddr_range(process->ctrl_machine_id, process->ctrl_handle, vaddr_range, 1);
+    text_key = ctrl_hash_store_key_from_process_vaddr_range(process->ctrl_machine_id, process->ctrl_handle, vaddr_range, 1);
     info = txt_text_info_from_key_lang(txt_scope, text_key, top.lang, &text_hash);
     data = hs_data_from_hash(hs_scope, text_hash);
     line_tokens_slice = txt_line_tokens_slice_from_info_data_line_range(scratch.arena, &info, data, r1s64(1, info.lines_count));
@@ -1126,8 +1127,8 @@ DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_DEF(text)
     code_slice_params.line_bps = push_array(scratch.arena, DF_EntityList, info.lines_count);
     code_slice_params.line_ips = push_array(scratch.arena, DF_EntityList, info.lines_count);
     code_slice_params.line_pins = push_array(scratch.arena, DF_EntityList, info.lines_count);
-    code_slice_params.line_dasm2src = push_array(scratch.arena, DF_TextLineDasm2SrcInfoList, info.lines_count);
-    code_slice_params.line_src2dasm = push_array(scratch.arena, DF_TextLineSrc2DasmInfoList, info.lines_count);
+    code_slice_params.line_vaddrs = push_array(scratch.arena, U64, info.lines_count);
+    code_slice_params.line_infos = push_array(scratch.arena, DF_LineList, info.lines_count);
     for(U64 line_idx = 0; line_idx < info.lines_count; line_idx += 1)
     {
       code_slice_params.line_text[line_idx] = str8_substr(data, info.lines_ranges[line_idx]);
@@ -1136,7 +1137,7 @@ DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_DEF(text)
     }
     code_slice_params.font = df_font_from_slot(DF_FontSlot_Code);
     code_slice_params.font_size = ui_top_font_size();
-    code_slice_params.tab_size = f_column_size_from_tag_size(code_slice_params.font, code_slice_params.font_size)*4.f;
+    code_slice_params.tab_size = f_column_size_from_tag_size(code_slice_params.font, code_slice_params.font_size)*df_setting_val_from_code(DF_SettingCode_TabWidth).s32;
     code_slice_params.line_height_px = ui_top_font_size()*1.5f;
     code_slice_params.priority_margin_width_px = 0;
     code_slice_params.catchall_margin_width_px = 0;
@@ -1265,11 +1266,12 @@ DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_DEF(disasm)
     DASM_Info dasm_info = dasm_info_from_key_params(dasm_scope, dasm_key, &dasm_params, &data_hash);
     String8 dasm_text_data = {0};
     TXT_TextInfo dasm_text_info = {0};
+    TXT_LangKind lang_kind = TXT_LangKind_DisasmX64Intel;
     for(U64 rewind_idx = 0; rewind_idx < 2; rewind_idx += 1)
     {
       U128 dasm_text_hash = hs_hash_from_key(dasm_info.text_key, rewind_idx);
       dasm_text_data = hs_data_from_hash(hs_scope, dasm_text_hash);
-      dasm_text_info = txt_text_info_from_hash_lang(txt_scope, dasm_text_hash, TXT_LangKind_DisasmX64Intel);
+      dasm_text_info = txt_text_info_from_hash_lang(txt_scope, dasm_text_hash, lang_kind);
       if(dasm_text_info.lines_count != 0)
       {
         break;
@@ -1288,8 +1290,8 @@ DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_DEF(disasm)
       code_slice_params.line_bps = push_array(scratch.arena, DF_EntityList, dasm_text_info.lines_count);
       code_slice_params.line_ips = push_array(scratch.arena, DF_EntityList, dasm_text_info.lines_count);
       code_slice_params.line_pins = push_array(scratch.arena, DF_EntityList, dasm_text_info.lines_count);
-      code_slice_params.line_dasm2src = push_array(scratch.arena, DF_TextLineDasm2SrcInfoList, dasm_text_info.lines_count);
-      code_slice_params.line_src2dasm = push_array(scratch.arena, DF_TextLineSrc2DasmInfoList, dasm_text_info.lines_count);
+      code_slice_params.line_vaddrs = push_array(scratch.arena, U64, dasm_text_info.lines_count);
+      code_slice_params.line_infos = push_array(scratch.arena, DF_LineList, dasm_text_info.lines_count);
       for(U64 line_idx = 0; line_idx < dasm_text_info.lines_count; line_idx += 1)
       {
         code_slice_params.line_text[line_idx] = str8_substr(dasm_text_data, dasm_info.insts.v[line_idx].text_range);
@@ -1298,7 +1300,7 @@ DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_DEF(disasm)
       }
       code_slice_params.font = df_font_from_slot(DF_FontSlot_Code);
       code_slice_params.font_size = ui_top_font_size();
-      code_slice_params.tab_size = f_column_size_from_tag_size(code_slice_params.font, code_slice_params.font_size)*4.f;
+      code_slice_params.tab_size = f_column_size_from_tag_size(code_slice_params.font, code_slice_params.font_size)*df_setting_val_from_code(DF_SettingCode_TabWidth).s32;
       code_slice_params.line_height_px = ui_top_font_size()*1.5f;
       code_slice_params.priority_margin_width_px = 0;
       code_slice_params.catchall_margin_width_px = 0;
@@ -1440,7 +1442,7 @@ df_vr_bitmap_topology_info_from_cfg(DI_Scope *scope, DF_CtrlCtx *ctrl_ctx, EVAL_
 internal UI_BOX_CUSTOM_DRAW(df_vr_bitmap_box_draw)
 {
   DF_VR_BitmapBoxDrawData *draw_data = (DF_VR_BitmapBoxDrawData *)user_data;
-  Vec4F32 bg_color = box->background_color;
+  Vec4F32 bg_color = box->palette->background;
   d_img(box->rect, draw_data->src, draw_data->texture, v4f32(1, 1, 1, 1), 0, 0, 0);
   if(draw_data->loaded_t < 0.98f)
   {
@@ -1461,8 +1463,7 @@ internal UI_BOX_CUSTOM_DRAW(df_vr_bitmap_box_draw)
   d_rect(box->rect, v4f32(bg_color.x*bg_color.w, bg_color.y*bg_color.w, bg_color.z*bg_color.w, 1.f-draw_data->loaded_t), 0, 0, 0);
   if(draw_data->hovered)
   {
-    Vec4F32 indicator_color = df_rgba_from_theme_color(DF_ThemeColor_PlainBorder);
-    indicator_color.w = 1.f;
+    Vec4F32 indicator_color = v4f32(1, 1, 1, 1);
     d_rect(pad_2f32(r2f32p(box->rect.x0 + draw_data->mouse_px.x*draw_data->ui_per_bmp_px,
                            box->rect.y0 + draw_data->mouse_px.y*draw_data->ui_per_bmp_px,
                            box->rect.x0 + draw_data->mouse_px.x*draw_data->ui_per_bmp_px + draw_data->ui_per_bmp_px,
@@ -1489,7 +1490,7 @@ DF_GFX_VIEW_RULE_ROW_UI_FUNCTION_DEF(bitmap)
   U64 base_vaddr = value_eval.imm_u64 ? value_eval.imm_u64 : value_eval.offset;
   DF_BitmapTopologyInfo topology = df_vr_bitmap_topology_info_from_cfg(scope, ctrl_ctx, parse_ctx, macro_map, cfg);
   U64 expected_size = topology.width*topology.height*r_tex2d_format_bytes_per_pixel_table[topology.fmt];
-  UI_Font(df_font_from_slot(DF_FontSlot_Code)) UI_TextColor(df_rgba_from_theme_color(DF_ThemeColor_WeakText))
+  UI_Font(df_font_from_slot(DF_FontSlot_Code)) UI_FlagsAdd(UI_BoxFlag_DrawTextWeak)
     ui_labelf("0x%I64x -> Bitmap (%I64u x %I64u)", base_vaddr, topology.width, topology.height);
 }
 
@@ -1615,7 +1616,7 @@ internal UI_BOX_CUSTOM_DRAW(df_bitmap_view_canvas_box_draw)
   Rng2F32 rect_cvs = df_bitmap_view_state__canvas_from_screen_rect(bvs, rect_scrn, rect_scrn);
   F32 grid_cell_size_cvs = box->font_size*10.f;
   F32 grid_line_thickness_px = Max(2.f, box->font_size*0.1f);
-  Vec4F32 grid_line_color = df_rgba_from_theme_color(DF_ThemeColor_WeakText);
+  Vec4F32 grid_line_color = df_rgba_from_theme_color(DF_ThemeColor_TextWeak);
   for(EachEnumVal(Axis2, axis))
   {
     for(F32 v = rect_cvs.p0.v[axis] - mod_f32(rect_cvs.p0.v[axis], grid_cell_size_cvs);
@@ -1847,7 +1848,6 @@ internal UI_BOX_CUSTOM_DRAW(df_vr_geo_box_draw)
 {
   DF_VR_GeoBoxDrawData *draw_data = (DF_VR_GeoBoxDrawData *)user_data;
   DF_VR_GeoState *state = df_view_rule_block_user_state(draw_data->key, DF_VR_GeoState);
-  Vec4F32 bg_color = box->background_color;
   
   // rjf: get clip
   Rng2F32 clip = box->rect;
@@ -1895,7 +1895,7 @@ DF_GFX_VIEW_RULE_ROW_UI_FUNCTION_DEF(geo)
 {
   DF_Eval value_eval = df_value_mode_eval_from_eval(parse_ctx->type_graph, parse_ctx->rdi, ctrl_ctx, eval);
   U64 base_vaddr = value_eval.imm_u64 ? value_eval.imm_u64 : value_eval.offset;
-  UI_Font(df_font_from_slot(DF_FontSlot_Code)) UI_TextColor(df_rgba_from_theme_color(DF_ThemeColor_WeakText))
+  UI_Font(df_font_from_slot(DF_FontSlot_Code)) UI_FlagsAdd(UI_BoxFlag_DrawTextWeak)
     ui_labelf("0x%I64x -> Geometry", base_vaddr);
 }
 

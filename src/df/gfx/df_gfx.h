@@ -67,6 +67,16 @@ struct DF_KeyMapSlot
 };
 
 ////////////////////////////////
+//~ rjf: Setting Types
+
+typedef struct DF_SettingVal DF_SettingVal;
+struct DF_SettingVal
+{
+  B32 set;
+  S32 s32;
+};
+
+////////////////////////////////
 //~ rjf: View Functions
 
 typedef struct DF_View DF_View;
@@ -187,11 +197,10 @@ struct DF_View
   U64 loading_progress_v;
   U64 loading_progress_v_target;
   
-  // rjf: update flash animation state
-  F32 flash_t;
-  
   // rjf: view state
   UI_ScrollPt2 scroll_pos;
+  TxtPt cursor;
+  TxtPt mark;
   
   // rjf: ctrl context overrides
   DF_CtrlCtx ctrl_ctx_overrides;
@@ -377,6 +386,24 @@ typedef enum DF_FontSlot
 }
 DF_FontSlot;
 
+typedef enum DF_PaletteCode
+{
+  DF_PaletteCode_Base,
+  DF_PaletteCode_MenuBar,
+  DF_PaletteCode_Floating,
+  DF_PaletteCode_ImplicitButton,
+  DF_PaletteCode_PlainButton,
+  DF_PaletteCode_PositivePopButton,
+  DF_PaletteCode_NegativePopButton,
+  DF_PaletteCode_NeutralPopButton,
+  DF_PaletteCode_ScrollBarButton,
+  DF_PaletteCode_Tab,
+  DF_PaletteCode_TabInactive,
+  DF_PaletteCode_DropSiteOverlay,
+  DF_PaletteCode_COUNT
+}
+DF_PaletteCode;
+
 ////////////////////////////////
 //~ rjf: UI Helper & Widget Types
 
@@ -419,8 +446,8 @@ struct DF_CodeSliceParams
   DF_EntityList *line_bps;
   DF_EntityList *line_ips;
   DF_EntityList *line_pins;
-  DF_TextLineDasm2SrcInfoList *line_dasm2src;
-  DF_TextLineSrc2DasmInfoList *line_src2dasm;
+  U64 *line_vaddrs;
+  DF_LineList *line_infos;
   DI_KeyList relevant_dbgi_keys;
   
   // rjf: visual parameters
@@ -433,7 +460,6 @@ struct DF_CodeSliceParams
   F32 catchall_margin_width_px;
   F32 line_num_width_px;
   F32 line_text_max_width_px;
-  DF_EntityList flash_ranges;
   F32 margin_float_off_px;
 };
 
@@ -536,21 +562,34 @@ struct DF_Window
   // rjf: view state delta history
   DF_StateDeltaHistory *view_state_hist;
   
-  // rjf: context menu info
+  // rjf: dev interface state
   B32 dev_menu_is_open;
+  
+  // rjf: menu bar state
   B32 menu_bar_focused;
   B32 menu_bar_focused_on_press;
   B32 menu_bar_key_held;
   B32 menu_bar_focus_press_started;
-  UI_Key drop_completion_ctx_menu_key;
-  DF_Handle drop_completion_entity;
-  DF_Handle drop_completion_panel;
+  
+  // rjf: code context menu state
+  Arena *code_ctx_menu_arena;
+  UI_Key code_ctx_menu_key;
+  DF_Handle code_ctx_menu_file;
+  U128 code_ctx_menu_text_key;
+  TXT_LangKind code_ctx_menu_lang_kind;
+  TxtRng code_ctx_menu_range;
+  U64 code_ctx_menu_vaddr;
+  DF_LineList code_ctx_menu_lines;
+  
+  // rjf: entity context menu state
   UI_Key entity_ctx_menu_key;
   DF_Handle entity_ctx_menu_entity;
   U8 entity_ctx_menu_input_buffer[1024];
   U64 entity_ctx_menu_input_size;
   TxtPt entity_ctx_menu_input_cursor;
   TxtPt entity_ctx_menu_input_mark;
+  
+  // rjf: tab context menu state
   UI_Key tab_ctx_menu_key;
   DF_Handle tab_ctx_menu_view;
   
@@ -586,6 +625,7 @@ struct DF_Window
   Arena *hover_eval_arena;
   Vec2F32 hover_eval_spawn_pos;
   String8 hover_eval_string;
+  
   
   // rjf: hover eval timer
   U64 hover_eval_first_frame_idx;
@@ -745,7 +785,11 @@ struct DF_GfxState
   Arena *cfg_code_font_path_arena;
   String8 cfg_main_font_path;
   String8 cfg_code_font_path;
-  F_Tag cfg_font_tags[DF_FontSlot_COUNT];
+  F_Tag cfg_font_tags[DF_FontSlot_COUNT];        // derivative from font paths
+  UI_Palette cfg_palettes[DF_PaletteCode_COUNT]; // derivative from theme
+  
+  // rjf: settings
+  DF_SettingVal cfg_setting_vals[DF_CfgSrc_COUNT][DF_SettingCode_COUNT];
   
   // rjf: icon texture
   R_Handle icon_texture;
@@ -784,7 +828,8 @@ read_only global DF_View df_g_nil_view =
   0,
   0,
   0,
-  0,
+  {0},
+  {0},
   {0},
   {0},
   0,
@@ -992,11 +1037,18 @@ internal DF_CmdSpecList df_cmd_spec_list_from_event_flags(Arena *arena, OS_Event
 internal Vec4F32 df_rgba_from_theme_color(DF_ThemeColor color);
 internal DF_ThemeColor df_theme_color_from_txt_token_kind(TXT_TokenKind kind);
 
+//- rjf: code -> palette
+internal UI_Palette *df_palette_from_code(DF_PaletteCode code);
+
 //- rjf: fonts/sizes
 internal F_Tag df_font_from_slot(DF_FontSlot slot);
 internal F32 df_font_size_from_slot(DF_Window *ws, DF_FontSlot slot);
 
+//- rjf: settings
+internal DF_SettingVal df_setting_val_from_code(DF_SettingCode code);
+
 //- rjf: config serialization
+internal int df_qsort_compare__cfg_string_bindings(DF_StringBindingPair *a, DF_StringBindingPair *b);
 internal String8List df_cfg_strings_from_gfx(Arena *arena, String8 root_path, DF_CfgSrc source);
 
 ////////////////////////////////
@@ -1004,6 +1056,11 @@ internal String8List df_cfg_strings_from_gfx(Arena *arena, String8 root_path, DF
 
 internal String8 df_string_from_exception_code(U32 code);
 internal String8 df_stop_explanation_string_icon_from_ctrl_event(Arena *arena, CTRL_Event *event, DF_IconKind *icon_out);
+
+////////////////////////////////
+//~ rjf: UI Building Helpers
+
+#define DF_Palette(code) UI_Palette(df_palette_from_code(code))
 
 ////////////////////////////////
 //~ rjf: UI Widgets: Fancy Buttons
@@ -1015,7 +1072,7 @@ internal void df_cmd_list_menu_buttons(DF_Window *ws, U64 count, DF_CoreCmdKind 
 internal UI_Signal df_icon_button(DF_IconKind kind, FuzzyMatchRangeList *matches, String8 string);
 internal UI_Signal df_icon_buttonf(DF_IconKind kind, FuzzyMatchRangeList *matches, char *fmt, ...);
 internal void df_entity_tooltips(DF_Entity *entity);
-internal void df_entity_desc_button(DF_Window *ws, DF_Entity *entity, FuzzyMatchRangeList *name_matches, String8 fuzzy_query);
+internal UI_Signal df_entity_desc_button(DF_Window *ws, DF_Entity *entity, FuzzyMatchRangeList *name_matches, String8 fuzzy_query, B32 is_implicit);
 internal void df_entity_src_loc_button(DF_Window *ws, DF_Entity *entity, TxtPt point);
 
 ////////////////////////////////
@@ -1027,7 +1084,6 @@ internal DF_CodeSliceSignal df_code_slice(DF_Window *ws, DF_CtrlCtx *ctrl_ctx, E
 internal DF_CodeSliceSignal df_code_slicef(DF_Window *ws, DF_CtrlCtx *ctrl_ctx, EVAL_ParseCtx *parse_ctx, DF_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *preferred_column, char *fmt, ...);
 
 internal B32 df_do_txt_controls(TXT_TextInfo *info, String8 data, U64 line_count_per_page, TxtPt *cursor, TxtPt *mark, S64 *preferred_column);
-internal B32 df_do_txti_controls(TXTI_Handle handle, U64 line_count_per_page, TxtPt *cursor, TxtPt *mark, S64 *preferred_column);
 
 ////////////////////////////////
 //~ rjf: UI Widgets: Fancy Labels

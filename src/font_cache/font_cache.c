@@ -520,16 +520,18 @@ f_piece_array_copy(Arena *arena, F_PieceArray *src)
 //~ rjf: Rasterization Cache
 
 internal F_Hash2StyleRasterCacheNode *
-f_hash2style_from_tag_size(F_Tag tag, F32 size)
+f_hash2style_from_tag_size_flags(F_Tag tag, F32 size, F_RunFlags flags)
 {
   //- rjf: tag * size -> style hash
   U64 style_hash = {0};
   {
+    F64 size_f64 = size;
     U64 buffer[] =
     {
       tag.u64[0],
       tag.u64[1],
-      (U64)round_f32(size),
+      *(U64 *)(&size_f64),
+      (U64)flags,
     };
     style_hash = f_little_hash_from_string(str8((U8 *)buffer, sizeof(buffer)));
   }
@@ -574,11 +576,12 @@ f_push_run_from_string(Arena *arena, F_Tag tag, F32 size, F32 base_align_px, F32
   ProfBeginFunction();
   
   //- rjf: map tag/size to style node
-  F_Hash2StyleRasterCacheNode *hash2style_node = f_hash2style_from_tag_size(tag, size);
+  F_Hash2StyleRasterCacheNode *hash2style_node = f_hash2style_from_tag_size_flags(tag, size, flags);
   
   //- rjf: decode string & produce run pieces
   F_PieceChunkList piece_chunks = {0};
   Vec2F32 dim = {0};
+  F32 last_piece_end_pad = 0;
   B32 font_handle_mapped_on_miss = 0;
   FP_Handle font_handle = {0};
   U64 piece_substring_start_idx = 0;
@@ -686,7 +689,11 @@ f_push_run_from_string(Arena *arena, F_Tag tag, F32 size, F32 base_align_px, F32
       }
       
       // rjf: call into font provider to rasterize this substring
-      FP_RasterResult raster = fp_raster(scratch.arena, font_handle, round_f32(size), FP_RasterMode_Sharp, piece_substring);
+      FP_RasterResult raster = {0};
+      if(size > 0)
+      {
+        raster = fp_raster(scratch.arena, font_handle, floor_f32(size), (flags & F_RunFlag_Smooth) ? FP_RasterMode_Smooth : FP_RasterMode_Sharp, piece_substring);
+      }
       
       // rjf: allocate portion of an atlas to upload the rasterization
       S16 chosen_atlas_num = 0;
@@ -762,6 +769,7 @@ f_push_run_from_string(Arena *arena, F_Tag tag, F32 size, F32 base_align_px, F32
         if(info != 0)
         {
           info->subrect = chosen_atlas_region;
+          info->bounding_box = raster.bounding_box;
           info->atlas_num = chosen_atlas_num;
           info->raster_dim = raster.atlas_dim;
           info->advance = raster.advance;
@@ -814,7 +822,9 @@ f_push_run_from_string(Arena *arena, F_Tag tag, F32 size, F32 base_align_px, F32
         }
         base_align_px += advance;
         dim.x += piece->advance;
-        dim.y = Max(dim.y, dim_2s16(piece->subrect).y);
+        dim.y = Max(dim.y, info->raster_dim.y);
+        last_piece_end_pad = ((F32)piece->offset.x+(F32)dim_2s16(info->bounding_box).x) - piece->advance;
+        last_piece_end_pad = ClampBot(0, last_piece_end_pad);
       }
     }
   }
@@ -832,6 +842,8 @@ f_push_run_from_string(Arena *arena, F_Tag tag, F32 size, F32 base_align_px, F32
       run.pieces = f_piece_array_from_chunk_list(arena, &piece_chunks);
     }
     run.dim = dim;
+    run.dim.x += last_piece_end_pad;
+    run.end_pad = last_piece_end_pad;
     run.ascent  = hash2style_node->ascent;
     run.descent = hash2style_node->descent;
   }
@@ -991,29 +1003,29 @@ f_column_size_from_tag_size(F_Tag tag, F32 size)
 internal U64
 f_char_pos_from_tag_size_string_p(F_Tag tag, F32 size, F32 base_align_px, F32 tab_size_px, String8 string, F32 p)
 {
-  ProfBeginFunction();
   Temp scratch = scratch_begin(0, 0);
-  U64 result = 0;
-  U64 best_offset = 0;
-  F32 best_distance = -1.f;
-  F32 x = 0;
-  for(U64 char_idx = 0; char_idx <= string.size; char_idx += 1)
+  U64 best_offset_bytes = 0;
+  F32 best_offset_px = inf32();
+  U64 offset_bytes = 0;
+  F32 offset_px = 0.f;
+  F_Run run = f_push_run_from_string(scratch.arena, tag, size, base_align_px, tab_size_px, 0, string);
+  for(U64 idx = 0; idx <= run.pieces.count; idx += 1)
   {
-    F32 this_char_distance = abs_f32(p - x);
-    if(this_char_distance < best_distance || best_distance < 0.f)
+    F32 this_piece_offset_px = abs_f32(offset_px - p);
+    if(this_piece_offset_px < best_offset_px)
     {
-      best_offset = char_idx;
-      best_distance = this_char_distance;
+      best_offset_bytes = offset_bytes;
+      best_offset_px = this_piece_offset_px;
     }
-    if(char_idx < string.size)
+    if(idx < run.pieces.count)
     {
-      x += f_dim_from_tag_size_string(tag, size, base_align_px, tab_size_px, str8_substr(string, r1u64(char_idx, char_idx+1))).x;
+      F_Piece *piece = &run.pieces.v[idx];
+      offset_px += piece->advance;
+      offset_bytes += piece->decode_size;
     }
   }
-  result = best_offset;
   scratch_end(scratch);
-  ProfEnd();
-  return result;
+  return best_offset_bytes;
 }
 
 ////////////////////////////////
@@ -1026,10 +1038,10 @@ f_metrics_from_tag_size(F_Tag tag, F32 size)
   FP_Metrics metrics = f_fp_metrics_from_tag(tag);
   F_Metrics result = {0};
   {
-    result.ascent   = size * metrics.ascent / metrics.design_units_per_em;
-    result.descent  = size * metrics.descent / metrics.design_units_per_em;
-    result.line_gap = size * metrics.line_gap / metrics.design_units_per_em;
-    result.capital_height = size * metrics.capital_height / metrics.design_units_per_em;
+    result.ascent   = floor_f32(size) * metrics.ascent / metrics.design_units_per_em;
+    result.descent  = floor_f32(size) * metrics.descent / metrics.design_units_per_em;
+    result.line_gap = floor_f32(size) * metrics.line_gap / metrics.design_units_per_em;
+    result.capital_height = floor_f32(size) * metrics.capital_height / metrics.design_units_per_em;
   }
   ProfEnd();
   return result;

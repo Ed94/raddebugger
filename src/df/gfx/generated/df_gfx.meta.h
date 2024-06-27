@@ -38,55 +38,76 @@ DF_GfxViewKind_Memory,
 DF_GfxViewKind_Breakpoints,
 DF_GfxViewKind_WatchPins,
 DF_GfxViewKind_ExceptionFilters,
-DF_GfxViewKind_Theme,
+DF_GfxViewKind_Settings,
 DF_GfxViewKind_COUNT,
 } DF_GfxViewKind;
 
 typedef enum DF_ThemeColor
 {
 DF_ThemeColor_Null,
-DF_ThemeColor_PlainText,
-DF_ThemeColor_PlainBackground,
-DF_ThemeColor_PlainBorder,
-DF_ThemeColor_PlainOverlay,
+DF_ThemeColor_Text,
+DF_ThemeColor_TextPositive,
+DF_ThemeColor_TextNegative,
+DF_ThemeColor_TextNeutral,
+DF_ThemeColor_TextWeak,
+DF_ThemeColor_Cursor,
+DF_ThemeColor_CursorInactive,
+DF_ThemeColor_Focus,
+DF_ThemeColor_Hover,
+DF_ThemeColor_DropShadow,
+DF_ThemeColor_DisabledOverlay,
+DF_ThemeColor_DropSiteOverlay,
+DF_ThemeColor_InactivePanelOverlay,
+DF_ThemeColor_SelectionOverlay,
+DF_ThemeColor_HighlightOverlay,
+DF_ThemeColor_HighlightOverlayError,
+DF_ThemeColor_BaseBackground,
+DF_ThemeColor_BaseBackgroundAlt,
+DF_ThemeColor_BaseBorder,
+DF_ThemeColor_MenuBarBackground,
+DF_ThemeColor_MenuBarBackgroundAlt,
+DF_ThemeColor_MenuBarBorder,
+DF_ThemeColor_FloatingBackground,
+DF_ThemeColor_FloatingBackgroundAlt,
+DF_ThemeColor_FloatingBorder,
+DF_ThemeColor_ImplicitButtonBackground,
+DF_ThemeColor_ImplicitButtonBorder,
+DF_ThemeColor_PlainButtonBackground,
+DF_ThemeColor_PlainButtonBorder,
+DF_ThemeColor_PositivePopButtonBackground,
+DF_ThemeColor_PositivePopButtonBorder,
+DF_ThemeColor_NegativePopButtonBackground,
+DF_ThemeColor_NegativePopButtonBorder,
+DF_ThemeColor_NeutralPopButtonBackground,
+DF_ThemeColor_NeutralPopButtonBorder,
+DF_ThemeColor_ScrollBarButtonBackground,
+DF_ThemeColor_ScrollBarButtonBorder,
+DF_ThemeColor_TabBackground,
+DF_ThemeColor_TabBorder,
+DF_ThemeColor_TabBackgroundInactive,
+DF_ThemeColor_TabBorderInactive,
 DF_ThemeColor_CodeDefault,
-DF_ThemeColor_CodeFunction,
+DF_ThemeColor_CodeSymbol,
 DF_ThemeColor_CodeType,
 DF_ThemeColor_CodeLocal,
 DF_ThemeColor_CodeRegister,
 DF_ThemeColor_CodeKeyword,
-DF_ThemeColor_CodeSymbol,
+DF_ThemeColor_CodeDelimiterOperator,
 DF_ThemeColor_CodeNumeric,
+DF_ThemeColor_CodeNumericAltDigitGroup,
 DF_ThemeColor_CodeString,
 DF_ThemeColor_CodeMeta,
 DF_ThemeColor_CodeComment,
-DF_ThemeColor_LineInfo0,
-DF_ThemeColor_LineInfo1,
-DF_ThemeColor_LineInfo2,
-DF_ThemeColor_LineInfo3,
-DF_ThemeColor_AltText,
-DF_ThemeColor_AltBackground,
-DF_ThemeColor_AltBorder,
-DF_ThemeColor_AltOverlay,
-DF_ThemeColor_TabInactive,
-DF_ThemeColor_TabActive,
-DF_ThemeColor_EntityBackground,
-DF_ThemeColor_QueryBar,
-DF_ThemeColor_WeakText,
-DF_ThemeColor_TextSelection,
-DF_ThemeColor_Cursor,
-DF_ThemeColor_Highlight0,
-DF_ThemeColor_Highlight1,
-DF_ThemeColor_SuccessText,
-DF_ThemeColor_SuccessBackground,
-DF_ThemeColor_SuccessBorder,
-DF_ThemeColor_FailureText,
-DF_ThemeColor_FailureBackground,
-DF_ThemeColor_FailureBorder,
-DF_ThemeColor_ActionText,
-DF_ThemeColor_ActionBackground,
-DF_ThemeColor_ActionBorder,
-DF_ThemeColor_DropSiteOverlay,
+DF_ThemeColor_CodeLineNumbers,
+DF_ThemeColor_CodeLineNumbersSelected,
+DF_ThemeColor_LineInfoBackground0,
+DF_ThemeColor_LineInfoBackground1,
+DF_ThemeColor_LineInfoBackground2,
+DF_ThemeColor_LineInfoBackground3,
+DF_ThemeColor_LineInfoBackground4,
+DF_ThemeColor_LineInfoBackground5,
+DF_ThemeColor_LineInfoBackground6,
+DF_ThemeColor_LineInfoBackground7,
 DF_ThemeColor_Thread0,
 DF_ThemeColor_Thread1,
 DF_ThemeColor_Thread2,
@@ -96,8 +117,8 @@ DF_ThemeColor_Thread5,
 DF_ThemeColor_Thread6,
 DF_ThemeColor_Thread7,
 DF_ThemeColor_ThreadUnwound,
-DF_ThemeColor_InactivePanelOverlay,
-DF_ThemeColor_DropShadow,
+DF_ThemeColor_ThreadError,
+DF_ThemeColor_Breakpoint,
 DF_ThemeColor_COUNT,
 } DF_ThemeColor;
 
@@ -114,6 +135,24 @@ DF_ThemePreset_FourCoder,
 DF_ThemePreset_FarManager,
 DF_ThemePreset_COUNT,
 } DF_ThemePreset;
+
+typedef enum DF_SettingCode
+{
+DF_SettingCode_HoverAnimations,
+DF_SettingCode_PressAnimations,
+DF_SettingCode_FocusAnimations,
+DF_SettingCode_TooltipAnimations,
+DF_SettingCode_MenuAnimations,
+DF_SettingCode_ScrollingAnimations,
+DF_SettingCode_BackgroundBlur,
+DF_SettingCode_ThreadLines,
+DF_SettingCode_BreakpointLines,
+DF_SettingCode_ThreadGlow,
+DF_SettingCode_BreakpointGlow,
+DF_SettingCode_OpaqueBackgrounds,
+DF_SettingCode_TabWidth,
+DF_SettingCode_COUNT,
+} DF_SettingCode;
 
 DF_VIEW_SETUP_FUNCTION_DEF(Null);
 DF_VIEW_SETUP_FUNCTION_DEF(Empty);
@@ -145,7 +184,7 @@ DF_VIEW_SETUP_FUNCTION_DEF(Memory);
 DF_VIEW_SETUP_FUNCTION_DEF(Breakpoints);
 DF_VIEW_SETUP_FUNCTION_DEF(WatchPins);
 DF_VIEW_SETUP_FUNCTION_DEF(ExceptionFilters);
-DF_VIEW_SETUP_FUNCTION_DEF(Theme);
+DF_VIEW_SETUP_FUNCTION_DEF(Settings);
 DF_VIEW_STRING_FROM_STATE_FUNCTION_DEF(Null);
 DF_VIEW_STRING_FROM_STATE_FUNCTION_DEF(Empty);
 DF_VIEW_STRING_FROM_STATE_FUNCTION_DEF(GettingStarted);
@@ -176,7 +215,7 @@ DF_VIEW_STRING_FROM_STATE_FUNCTION_DEF(Memory);
 DF_VIEW_STRING_FROM_STATE_FUNCTION_DEF(Breakpoints);
 DF_VIEW_STRING_FROM_STATE_FUNCTION_DEF(WatchPins);
 DF_VIEW_STRING_FROM_STATE_FUNCTION_DEF(ExceptionFilters);
-DF_VIEW_STRING_FROM_STATE_FUNCTION_DEF(Theme);
+DF_VIEW_STRING_FROM_STATE_FUNCTION_DEF(Settings);
 DF_VIEW_CMD_FUNCTION_DEF(Null);
 DF_VIEW_CMD_FUNCTION_DEF(Empty);
 DF_VIEW_CMD_FUNCTION_DEF(GettingStarted);
@@ -207,7 +246,7 @@ DF_VIEW_CMD_FUNCTION_DEF(Memory);
 DF_VIEW_CMD_FUNCTION_DEF(Breakpoints);
 DF_VIEW_CMD_FUNCTION_DEF(WatchPins);
 DF_VIEW_CMD_FUNCTION_DEF(ExceptionFilters);
-DF_VIEW_CMD_FUNCTION_DEF(Theme);
+DF_VIEW_CMD_FUNCTION_DEF(Settings);
 DF_VIEW_UI_FUNCTION_DEF(Null);
 DF_VIEW_UI_FUNCTION_DEF(Empty);
 DF_VIEW_UI_FUNCTION_DEF(GettingStarted);
@@ -238,7 +277,7 @@ DF_VIEW_UI_FUNCTION_DEF(Memory);
 DF_VIEW_UI_FUNCTION_DEF(Breakpoints);
 DF_VIEW_UI_FUNCTION_DEF(WatchPins);
 DF_VIEW_UI_FUNCTION_DEF(ExceptionFilters);
-DF_VIEW_UI_FUNCTION_DEF(Theme);
+DF_VIEW_UI_FUNCTION_DEF(Settings);
 
 DF_GFX_VIEW_RULE_VIZ_ROW_PROD_FUNCTION_DEF(list);
 DF_GFX_VIEW_RULE_VIZ_ROW_PROD_FUNCTION_DEF(only);
@@ -281,27 +320,33 @@ DF_VIEW_UI_FUNCTION_DEF(bitmap);
 DF_VIEW_UI_FUNCTION_DEF(odin_map);
 DF_VIEW_UI_FUNCTION_DEF(geo);
 C_LINKAGE_BEGIN
-extern String8 df_g_theme_preset_display_string_table[9];
-extern String8 df_g_theme_preset_code_string_table[9];
-extern Vec4F32 df_g_theme_preset_colors__default_dark[54];
-extern Vec4F32 df_g_theme_preset_colors__default_light[54];
-extern Vec4F32 df_g_theme_preset_colors__vs_dark[54];
-extern Vec4F32 df_g_theme_preset_colors__vs_light[54];
-extern Vec4F32 df_g_theme_preset_colors__solarized_dark[54];
-extern Vec4F32 df_g_theme_preset_colors__solarized_light[54];
-extern Vec4F32 df_g_theme_preset_colors__handmade_hero[54];
-extern Vec4F32 df_g_theme_preset_colors__four_coder[54];
-extern Vec4F32 df_g_theme_preset_colors__far_manager[54];
-extern Vec4F32* df_g_theme_preset_colors_table[9];
-extern DF_CmdParamSlot df_g_cmd_param_slot_2_view_spec_src_map[7];
-extern String8 df_g_cmd_param_slot_2_view_spec_dst_map[7];
-extern String8 df_g_cmd_param_slot_2_view_spec_cmd_map[7];
 extern DF_StringBindingPair df_g_default_binding_table[105];
 extern String8 df_g_binding_version_remap_old_name_table[5];
 extern String8 df_g_binding_version_remap_new_name_table[5];
 extern DF_ViewSpecInfo df_g_gfx_view_kind_spec_info_table[31];
-extern String8 df_g_theme_color_display_string_table[54];
-extern String8 df_g_theme_color_cfg_string_table[54];
+extern DF_CmdParamSlot df_g_cmd_param_slot_2_view_spec_src_map[7];
+extern String8 df_g_cmd_param_slot_2_view_spec_dst_map[7];
+extern String8 df_g_cmd_param_slot_2_view_spec_cmd_map[7];
+extern String8 df_g_theme_preset_display_string_table[9];
+extern String8 df_g_theme_preset_code_string_table[9];
+extern String8 df_g_theme_color_version_remap_old_name_table[22];
+extern String8 df_g_theme_color_version_remap_new_name_table[22];
+extern Vec4F32 df_g_theme_preset_colors__default_dark[75];
+extern Vec4F32 df_g_theme_preset_colors__default_light[75];
+extern Vec4F32 df_g_theme_preset_colors__vs_dark[75];
+extern Vec4F32 df_g_theme_preset_colors__vs_light[75];
+extern Vec4F32 df_g_theme_preset_colors__solarized_dark[75];
+extern Vec4F32 df_g_theme_preset_colors__solarized_light[75];
+extern Vec4F32 df_g_theme_preset_colors__handmade_hero[75];
+extern Vec4F32 df_g_theme_preset_colors__four_coder[75];
+extern Vec4F32 df_g_theme_preset_colors__far_manager[75];
+extern Vec4F32* df_g_theme_preset_colors_table[9];
+extern String8 df_g_theme_color_display_string_table[75];
+extern String8 df_g_theme_color_cfg_string_table[75];
+extern String8 df_g_setting_code_display_string_table[13];
+extern String8 df_g_setting_code_lower_string_table[13];
+extern DF_SettingVal df_g_setting_code_default_val_table[13];
+extern Rng1S32 df_g_setting_code_s32_range_table[13];
 read_only global U8 df_g_icon_font_bytes__data[] =
 {
 0x00,0x01,0x00,0x00,0x00,0x0f,0x00,0x80,0x00,0x03,0x00,0x70,0x47,0x53,0x55,0x42,0x20,0x8b,0x25,0x7a,0x00,0x00,0x00,0xfc,0x00,0x00,0x00,0x54,0x4f,0x53,0x2f,0x32,0x56,0x44,0x49,0xa0,0x00,0x00,0x01,0x50,0x00,0x00,0x00,0x60,0x63,0x6d,0x61,0x70,0x2a,0x09,0xe2,0xc2,0x00,0x00,0x01,0xb0,0x00,0x00,0x05,0xec,0x63,0x76,0x74,0x20,

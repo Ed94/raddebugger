@@ -33,6 +33,9 @@ main_thread_base_entry_point(void (*entry_point)(CmdLine *cmdline), char **argum
 #if defined(TEXT_CACHE_H) && !defined(TXT_INIT_MANUAL)
   txt_init();
 #endif
+#if defined(MUTABLE_TEXT_H) && !defined(MTX_INIT_MANUAL)
+  mtx_init();
+#endif
 #if defined(DASM_CACHE_H) && !defined(DASM_INIT_MANUAL)
   dasm_init();
 #endif
@@ -41,9 +44,6 @@ main_thread_base_entry_point(void (*entry_point)(CmdLine *cmdline), char **argum
 #endif
 #if defined(FUZZY_SEARCH_H) && !defined(FZY_INIT_MANUAL)
   fzy_init();
-#endif
-#if defined(TXTI_H) && !defined(TXTI_INIT_MANUAL)
-  txti_init();
 #endif
 #if defined(DEMON_CORE_H) && !defined(DMN_INIT_MANUAL)
   dmn_init();

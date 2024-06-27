@@ -196,6 +196,72 @@ struct UI_Size
 };
 
 ////////////////////////////////
+//~ rjf: Palettes
+
+typedef enum UI_ColorCode
+{
+  UI_ColorCode_Null,
+  UI_ColorCode_Background,
+  UI_ColorCode_Text,
+  UI_ColorCode_TextWeak,
+  UI_ColorCode_Border,
+  UI_ColorCode_Overlay,
+  UI_ColorCode_Cursor,
+  UI_ColorCode_Selection,
+  UI_ColorCode_COUNT
+}
+UI_ColorCode;
+
+typedef struct UI_Palette UI_Palette;
+struct UI_Palette
+{
+  union
+  {
+    Vec4F32 colors[UI_ColorCode_COUNT];
+    struct
+    {
+      Vec4F32 null;
+      Vec4F32 background;
+      Vec4F32 text;
+      Vec4F32 text_weak;
+      Vec4F32 border;
+      Vec4F32 overlay;
+      Vec4F32 cursor;
+      Vec4F32 selection;
+    };
+  };
+};
+
+typedef struct UI_WidgetPaletteInfo UI_WidgetPaletteInfo;
+struct UI_WidgetPaletteInfo
+{
+  UI_Palette *tooltip_palette;
+  UI_Palette *ctx_menu_palette;
+  UI_Palette *scrollbar_palette;
+};
+
+////////////////////////////////
+//~ rjf: Animation Info
+
+typedef U32 UI_AnimationInfoFlags;
+enum
+{
+  UI_AnimationInfoFlag_HotAnimations          = (1<<0),
+  UI_AnimationInfoFlag_ActiveAnimations       = (1<<1),
+  UI_AnimationInfoFlag_FocusAnimations        = (1<<2),
+  UI_AnimationInfoFlag_TooltipAnimations      = (1<<3),
+  UI_AnimationInfoFlag_ContextMenuAnimations  = (1<<4),
+  UI_AnimationInfoFlag_ScrollingAnimations    = (1<<5),
+  UI_AnimationInfoFlag_All = 0xffffffff,
+};
+
+typedef struct UI_AnimationInfo UI_AnimationInfo;
+struct UI_AnimationInfo
+{
+  UI_AnimationInfoFlags flags;
+};
+
+////////////////////////////////
 //~ rjf: Scroll Positions
 
 typedef struct UI_ScrollPt UI_ScrollPt;
@@ -252,53 +318,56 @@ typedef U64 UI_BoxFlags;
 # define UI_BoxFlag_DefaultFocusNavY          (UI_BoxFlags)(1ull<<14)
 # define UI_BoxFlag_DefaultFocusEdit          (UI_BoxFlags)(1ull<<15)
 # define UI_BoxFlag_FocusNavSkip              (UI_BoxFlags)(1ull<<16)
-# define UI_BoxFlag_Disabled                  (UI_BoxFlags)(1ull<<17)
+# define UI_BoxFlag_DisableTruncatedHover     (UI_BoxFlags)(1ull<<17)
+# define UI_BoxFlag_Disabled                  (UI_BoxFlags)(1ull<<18)
 
 //- rjf: layout
-# define UI_BoxFlag_FloatingX                 (UI_BoxFlags)(1ull<<18)
-# define UI_BoxFlag_FloatingY                 (UI_BoxFlags)(1ull<<19)
-# define UI_BoxFlag_FixedWidth                (UI_BoxFlags)(1ull<<20)
-# define UI_BoxFlag_FixedHeight               (UI_BoxFlags)(1ull<<21)
-# define UI_BoxFlag_AllowOverflowX            (UI_BoxFlags)(1ull<<22)
-# define UI_BoxFlag_AllowOverflowY            (UI_BoxFlags)(1ull<<23)
-# define UI_BoxFlag_SkipViewOffX              (UI_BoxFlags)(1ull<<24)
-# define UI_BoxFlag_SkipViewOffY              (UI_BoxFlags)(1ull<<25)
+# define UI_BoxFlag_FloatingX                 (UI_BoxFlags)(1ull<<19)
+# define UI_BoxFlag_FloatingY                 (UI_BoxFlags)(1ull<<20)
+# define UI_BoxFlag_FixedWidth                (UI_BoxFlags)(1ull<<21)
+# define UI_BoxFlag_FixedHeight               (UI_BoxFlags)(1ull<<22)
+# define UI_BoxFlag_AllowOverflowX            (UI_BoxFlags)(1ull<<23)
+# define UI_BoxFlag_AllowOverflowY            (UI_BoxFlags)(1ull<<24)
+# define UI_BoxFlag_SkipViewOffX              (UI_BoxFlags)(1ull<<25)
+# define UI_BoxFlag_SkipViewOffY              (UI_BoxFlags)(1ull<<26)
 
 //- rjf: appearance / animation
-# define UI_BoxFlag_DrawDropShadow            (UI_BoxFlags)(1ull<<26)
-# define UI_BoxFlag_DrawBackgroundBlur        (UI_BoxFlags)(1ull<<27)
-# define UI_BoxFlag_DrawBackground            (UI_BoxFlags)(1ull<<28)
-# define UI_BoxFlag_DrawBorder                (UI_BoxFlags)(1ull<<29)
-# define UI_BoxFlag_DrawSideTop               (UI_BoxFlags)(1ull<<30)
-# define UI_BoxFlag_DrawSideBottom            (UI_BoxFlags)(1ull<<31)
-# define UI_BoxFlag_DrawSideLeft              (UI_BoxFlags)(1ull<<32)
-# define UI_BoxFlag_DrawSideRight             (UI_BoxFlags)(1ull<<33)
-# define UI_BoxFlag_DrawText                  (UI_BoxFlags)(1ull<<34)
-# define UI_BoxFlag_DrawTextFastpathCodepoint (UI_BoxFlags)(1ull<<35)
-# define UI_BoxFlag_DrawHotEffects            (UI_BoxFlags)(1ull<<36)
-# define UI_BoxFlag_DrawActiveEffects         (UI_BoxFlags)(1ull<<37)
-# define UI_BoxFlag_DrawOverlay               (UI_BoxFlags)(1ull<<38)
-# define UI_BoxFlag_DrawBucket                (UI_BoxFlags)(1ull<<39)
-# define UI_BoxFlag_Clip                      (UI_BoxFlags)(1ull<<40)
-# define UI_BoxFlag_AnimatePosX               (UI_BoxFlags)(1ull<<41)
-# define UI_BoxFlag_AnimatePosY               (UI_BoxFlags)(1ull<<42)
-# define UI_BoxFlag_DisableTextTrunc          (UI_BoxFlags)(1ull<<43)
-# define UI_BoxFlag_DisableIDString           (UI_BoxFlags)(1ull<<44)
-# define UI_BoxFlag_DisableFocusViz           (UI_BoxFlags)(1ull<<45)
-# define UI_BoxFlag_RequireFocusBackground    (UI_BoxFlags)(1ull<<46)
-# define UI_BoxFlag_HasDisplayString          (UI_BoxFlags)(1ull<<47)
-# define UI_BoxFlag_HasFuzzyMatchRanges       (UI_BoxFlags)(1ull<<48)
-# define UI_BoxFlag_RoundChildrenByParent     (UI_BoxFlags)(1ull<<49)
+# define UI_BoxFlag_DrawDropShadow            (UI_BoxFlags)(1ull<<27)
+# define UI_BoxFlag_DrawBackgroundBlur        (UI_BoxFlags)(1ull<<28)
+# define UI_BoxFlag_DrawBackground            (UI_BoxFlags)(1ull<<29)
+# define UI_BoxFlag_DrawBorder                (UI_BoxFlags)(1ull<<30)
+# define UI_BoxFlag_DrawSideTop               (UI_BoxFlags)(1ull<<31)
+# define UI_BoxFlag_DrawSideBottom            (UI_BoxFlags)(1ull<<32)
+# define UI_BoxFlag_DrawSideLeft              (UI_BoxFlags)(1ull<<33)
+# define UI_BoxFlag_DrawSideRight             (UI_BoxFlags)(1ull<<34)
+# define UI_BoxFlag_DrawText                  (UI_BoxFlags)(1ull<<35)
+# define UI_BoxFlag_DrawTextFastpathCodepoint (UI_BoxFlags)(1ull<<36)
+# define UI_BoxFlag_DrawTextWeak              (UI_BoxFlags)(1ull<<37)
+# define UI_BoxFlag_DrawHotEffects            (UI_BoxFlags)(1ull<<38)
+# define UI_BoxFlag_DrawActiveEffects         (UI_BoxFlags)(1ull<<39)
+# define UI_BoxFlag_DrawOverlay               (UI_BoxFlags)(1ull<<40)
+# define UI_BoxFlag_DrawBucket                (UI_BoxFlags)(1ull<<41)
+# define UI_BoxFlag_Clip                      (UI_BoxFlags)(1ull<<42)
+# define UI_BoxFlag_AnimatePosX               (UI_BoxFlags)(1ull<<43)
+# define UI_BoxFlag_AnimatePosY               (UI_BoxFlags)(1ull<<44)
+# define UI_BoxFlag_DisableTextTrunc          (UI_BoxFlags)(1ull<<45)
+# define UI_BoxFlag_DisableIDString           (UI_BoxFlags)(1ull<<46)
+# define UI_BoxFlag_DisableFocusBorder        (UI_BoxFlags)(1ull<<47)
+# define UI_BoxFlag_DisableFocusOverlay       (UI_BoxFlags)(1ull<<48)
+# define UI_BoxFlag_HasDisplayString          (UI_BoxFlags)(1ull<<49)
+# define UI_BoxFlag_HasFuzzyMatchRanges       (UI_BoxFlags)(1ull<<50)
+# define UI_BoxFlag_RoundChildrenByParent     (UI_BoxFlags)(1ull<<51)
 
 //- rjf: bundles
-# define UI_BoxFlag_Clickable          (UI_BoxFlag_MouseClickable|UI_BoxFlag_KeyboardClickable)
-# define UI_BoxFlag_DefaultFocusNav    (UI_BoxFlag_DefaultFocusNavX|UI_BoxFlag_DefaultFocusNavY|UI_BoxFlag_DefaultFocusEdit)
-# define UI_BoxFlag_Floating           (UI_BoxFlag_FloatingX|UI_BoxFlag_FloatingY)
-# define UI_BoxFlag_FixedSize          (UI_BoxFlag_FixedWidth|UI_BoxFlag_FixedHeight)
-# define UI_BoxFlag_AllowOverflow      (UI_BoxFlag_AllowOverflowX|UI_BoxFlag_AllowOverflowY)
-# define UI_BoxFlag_AnimatePos         (UI_BoxFlag_AnimatePosX|UI_BoxFlag_AnimatePosY)
-# define UI_BoxFlag_ViewScroll         (UI_BoxFlag_ViewScrollX|UI_BoxFlag_ViewScrollY)
-# define UI_BoxFlag_ViewClamp          (UI_BoxFlag_ViewClampX|UI_BoxFlag_ViewClampY)
+# define UI_BoxFlag_Clickable           (UI_BoxFlag_MouseClickable|UI_BoxFlag_KeyboardClickable)
+# define UI_BoxFlag_DefaultFocusNav     (UI_BoxFlag_DefaultFocusNavX|UI_BoxFlag_DefaultFocusNavY|UI_BoxFlag_DefaultFocusEdit)
+# define UI_BoxFlag_Floating            (UI_BoxFlag_FloatingX|UI_BoxFlag_FloatingY)
+# define UI_BoxFlag_FixedSize           (UI_BoxFlag_FixedWidth|UI_BoxFlag_FixedHeight)
+# define UI_BoxFlag_AllowOverflow       (UI_BoxFlag_AllowOverflowX|UI_BoxFlag_AllowOverflowY)
+# define UI_BoxFlag_AnimatePos          (UI_BoxFlag_AnimatePosX|UI_BoxFlag_AnimatePosY)
+# define UI_BoxFlag_ViewScroll          (UI_BoxFlag_ViewScrollX|UI_BoxFlag_ViewScrollY)
+# define UI_BoxFlag_ViewClamp           (UI_BoxFlag_ViewClampX|UI_BoxFlag_ViewClampY)
+# define UI_BoxFlag_DisableFocusEffects (UI_BoxFlag_DisableFocusBorder|UI_BoxFlag_DisableFocusOverlay)
 //}
 
 typedef struct UI_Box UI_Box;
@@ -327,16 +396,15 @@ struct UI_Box
   Axis2 child_layout_axis;
   OS_Cursor hover_cursor;
   U32 fastpath_codepoint;
+  UI_Key group_key;
   D_Bucket *draw_bucket;
   UI_BoxCustomDrawFunctionType *custom_draw;
   void *custom_draw_user_data;
-  Vec4F32 background_color;
-  Vec4F32 text_color;
-  Vec4F32 border_color;
-  Vec4F32 overlay_color;
+  UI_Palette *palette;
   F_Tag font;
   F32 font_size;
   F32 tab_size;
+  F_RunFlags run_flags;
   F32 corner_radii[Corner_COUNT];
   F32 blur_size;
   F32 transparency;
@@ -512,6 +580,9 @@ struct UI_State
   U64 box_table_size;
   UI_BoxHashSlot *box_table;
   
+  //- rjf: build state machine state
+  B32 is_in_open_ctx_menu;
+  
   //- rjf: build phase output
   UI_Box *root;
   UI_Box *tooltip_root;
@@ -524,11 +595,12 @@ struct UI_State
   
   //- rjf: build parameters
   UI_IconInfo icon_info;
+  UI_WidgetPaletteInfo widget_palette_info;
+  UI_AnimationInfo animation_info;
   OS_Handle window;
   UI_EventList *events;
   Vec2F32 mouse;
   F32 animation_dt;
-  B32 external_focus_commit;
   
   //- rjf: user interaction state
   UI_Key hot_box_key;
@@ -603,6 +675,11 @@ internal UI_Size ui_size(UI_SizeKind kind, F32 value, F32 strictness);
 #define ui_text_dim(padding, strictness) ui_size(UI_SizeKind_TextContent, padding, strictness)
 #define ui_pct(value, strictness)        ui_size(UI_SizeKind_ParentPct, value, strictness)
 #define ui_children_sum(strictness)      ui_size(UI_SizeKind_ChildrenSum, 0.f, strictness)
+
+////////////////////////////////
+//~ rjf: Color Scheme Type Functions
+
+read_only global UI_Palette ui_g_nil_palette = {0};
 
 ////////////////////////////////
 //~ rjf: Scroll Point Type Functions
@@ -684,7 +761,7 @@ internal UI_Box *          ui_box_from_key(UI_Key key);
 ////////////////////////////////
 //~ rjf: Top-Level Building API
 
-internal void ui_begin_build(OS_Handle window, UI_EventList *events, UI_IconInfo *icon_info, F32 real_dt, F32 animation_dt);
+internal void ui_begin_build(OS_Handle window, UI_EventList *events, UI_IconInfo *icon_info, UI_WidgetPaletteInfo *widget_palette_info, UI_AnimationInfo *animation_info, F32 real_dt, F32 animation_dt);
 internal void ui_end_build(void);
 internal void ui_calc_sizes_standalone__in_place_rec(UI_Box *root, Axis2 axis);
 internal void ui_calc_sizes_upwards_dependent__in_place_rec(UI_Box *root, Axis2 axis);
@@ -695,6 +772,9 @@ internal void ui_layout_root(UI_Box *root, Axis2 axis);
 
 ////////////////////////////////
 //~ rjf: Box Tree Building API
+
+//- rjf: spacers
+internal UI_Signal         ui_spacer(UI_Size size);
 
 //- rjf: tooltips
 internal void              ui_tooltip_begin_base(void);
@@ -720,6 +800,10 @@ internal B32               ui_is_key_auto_focus_hot(UI_Key key);
 internal void              ui_set_auto_focus_active_key(UI_Key key);
 internal void              ui_set_auto_focus_hot_key(UI_Key key);
 
+//- rjf: palette forming
+internal UI_Palette *      ui_build_palette_(UI_Palette *base, UI_Palette *overrides);
+#define ui_build_palette(base, ...) ui_build_palette_((base), &(UI_Palette){.text = v4f32(0, 0, 0, 0), __VA_ARGS__})
+
 //- rjf: box node construction
 internal UI_Box *          ui_build_box_from_key(UI_BoxFlags flags, UI_Key key);
 internal UI_Key            ui_active_seed_key(void);
@@ -728,7 +812,7 @@ internal UI_Box *          ui_build_box_from_stringf(UI_BoxFlags flags, char *fm
 
 //- rjf: box node equipment
 internal inline void       ui_box_equip_display_string(UI_Box *box, String8 string);
-internal inline void       ui_box_equip_display_fancy_strings(UI_Box *box, F32 tab_size, D_FancyStringList *strings);
+internal inline void       ui_box_equip_display_fancy_strings(UI_Box *box, D_FancyStringList *strings);
 internal inline void       ui_box_equip_display_string_fancy_runs(UI_Box *box, String8 string, D_FancyRunList *runs);
 internal inline void       ui_box_equip_fuzzy_match_ranges(UI_Box *box, FuzzyMatchRangeList *matches);
 internal inline void       ui_box_equip_draw_bucket(UI_Box *box, D_Bucket *bucket);
@@ -742,10 +826,6 @@ internal U64               ui_box_char_pos_from_xy(UI_Box *box, Vec2F32 xy);
 ////////////////////////////////
 //~ rjf: User Interaction
 
-//- rjf: single-line string editing
-internal B32 ui_do_single_line_string_edits(TxtPt *cursor, TxtPt *mark, U64 string_max, String8 *out_string);
-
-//- rjf: general box interaction path
 internal UI_Signal ui_signal_from_box(UI_Box *box);
 
 ////////////////////////////////
@@ -764,17 +844,15 @@ internal UI_BoxFlags                ui_top_flags(void);
 internal UI_FocusKind               ui_top_focus_hot(void);
 internal UI_FocusKind               ui_top_focus_active(void);
 internal U32                        ui_top_fastpath_codepoint(void);
+internal UI_Key                     ui_top_group_key(void);
 internal F32                        ui_top_transparency(void);
-internal Vec4F32                    ui_top_background_color(void);
-internal Vec4F32                    ui_top_text_color(void);
-internal Vec4F32                    ui_top_border_color(void);
-internal Vec4F32                    ui_top_overlay_color(void);
-internal Vec4F32                    ui_top_text_select_color(void);
-internal Vec4F32                    ui_top_text_cursor_color(void);
+internal UI_Palette*                ui_top_palette(void);
 internal F32                        ui_top_squish(void);
 internal OS_Cursor                  ui_top_hover_cursor(void);
 internal F_Tag                      ui_top_font(void);
 internal F32                        ui_top_font_size(void);
+internal F_RunFlags                 ui_top_run_flags(void);
+internal F32                        ui_top_tab_size(void);
 internal F32                        ui_top_corner_radius_00(void);
 internal F32                        ui_top_corner_radius_01(void);
 internal F32                        ui_top_corner_radius_10(void);
@@ -794,17 +872,15 @@ internal UI_BoxFlags                ui_bottom_flags(void);
 internal UI_FocusKind               ui_bottom_focus_hot(void);
 internal UI_FocusKind               ui_bottom_focus_active(void);
 internal U32                        ui_bottom_fastpath_codepoint(void);
+internal UI_Key                     ui_bottom_group_key(void);
 internal F32                        ui_bottom_transparency(void);
-internal Vec4F32                    ui_bottom_background_color(void);
-internal Vec4F32                    ui_bottom_text_color(void);
-internal Vec4F32                    ui_bottom_border_color(void);
-internal Vec4F32                    ui_bottom_overlay_color(void);
-internal Vec4F32                    ui_bottom_text_select_color(void);
-internal Vec4F32                    ui_bottom_text_cursor_color(void);
+internal UI_Palette*                ui_bottom_palette(void);
 internal F32                        ui_bottom_squish(void);
 internal OS_Cursor                  ui_bottom_hover_cursor(void);
 internal F_Tag                      ui_bottom_font(void);
 internal F32                        ui_bottom_font_size(void);
+internal F_RunFlags                 ui_bottom_run_flags(void);
+internal F32                        ui_bottom_tab_size(void);
 internal F32                        ui_bottom_corner_radius_00(void);
 internal F32                        ui_bottom_corner_radius_01(void);
 internal F32                        ui_bottom_corner_radius_10(void);
@@ -824,17 +900,15 @@ internal UI_BoxFlags                ui_push_flags(UI_BoxFlags v);
 internal UI_FocusKind               ui_push_focus_hot(UI_FocusKind v);
 internal UI_FocusKind               ui_push_focus_active(UI_FocusKind v);
 internal U32                        ui_push_fastpath_codepoint(U32 v);
+internal UI_Key                     ui_push_group_key(UI_Key v);
 internal F32                        ui_push_transparency(F32 v);
-internal Vec4F32                    ui_push_background_color(Vec4F32 v);
-internal Vec4F32                    ui_push_text_color(Vec4F32 v);
-internal Vec4F32                    ui_push_border_color(Vec4F32 v);
-internal Vec4F32                    ui_push_overlay_color(Vec4F32 v);
-internal Vec4F32                    ui_push_text_select_color(Vec4F32 v);
-internal Vec4F32                    ui_push_text_cursor_color(Vec4F32 v);
+internal UI_Palette*                ui_push_palette(UI_Palette*     v);
 internal F32                        ui_push_squish(F32 v);
 internal OS_Cursor                  ui_push_hover_cursor(OS_Cursor v);
 internal F_Tag                      ui_push_font(F_Tag v);
 internal F32                        ui_push_font_size(F32 v);
+internal F_RunFlags                 ui_push_run_flags(F_RunFlags v);
+internal F32                        ui_push_tab_size(F32 v);
 internal F32                        ui_push_corner_radius_00(F32 v);
 internal F32                        ui_push_corner_radius_01(F32 v);
 internal F32                        ui_push_corner_radius_10(F32 v);
@@ -854,17 +928,15 @@ internal UI_BoxFlags                ui_pop_flags(void);
 internal UI_FocusKind               ui_pop_focus_hot(void);
 internal UI_FocusKind               ui_pop_focus_active(void);
 internal U32                        ui_pop_fastpath_codepoint(void);
+internal UI_Key                     ui_pop_group_key(void);
 internal F32                        ui_pop_transparency(void);
-internal Vec4F32                    ui_pop_background_color(void);
-internal Vec4F32                    ui_pop_text_color(void);
-internal Vec4F32                    ui_pop_border_color(void);
-internal Vec4F32                    ui_pop_overlay_color(void);
-internal Vec4F32                    ui_pop_text_select_color(void);
-internal Vec4F32                    ui_pop_text_cursor_color(void);
+internal UI_Palette*                ui_pop_palette(void);
 internal F32                        ui_pop_squish(void);
 internal OS_Cursor                  ui_pop_hover_cursor(void);
 internal F_Tag                      ui_pop_font(void);
 internal F32                        ui_pop_font_size(void);
+internal F_RunFlags                 ui_pop_run_flags(void);
+internal F32                        ui_pop_tab_size(void);
 internal F32                        ui_pop_corner_radius_00(void);
 internal F32                        ui_pop_corner_radius_01(void);
 internal F32                        ui_pop_corner_radius_10(void);
@@ -884,17 +956,15 @@ internal UI_BoxFlags                ui_set_next_flags(UI_BoxFlags v);
 internal UI_FocusKind               ui_set_next_focus_hot(UI_FocusKind v);
 internal UI_FocusKind               ui_set_next_focus_active(UI_FocusKind v);
 internal U32                        ui_set_next_fastpath_codepoint(U32 v);
+internal UI_Key                     ui_set_next_group_key(UI_Key v);
 internal F32                        ui_set_next_transparency(F32 v);
-internal Vec4F32                    ui_set_next_background_color(Vec4F32 v);
-internal Vec4F32                    ui_set_next_text_color(Vec4F32 v);
-internal Vec4F32                    ui_set_next_border_color(Vec4F32 v);
-internal Vec4F32                    ui_set_next_overlay_color(Vec4F32 v);
-internal Vec4F32                    ui_set_next_text_select_color(Vec4F32 v);
-internal Vec4F32                    ui_set_next_text_cursor_color(Vec4F32 v);
+internal UI_Palette*                ui_set_next_palette(UI_Palette*     v);
 internal F32                        ui_set_next_squish(F32 v);
 internal OS_Cursor                  ui_set_next_hover_cursor(OS_Cursor v);
 internal F_Tag                      ui_set_next_font(F_Tag v);
 internal F32                        ui_set_next_font_size(F32 v);
+internal F_RunFlags                 ui_set_next_run_flags(F_RunFlags v);
+internal F32                        ui_set_next_tab_size(F32 v);
 internal F32                        ui_set_next_corner_radius_00(F32 v);
 internal F32                        ui_set_next_corner_radius_01(F32 v);
 internal F32                        ui_set_next_corner_radius_10(F32 v);
@@ -906,6 +976,7 @@ internal UI_TextAlign               ui_set_next_text_alignment(UI_TextAlign v);
 //- rjf: helpers
 internal Rng2F32  ui_push_rect(Rng2F32 rect);
 internal Rng2F32  ui_pop_rect(void);
+internal void     ui_set_next_rect(Rng2F32 rect);
 internal UI_Size  ui_push_pref_size(Axis2 axis, UI_Size v);
 internal UI_Size  ui_pop_pref_size(Axis2 axis);
 internal UI_Size  ui_set_next_pref_size(Axis2 axis, UI_Size v);
@@ -928,17 +999,14 @@ internal void     ui_pop_corner_radius(void);
 #define UI_FocusHot(v) DeferLoop(ui_push_focus_hot(v), ui_pop_focus_hot())
 #define UI_FocusActive(v) DeferLoop(ui_push_focus_active(v), ui_pop_focus_active())
 #define UI_FastpathCodepoint(v) DeferLoop(ui_push_fastpath_codepoint(v), ui_pop_fastpath_codepoint())
+#define UI_GroupKey(v) DeferLoop(ui_push_group_key(v), ui_pop_group_key())
 #define UI_Transparency(v) DeferLoop(ui_push_transparency(v), ui_pop_transparency())
-#define UI_BackgroundColor(v) DeferLoop(ui_push_background_color(v), ui_pop_background_color())
-#define UI_TextColor(v) DeferLoop(ui_push_text_color(v), ui_pop_text_color())
-#define UI_BorderColor(v) DeferLoop(ui_push_border_color(v), ui_pop_border_color())
-#define UI_OverlayColor(v) DeferLoop(ui_push_overlay_color(v), ui_pop_overlay_color())
-#define UI_TextSelectColor(v) DeferLoop(ui_push_text_select_color(v), ui_pop_text_select_color())
-#define UI_TextCursorColor(v) DeferLoop(ui_push_text_cursor_color(v), ui_pop_text_cursor_color())
+#define UI_Palette(v) DeferLoop(ui_push_palette(v), ui_pop_palette())
 #define UI_Squish(v) DeferLoop(ui_push_squish(v), ui_pop_squish())
 #define UI_HoverCursor(v) DeferLoop(ui_push_hover_cursor(v), ui_pop_hover_cursor())
 #define UI_Font(v) DeferLoop(ui_push_font(v), ui_pop_font())
 #define UI_FontSize(v) DeferLoop(ui_push_font_size(v), ui_pop_font_size())
+#define UI_RunFlags(v) DeferLoop(ui_push_run_flags(v), ui_pop_run_flags())
 #define UI_TabSize(v) DeferLoop(ui_push_tab_size(v), ui_pop_tab_size())
 #define UI_CornerRadius00(v) DeferLoop(ui_push_corner_radius_00(v), ui_pop_corner_radius_00())
 #define UI_CornerRadius01(v) DeferLoop(ui_push_corner_radius_01(v), ui_pop_corner_radius_01())
@@ -955,6 +1023,7 @@ internal void     ui_pop_corner_radius(void);
 #define UI_PrefSize(axis, v) DeferLoop(ui_push_pref_size((axis), (v)), ui_pop_pref_size(axis))
 #define UI_CornerRadius(v)   DeferLoop(ui_push_corner_radius(v), ui_pop_corner_radius())
 #define UI_Focus(kind)       DeferLoop((ui_push_focus_hot(kind), ui_push_focus_active(kind)), (ui_pop_focus_hot(), ui_pop_focus_active()))
+#define UI_FlagsAdd(v)       DeferLoop(ui_push_flags(ui_top_flags()|(v)), ui_pop_flags())
 
 //- rjf: tooltip
 #define UI_TooltipBase DeferLoop(ui_tooltip_begin_base(), ui_tooltip_end_base())

@@ -359,18 +359,30 @@ struct DF_WatchViewState
 };
 
 ////////////////////////////////
-//~ rjf: Code @view_types
+//~ rjf: Code, Output @view_types
+
+typedef U32 DF_CodeViewFlags;
+enum
+{
+  DF_CodeViewFlag_StickToBottom = (1<<0),
+};
+
+typedef U32 DF_CodeViewBuildFlags;
+enum
+{
+  DF_CodeViewBuildFlag_Margins = (1<<0),
+  DF_CodeViewBuildFlag_All     = 0xffffffff,
+};
 
 typedef struct DF_CodeViewState DF_CodeViewState;
 struct DF_CodeViewState
 {
   // rjf: stable state
   B32 initialized;
-  TxtPt cursor;
-  TxtPt mark;
   S64 preferred_column;
   B32 drifted_for_search;
   DF_Handle pick_file_override_target;
+  DF_CodeViewFlags flags;
   
   // rjf: per-frame command info
   S64 goto_line_num;
@@ -387,24 +399,12 @@ struct DF_CodeViewState
 typedef struct DF_DisasmViewState DF_DisasmViewState;
 struct DF_DisasmViewState
 {
-  // rjf: stable state
   B32 initialized;
   DF_Handle process;
   U64 base_vaddr;
-  TxtPt cursor;
-  TxtPt mark;
-  S64 preferred_column;
-  B32 drifted_for_search;
   DASM_StyleFlags style_flags;
-  
-  // rjf: per-frame command info
-  S64 goto_line_num;
   U64 goto_vaddr;
-  B32 center_cursor;
-  B32 contain_cursor;
-  Arena *find_text_arena;
-  String8 find_text_fwd;
-  String8 find_text_bwd;
+  DF_CodeViewState cv;
 };
 
 ////////////////////////////////
@@ -435,6 +435,56 @@ struct DF_MemoryViewState
 };
 
 ////////////////////////////////
+//~ rjf: Settings @view_types
+
+typedef enum DF_SettingsItemKind
+{
+  DF_SettingsItemKind_CategoryHeader,
+  DF_SettingsItemKind_Setting,
+  DF_SettingsItemKind_ThemeColor,
+  DF_SettingsItemKind_ThemePreset,
+  DF_SettingsItemKind_COUNT
+}
+DF_SettingsItemKind;
+
+typedef struct DF_SettingsItem DF_SettingsItem;
+struct DF_SettingsItem
+{
+  DF_SettingsItemKind kind;
+  String8 kind_string;
+  String8 string;
+  FuzzyMatchRangeList kind_string_matches;
+  FuzzyMatchRangeList string_matches;
+  DF_IconKind icon_kind;
+  DF_SettingCode code;
+  DF_ThemeColor color;
+  DF_ThemePreset preset;
+  DF_SettingsItemKind category;
+};
+
+typedef struct DF_SettingsItemNode DF_SettingsItemNode;
+struct DF_SettingsItemNode
+{
+  DF_SettingsItemNode *next;
+  DF_SettingsItem v;
+};
+
+typedef struct DF_SettingsItemList DF_SettingsItemList;
+struct DF_SettingsItemList
+{
+  DF_SettingsItemNode *first;
+  DF_SettingsItemNode *last;
+  U64 count;
+};
+
+typedef struct DF_SettingsItemArray DF_SettingsItemArray;
+struct DF_SettingsItemArray
+{
+  DF_SettingsItem *v;
+  U64 count;
+};
+
+////////////////////////////////
 //~ rjf: Quick Sort Comparisons
 
 internal int df_qsort_compare_file_info__default(DF_FileInfo *a, DF_FileInfo *b);
@@ -445,6 +495,7 @@ internal int df_qsort_compare_file_info__size(DF_FileInfo *a, DF_FileInfo *b);
 internal int df_qsort_compare_process_info(DF_ProcessInfo *a, DF_ProcessInfo *b);
 internal int df_qsort_compare_cmd_lister__strength(DF_CmdListerItem *a, DF_CmdListerItem *b);
 internal int df_qsort_compare_entity_lister__strength(DF_EntityListerItem *a, DF_EntityListerItem *b);
+internal int df_qsort_compare_settings_item(DF_SettingsItem *a, DF_SettingsItem *b);
 
 ////////////////////////////////
 //~ rjf: Command Lister
@@ -466,6 +517,13 @@ internal void df_process_info_array_sort_by_strength__in_place(DF_ProcessInfoArr
 internal DF_EntityListerItemList df_entity_lister_item_list_from_needle(Arena *arena, DF_EntityKind kind, DF_EntityFlags omit_flags, String8 needle);
 internal DF_EntityListerItemArray df_entity_lister_item_array_from_list(Arena *arena, DF_EntityListerItemList list);
 internal void df_entity_lister_item_array_sort_by_strength__in_place(DF_EntityListerItemArray array);
+
+////////////////////////////////
+//~ rjf: Code Views
+
+internal void df_code_view_init(DF_CodeViewState *cv, DF_View *view);
+internal void df_code_view_cmds(DF_Window *ws, DF_Panel *panel, DF_View *view, DF_CodeViewState *cv, DF_CmdList *cmds, String8 text_data, TXT_TextInfo *text_info, DASM_InstArray *dasm_insts, Rng1U64 dasm_vaddr_range, DI_Key dasm_dbgi_key);
+internal void df_code_view_build(DF_Window *ws, DF_Panel *panel, DF_View *view, DF_CodeViewState *cv, DF_CodeViewBuildFlags flags, Rng2F32 rect, String8 text_data, TXT_TextInfo *text_info, DASM_InstArray *dasm_insts, Rng1U64 dasm_vaddr_range, DI_Key dasm_dbgi_key);
 
 ////////////////////////////////
 //~ rjf: Watch Views
