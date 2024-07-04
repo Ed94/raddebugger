@@ -450,6 +450,10 @@ df_code_view_cmds(DF_Window *ws, DF_Panel *panel, DF_View *view, DF_CodeViewStat
         arena_clear(cv->find_text_arena);
         cv->find_text_bwd = push_str8_copy(cv->find_text_arena, cmd->params.string);
       }break;
+      case DF_CoreCmdKind_ToggleWatchExpressionAtMouse:
+      {
+        cv->watch_expr_at_mouse = 1;
+      }break;
     }
   }
 }
@@ -469,7 +473,7 @@ df_code_view_build(DF_Window *ws, DF_Panel *panel, DF_View *view, DF_CodeViewSta
   DF_CtrlCtx ctrl_ctx = df_ctrl_ctx_from_view(ws, view);
   F_Tag code_font = df_font_from_slot(DF_FontSlot_Code);
   F32 code_font_size = df_font_size_from_slot(ws, DF_FontSlot_Code);
-  F32 code_tab_size = f_column_size_from_tag_size(code_font, code_font_size)*df_setting_val_from_code(DF_SettingCode_TabWidth).s32;
+  F32 code_tab_size = f_column_size_from_tag_size(code_font, code_font_size)*df_setting_val_from_code(ws, DF_SettingCode_TabWidth).s32;
   F_Metrics code_font_metrics = f_metrics_from_tag_size(code_font, code_font_size);
   F32 code_line_height = ceil_f32(f_line_height_from_metrics(&code_font_metrics) * 1.5f);
   F32 big_glyph_advance = f_dim_from_tag_size_string(code_font, code_font_size, 0, 0, str8_lit("H")).x;
@@ -972,6 +976,16 @@ df_code_view_build(DF_Window *ws, DF_Panel *panel, DF_View *view, DF_CodeViewSta
       params.string = txt_string_from_info_data_txt_rng(text_info, text_data, sig.mouse_expr_rng);
       df_cmd_params_mark_slot(&params, DF_CmdParamSlot_String);
       df_push_cmd__root(&params, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_GoToName));
+    }
+    
+    //- rjf: watch expr at mouse
+    if(cv->watch_expr_at_mouse)
+    {
+      cv->watch_expr_at_mouse = 0;
+      DF_CmdParams params = df_cmd_params_from_view(ws, panel, view);
+      params.string = txt_string_from_info_data_txt_rng(text_info, text_data, sig.mouse_expr_rng);
+      df_cmd_params_mark_slot(&params, DF_CmdParamSlot_String);
+      df_push_cmd__root(&params, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_ToggleWatchExpression));
     }
     
     //- rjf: selected text on single line, no query? -> set search text
@@ -2951,7 +2965,7 @@ DF_VIEW_UI_FUNCTION_DEF(Empty)
       UI_TextAlignment(UI_TextAlign_Center)
       UI_PrefWidth(ui_em(15.f, 1.f))
       UI_CornerRadius(ui_top_font_size()/2.f)
-      DF_Palette(DF_PaletteCode_NegativePopButton)
+      DF_Palette(ws, DF_PaletteCode_NegativePopButton)
     {
       if(ui_clicked(df_icon_buttonf(DF_IconKind_X, 0, "Close Panel")))
       {
@@ -3025,7 +3039,7 @@ DF_VIEW_UI_FUNCTION_DEF(GettingStarted)
             UI_TextAlignment(UI_TextAlign_Center)
             UI_PrefWidth(ui_em(22.f, 1.f))
             UI_CornerRadius(ui_top_font_size()/2.f)
-            DF_Palette(DF_PaletteCode_NeutralPopButton)
+            DF_Palette(ws, DF_PaletteCode_NeutralPopButton)
             if(ui_clicked(df_icon_buttonf(DF_IconKind_Add, 0, "Add Target")))
           {
             DF_CmdParams params = df_cmd_params_from_view(ws, panel, view);
@@ -3047,7 +3061,7 @@ DF_VIEW_UI_FUNCTION_DEF(GettingStarted)
             UI_TextAlignment(UI_TextAlign_Center)
             UI_PrefWidth(ui_em(22.f, 1.f))
             UI_CornerRadius(ui_top_font_size()/2.f)
-            DF_Palette(DF_PaletteCode_PositivePopButton)
+            DF_Palette(ws, DF_PaletteCode_PositivePopButton)
           {
             if(ui_clicked(df_icon_buttonf(DF_IconKind_Play, 0, "Launch %S", target_name)))
             {
@@ -3094,7 +3108,7 @@ DF_VIEW_UI_FUNCTION_DEF(GettingStarted)
     {
       ui_labelf("use");
       DF_CmdSpec *spec = df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_RunCommand);
-      UI_Flags(UI_BoxFlag_DrawBorder) UI_TextAlignment(UI_TextAlign_Center) df_cmd_binding_button(spec);
+      UI_Flags(UI_BoxFlag_DrawBorder) UI_TextAlignment(UI_TextAlign_Center) df_cmd_binding_buttons(spec);
       ui_labelf("to open command menu");
     }
   }
@@ -3202,7 +3216,7 @@ DF_VIEW_UI_FUNCTION_DEF(Commands)
           UI_Column
           UI_Font(df_font_from_slot(DF_FontSlot_Icons))
           UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Icons))
-          UI_RunFlags(F_RunFlag_Smooth)
+          UI_TextRasterFlags(F_RasterFlag_Smooth)
           UI_FlagsAdd(UI_BoxFlag_DrawTextWeak)
           UI_HeightFill
           UI_TextAlignment(UI_TextAlign_Center)
@@ -3234,10 +3248,15 @@ DF_VIEW_UI_FUNCTION_DEF(Commands)
           ui_box_equip_fuzzy_match_ranges(desc_box, &item->desc_match_ranges);
         }
         
-        //- rjf: binding
-        UI_PrefWidth(ui_pct(0.15f, 1.f)) UI_HeightFill UI_FlagsAdd(UI_BoxFlag_DrawTextWeak)
+        //- rjf: bindings
+        ui_set_next_flags(UI_BoxFlag_Clickable);
+        UI_PrefWidth(ui_children_sum(1.f)) UI_HeightFill UI_NamedColumn(str8_lit("binding_column")) UI_Padding(ui_em(1.5f, 1.f))
         {
-          df_cmd_binding_button(item->cmd_spec);
+          ui_set_next_flags(UI_BoxFlag_Clickable);
+          UI_NamedRow(str8_lit("binding_row")) UI_Padding(ui_em(1.f, 1.f))
+          {
+            df_cmd_binding_buttons(item->cmd_spec);
+          }
         }
       }
       
@@ -3596,7 +3615,7 @@ DF_VIEW_UI_FUNCTION_DEF(FileSystem)
         // rjf: icons
         UI_Font(df_font_from_slot(DF_FontSlot_Icons))
           UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Icons))
-          UI_RunFlags(F_RunFlag_Smooth)
+          UI_TextRasterFlags(F_RasterFlag_Smooth)
           UI_PrefWidth(ui_em(3.f, 1.f))
           UI_TextAlignment(UI_TextAlign_Center)
         {
@@ -3645,7 +3664,7 @@ DF_VIEW_UI_FUNCTION_DEF(FileSystem)
           // rjf: icon to signify directory
           UI_Font(df_font_from_slot(DF_FontSlot_Icons))
             UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Icons))
-            UI_RunFlags(F_RunFlag_Smooth)
+            UI_TextRasterFlags(F_RasterFlag_Smooth)
             UI_PrefWidth(ui_em(3.f, 1.f))
             UI_TextAlignment(UI_TextAlign_Center)
           {
@@ -3834,7 +3853,7 @@ DF_VIEW_UI_FUNCTION_DEF(SystemProcesses)
         // rjf: icon
         UI_Font(df_font_from_slot(DF_FontSlot_Icons))
           UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Icons))
-          UI_RunFlags(F_RunFlag_Smooth)
+          UI_TextRasterFlags(F_RasterFlag_Smooth)
           UI_PrefWidth(ui_em(3.f, 1.f))
           UI_TextAlignment(UI_TextAlign_Center)
         {
@@ -4008,7 +4027,7 @@ DF_VIEW_UI_FUNCTION_DEF(EntityLister)
           UI_TextAlignment(UI_TextAlign_Center)
             UI_Font(df_font_from_slot(DF_FontSlot_Icons))
             UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Icons))
-            UI_RunFlags(F_RunFlag_Smooth)
+            UI_TextRasterFlags(F_RasterFlag_Smooth)
             UI_FlagsAdd(UI_BoxFlag_DrawTextWeak)
             UI_PrefWidth(ui_text_dim(10, 1))
             ui_label(df_g_icon_kind_text_table[icon_kind]);
@@ -5531,11 +5550,11 @@ DF_VIEW_UI_FUNCTION_DEF(Scheduler)
           UI_Palette *palette = ui_top_palette();
           if(frozen)
           {
-            palette = df_palette_from_code(DF_PaletteCode_NegativePopButton);
+            palette = df_palette_from_code(ws, DF_PaletteCode_NegativePopButton);
           }
           else
           {
-            palette = df_palette_from_code(DF_PaletteCode_PositivePopButton);
+            palette = df_palette_from_code(ws, DF_PaletteCode_PositivePopButton);
           }
           UI_Signal sig = {0};
           UI_Palette(palette) sig = df_icon_buttonf(frozen ? DF_IconKind_Locked : DF_IconKind_Unlocked, 0, "###lock_%p", entity);
@@ -5588,7 +5607,7 @@ DF_VIEW_UI_FUNCTION_DEF(Scheduler)
             }
             UI_TableCellSized(ui_em(2.25f, 1.f)) UI_FocusHot((row_is_selected && cursor.x == 4) ? UI_FocusKind_On : UI_FocusKind_Off)
             {
-              DF_Palette(DF_PaletteCode_NegativePopButton)
+              DF_Palette(ws, DF_PaletteCode_NegativePopButton)
                 if(ui_clicked(df_icon_buttonf(DF_IconKind_X, 0, "###kill")))
               {
                 DF_CmdParams params = df_cmd_params_from_view(ws, panel, view);
@@ -5763,7 +5782,7 @@ DF_VIEW_UI_FUNCTION_DEF(CallStack)
           UI_TableCell
             UI_Font(df_font_from_slot(DF_FontSlot_Icons))
             UI_FontSize(df_font_size_from_slot(ws, DF_FontSlot_Icons))
-            UI_RunFlags(F_RunFlag_Smooth)
+            UI_TextRasterFlags(F_RasterFlag_Smooth)
             UI_WidthFill
             UI_TextAlignment(UI_TextAlign_Center)
             UI_FocusHot((row_selected && cs->cursor.x == 0) ? UI_FocusKind_On : UI_FocusKind_Off)
@@ -6490,7 +6509,7 @@ DF_VIEW_UI_FUNCTION_DEF(Code)
         UI_Palette(ui_build_palette(ui_top_palette(), .text = df_rgba_from_theme_color(DF_ThemeColor_TextNegative)))
       {
         UI_Font(df_font_from_slot(DF_FontSlot_Icons))
-          UI_RunFlags(F_RunFlag_Smooth)
+          UI_TextRasterFlags(F_RasterFlag_Smooth)
           ui_label(df_g_icon_kind_text_table[DF_IconKind_WarningBig]);
         ui_labelf("Could not find \"%S\".", full_path);
       }
@@ -6500,7 +6519,7 @@ DF_VIEW_UI_FUNCTION_DEF(Code)
         UI_CornerRadius(ui_top_font_size()/3)
         UI_PrefWidth(ui_text_dim(10, 1))
         UI_Focus(UI_FocusKind_On)
-        DF_Palette(DF_PaletteCode_NeutralPopButton)
+        DF_Palette(ws, DF_PaletteCode_NeutralPopButton)
         if(ui_clicked(ui_buttonf("Find alternative...")))
       {
         DF_CmdParams params = df_cmd_params_from_view(ws, panel, view);
@@ -6553,7 +6572,7 @@ DF_VIEW_UI_FUNCTION_DEF(Code)
         UI_Box *box = &ui_g_nil_box;
         UI_Palette(ui_build_palette(ui_top_palette(), .text = df_rgba_from_theme_color(DF_ThemeColor_TextNegative)))
           UI_Font(df_font_from_slot(DF_FontSlot_Icons))
-          UI_RunFlags(F_RunFlag_Smooth)
+          UI_TextRasterFlags(F_RasterFlag_Smooth)
         {
           box = ui_build_box_from_stringf(UI_BoxFlag_DrawText|UI_BoxFlag_Clickable, "%S###file_ood_warning", df_g_icon_kind_text_table[DF_IconKind_WarningBig]);
         }
@@ -8490,7 +8509,7 @@ DF_VIEW_UI_FUNCTION_DEF(Settings)
     DF_ThemeColor color_ctx_menu_color;
     Vec4F32 color_ctx_menu_color_hsva;
     DF_ThemePreset preset_apply_confirm;
-    B32 category_collapsed[DF_SettingsItemKind_COUNT];
+    B32 category_opened[DF_SettingsItemKind_COUNT];
   };
   DF_SettingsViewState *sv = df_view_user_state(view, DF_SettingsViewState);
   if(!sv->initialized)
@@ -8506,24 +8525,28 @@ DF_VIEW_UI_FUNCTION_DEF(Settings)
   {
     DF_SettingsItemList items_list = {0};
     
-    //- rjf: settings header
+    //- rjf: global settings header
     if(query.size == 0)
     {
       DF_SettingsItemNode *n = push_array(scratch.arena, DF_SettingsItemNode, 1);
       SLLQueuePush(items_list.first, items_list.last, n);
       items_list.count += 1;
       n->v.kind = DF_SettingsItemKind_CategoryHeader;
-      n->v.string = str8_lit("Interface Settings");
-      n->v.icon_kind = sv->category_collapsed[DF_SettingsItemKind_Setting] ? DF_IconKind_RightCaret : DF_IconKind_DownCaret;
-      n->v.category = DF_SettingsItemKind_Setting;
+      n->v.string = str8_lit("Global Interface Settings");
+      n->v.icon_kind = sv->category_opened[DF_SettingsItemKind_GlobalSetting] ? DF_IconKind_DownCaret : DF_IconKind_RightCaret;
+      n->v.category = DF_SettingsItemKind_GlobalSetting;
     }
     
-    //- rjf: gather all settings
-    if(!sv->category_collapsed[DF_SettingsItemKind_Setting] || query.size != 0)
+    //- rjf: gather all global settings
+    if(sv->category_opened[DF_SettingsItemKind_GlobalSetting] || query.size != 0)
     {
       for(EachEnumVal(DF_SettingCode, code))
       {
-        String8 kind_string = str8_lit("Interface");
+        if(df_g_setting_code_default_is_per_window_table[code])
+        {
+          continue;
+        }
+        String8 kind_string = str8_lit("Global Interface Setting");
         String8 string = df_g_setting_code_display_string_table[code];
         FuzzyMatchRangeList kind_string_matches = fuzzy_match_find(scratch.arena, query, kind_string);
         FuzzyMatchRangeList string_matches = fuzzy_match_find(scratch.arena, query, string);
@@ -8533,7 +8556,49 @@ DF_VIEW_UI_FUNCTION_DEF(Settings)
           DF_SettingsItemNode *n = push_array(scratch.arena, DF_SettingsItemNode, 1);
           SLLQueuePush(items_list.first, items_list.last, n);
           items_list.count += 1;
-          n->v.kind = DF_SettingsItemKind_Setting;
+          n->v.kind = DF_SettingsItemKind_GlobalSetting;
+          n->v.kind_string = kind_string;
+          n->v.string = string;
+          n->v.kind_string_matches = kind_string_matches;
+          n->v.string_matches = string_matches;
+          n->v.icon_kind = DF_IconKind_Window;
+          n->v.code = code;
+        }
+      }
+    }
+    
+    //- rjf: window settings header
+    if(query.size == 0)
+    {
+      DF_SettingsItemNode *n = push_array(scratch.arena, DF_SettingsItemNode, 1);
+      SLLQueuePush(items_list.first, items_list.last, n);
+      items_list.count += 1;
+      n->v.kind = DF_SettingsItemKind_CategoryHeader;
+      n->v.string = str8_lit("Window Interface Settings");
+      n->v.icon_kind = sv->category_opened[DF_SettingsItemKind_WindowSetting] ? DF_IconKind_DownCaret : DF_IconKind_RightCaret;
+      n->v.category = DF_SettingsItemKind_WindowSetting;
+    }
+    
+    //- rjf: gather all window settings
+    if(sv->category_opened[DF_SettingsItemKind_WindowSetting] || query.size != 0)
+    {
+      for(EachEnumVal(DF_SettingCode, code))
+      {
+        if(!df_g_setting_code_default_is_per_window_table[code])
+        {
+          continue;
+        }
+        String8 kind_string = str8_lit("Window Interface Setting");
+        String8 string = df_g_setting_code_display_string_table[code];
+        FuzzyMatchRangeList kind_string_matches = fuzzy_match_find(scratch.arena, query, kind_string);
+        FuzzyMatchRangeList string_matches = fuzzy_match_find(scratch.arena, query, string);
+        if(string_matches.count == string_matches.needle_part_count ||
+           kind_string_matches.count == kind_string_matches.needle_part_count)
+        {
+          DF_SettingsItemNode *n = push_array(scratch.arena, DF_SettingsItemNode, 1);
+          SLLQueuePush(items_list.first, items_list.last, n);
+          items_list.count += 1;
+          n->v.kind = DF_SettingsItemKind_WindowSetting;
           n->v.kind_string = kind_string;
           n->v.string = string;
           n->v.kind_string_matches = kind_string_matches;
@@ -8552,12 +8617,12 @@ DF_VIEW_UI_FUNCTION_DEF(Settings)
       items_list.count += 1;
       n->v.kind = DF_SettingsItemKind_CategoryHeader;
       n->v.string = str8_lit("Theme Presets");
-      n->v.icon_kind = sv->category_collapsed[DF_SettingsItemKind_ThemePreset] ? DF_IconKind_RightCaret : DF_IconKind_DownCaret;
+      n->v.icon_kind = sv->category_opened[DF_SettingsItemKind_ThemePreset] ? DF_IconKind_DownCaret : DF_IconKind_RightCaret;
       n->v.category = DF_SettingsItemKind_ThemePreset;
     }
     
     //- rjf: gather theme presets
-    if(!sv->category_collapsed[DF_SettingsItemKind_ThemePreset] || query.size != 0)
+    if(sv->category_opened[DF_SettingsItemKind_ThemePreset] || query.size != 0)
     {
       for(EachEnumVal(DF_ThemePreset, preset))
       {
@@ -8590,12 +8655,12 @@ DF_VIEW_UI_FUNCTION_DEF(Settings)
       items_list.count += 1;
       n->v.kind = DF_SettingsItemKind_CategoryHeader;
       n->v.string = str8_lit("Theme Colors");
-      n->v.icon_kind = sv->category_collapsed[DF_SettingsItemKind_ThemeColor] ? DF_IconKind_RightCaret : DF_IconKind_DownCaret;
+      n->v.icon_kind = sv->category_opened[DF_SettingsItemKind_ThemeColor] ? DF_IconKind_DownCaret : DF_IconKind_RightCaret;
       n->v.category = DF_SettingsItemKind_ThemeColor;
     }
     
     //- rjf: gather all theme colors
-    if(!sv->category_collapsed[DF_SettingsItemKind_ThemeColor] || query.size != 0)
+    if(sv->category_opened[DF_SettingsItemKind_ThemeColor] || query.size != 0)
     {
       for(EachNonZeroEnumVal(DF_ThemeColor, color))
       {
@@ -8660,7 +8725,7 @@ DF_VIEW_UI_FUNCTION_DEF(Settings)
       color < DF_ThemeColor_COUNT;
       color = (DF_ThemeColor)(color+1))
   {
-    DF_Palette(DF_PaletteCode_Floating)
+    DF_Palette(ws, DF_PaletteCode_Floating)
       UI_CtxMenu(color_ctx_menu_keys[color])
       UI_Padding(ui_em(1.5f, 1.f))
       UI_PrefWidth(ui_em(28.5f, 1)) UI_PrefHeight(ui_children_sum(1.f))
@@ -8864,6 +8929,7 @@ DF_VIEW_UI_FUNCTION_DEF(Settings)
       S32 slider_s32_val = 0;
       F32 slider_pct = 0.f;
       UI_BoxFlags flags = UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawHotEffects|UI_BoxFlag_DrawActiveEffects;
+      DF_SettingVal *val_table = &df_gfx_state->cfg_setting_vals[DF_CfgSrc_User][0];
       switch(item->kind)
       {
         case DF_SettingsItemKind_COUNT:{}break;
@@ -8889,20 +8955,22 @@ DF_VIEW_UI_FUNCTION_DEF(Settings)
         {
           rgba = df_rgba_from_theme_color(item->color);
         }break;
-        case DF_SettingsItemKind_Setting:
+        case DF_SettingsItemKind_WindowSetting: {val_table = &ws->setting_vals[0];}goto setting;
+        case DF_SettingsItemKind_GlobalSetting:{}goto setting;
+        setting:;
         {
           s32_range = df_g_setting_code_s32_range_table[item->code];
           if(s32_range.min != 0 || s32_range.max != 1)
           {
             cursor = OS_Cursor_LeftRight;
             is_slider = 1;
-            slider_s32_val = df_setting_val_from_code(item->code).s32;
+            slider_s32_val = val_table[item->code].s32;
             slider_pct = (F32)(slider_s32_val - s32_range.min) / dim_1s32(s32_range);
           }
           else
           {
             is_toggler = 1;
-            is_toggled = !!df_setting_val_from_code(item->code).s32;
+            is_toggled = !!val_table[item->code].s32;
           }
         }break;
       }
@@ -8926,11 +8994,11 @@ DF_VIEW_UI_FUNCTION_DEF(Settings)
             {
               UI_PrefWidth(ui_em(2.f, 1.f))
                 UI_Font(df_font_from_slot(DF_FontSlot_Icons))
-                UI_RunFlags(F_RunFlag_Smooth)
+                UI_TextRasterFlags(F_RasterFlag_Smooth)
                 UI_Palette(ui_build_palette(ui_top_palette(), .text = rgba))
                 ui_label(df_g_icon_kind_text_table[item->icon_kind]);
             }
-            if(item->kind_string.size != 0) UI_PrefWidth(ui_text_dim(10, 1))
+            if(query.size != 0 && item->kind_string.size != 0) UI_PrefWidth(ui_text_dim(10, 1))
             {
               UI_Box *box = ui_build_box_from_stringf(UI_BoxFlag_DrawText|UI_BoxFlag_DrawTextWeak, "%S", item->kind_string);
               ui_box_equip_fuzzy_match_ranges(box, &item->kind_string_matches);
@@ -8942,9 +9010,7 @@ DF_VIEW_UI_FUNCTION_DEF(Settings)
             }
             if(is_slider) UI_PrefWidth(ui_text_dim(10, 1))
             {
-              UI_Font(df_font_from_slot(DF_FontSlot_Code))
-                UI_RunFlags(F_RunFlag_Smooth)
-                UI_Flags(UI_BoxFlag_DrawTextWeak)
+              UI_Flags(UI_BoxFlag_DrawTextWeak)
                 ui_labelf("(%i)", slider_s32_val);
               UI_PrefWidth(ui_pct(slider_pct, 1.f)) UI_HeightFill UI_FixedX(0) UI_FixedY(0)
                 UI_Palette(ui_build_palette(ui_top_palette(), .background = df_rgba_from_theme_color(DF_ThemeColor_HighlightOverlay)))
@@ -8955,7 +9021,7 @@ DF_VIEW_UI_FUNCTION_DEF(Settings)
               ui_spacer(ui_pct(1, 0));
               UI_PrefWidth(ui_em(2.5f, 1.f))
                 UI_Font(df_font_from_slot(DF_FontSlot_Icons))
-                UI_RunFlags(F_RunFlag_Smooth)
+                UI_TextRasterFlags(F_RasterFlag_Smooth)
                 UI_Flags(UI_BoxFlag_DrawTextWeak)
                 ui_label(df_g_icon_kind_text_table[is_toggled ? DF_IconKind_CheckFilled : DF_IconKind_CheckHollow]);
             }
@@ -8963,7 +9029,7 @@ DF_VIEW_UI_FUNCTION_DEF(Settings)
             {
               ui_spacer(ui_pct(1, 0));
               UI_PrefWidth(ui_text_dim(10, 1))
-                DF_Palette(DF_PaletteCode_NegativePopButton)
+                DF_Palette(ws, DF_PaletteCode_NegativePopButton)
                 UI_CornerRadius(ui_top_font_size()*0.5f)
                 UI_FontSize(ui_top_font_size()*0.9f)
                 ui_build_box_from_stringf(UI_BoxFlag_DrawText|UI_BoxFlag_DrawBackground, "Click Again To Apply");
@@ -8985,12 +9051,14 @@ DF_VIEW_UI_FUNCTION_DEF(Settings)
         DF_CmdParams p = df_cmd_params_from_panel(ws, panel);
         df_push_cmd__root(&p, df_cmd_spec_from_core_cmd_kind(DF_CoreCmdKind_FocusPanel));
       }
-      if(item->kind == DF_SettingsItemKind_Setting && is_toggler && ui_clicked(sig))
+      if((item->kind == DF_SettingsItemKind_GlobalSetting || item->kind == DF_SettingsItemKind_WindowSetting) &&
+         is_toggler && ui_clicked(sig))
       {
-        df_gfx_state->cfg_setting_vals[DF_CfgSrc_User][item->code].s32 ^= 1;
-        df_gfx_state->cfg_setting_vals[DF_CfgSrc_User][item->code].set = 1;
+        val_table[item->code].s32 ^= 1;
+        val_table[item->code].set = 1;
       }
-      if(item->kind == DF_SettingsItemKind_Setting && is_slider && ui_dragging(sig))
+      if((item->kind == DF_SettingsItemKind_GlobalSetting || item->kind == DF_SettingsItemKind_WindowSetting) &&
+         is_slider && ui_dragging(sig))
       {
         if(ui_pressed(sig))
         {
@@ -9000,8 +9068,8 @@ DF_VIEW_UI_FUNCTION_DEF(Settings)
         Vec2F32 delta = ui_drag_delta();
         S32 pst_drag_val = pre_drag_val + (S32)(delta.x/(ui_top_font_size()*2.f));
         pst_drag_val = clamp_1s32(s32_range, pst_drag_val);
-        df_gfx_state->cfg_setting_vals[DF_CfgSrc_User][item->code].s32 = pst_drag_val;
-        df_gfx_state->cfg_setting_vals[DF_CfgSrc_User][item->code].set = 1;
+        val_table[item->code].s32 = pst_drag_val;
+        val_table[item->code].set = 1;
       }
       if(item->kind == DF_SettingsItemKind_ThemePreset && ui_clicked(sig))
       {
@@ -9026,7 +9094,7 @@ DF_VIEW_UI_FUNCTION_DEF(Settings)
       }
       if(item->kind == DF_SettingsItemKind_CategoryHeader && ui_pressed(sig))
       {
-        sv->category_collapsed[item->category] ^= 1;
+        sv->category_opened[item->category] ^= 1;
       }
     }
   }
@@ -9056,7 +9124,7 @@ DF_VIEW_UI_FUNCTION_DEF(Settings)
   
   //- rjf: build preset ctx menu
   UI_Key preset_ctx_menu_key = ui_key_from_stringf(ui_key_zero(), "%p_preset_ctx_menu", view);
-  DF_Palette(DF_PaletteCode_Floating) UI_CtxMenu(preset_ctx_menu_key) UI_PrefWidth(ui_em(30.f, 1.f))
+  DF_Palette(ws, DF_PaletteCode_Floating) UI_CtxMenu(preset_ctx_menu_key) UI_PrefWidth(ui_em(30.f, 1.f))
   {
     for(DF_ThemePreset preset = (DF_ThemePreset)0;
         preset < DF_ThemePreset_COUNT;
@@ -9092,7 +9160,7 @@ DF_VIEW_UI_FUNCTION_DEF(Settings)
       color < DF_ThemeColor_COUNT;
       color = (DF_ThemeColor)(color+1))
   {
-    DF_Palette(DF_PaletteCode_Floating)
+    DF_Palette(ws, DF_PaletteCode_Floating)
       UI_CtxMenu(color_ctx_menu_keys[color])
       UI_Padding(ui_em(1.5f, 1.f))
       UI_PrefWidth(ui_em(28.5f, 1)) UI_PrefHeight(ui_children_sum(1.f))

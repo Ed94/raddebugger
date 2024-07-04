@@ -40,6 +40,14 @@ DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(array)
 }
 
 ////////////////////////////////
+//~ rjf: "slice"
+
+DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(slice)
+{
+  return eval;
+}
+
+////////////////////////////////
 //~ rjf: "list"
 
 DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(list){}
@@ -459,8 +467,7 @@ df_view_rule_hooks__disasm_topology_info_from_cfg(DI_Scope *scope, DF_CtrlCtx *c
 }
 
 ////////////////////////////////
-//~ bill: "slice"
-
+//~ bill: "slice" (odin-lang)
 
 internal TG_Member *tg_member_from_name(TG_MemberArray array, String8 name, StringMatchFlags flags)
 {
@@ -489,7 +496,7 @@ internal U64 df_evaluate_integer_from_eval(EVAL_ParseCtx *parse_ctx, DF_CtrlCtx 
   return 0;
 }
 
-DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(slice)
+DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(odin_slice)
 {
   TG_Key type_key = eval.type_key;
   TG_Kind type_kind = tg_kind_from_key(type_key);
@@ -1137,7 +1144,7 @@ DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_DEF(text)
     }
     code_slice_params.font = df_font_from_slot(DF_FontSlot_Code);
     code_slice_params.font_size = ui_top_font_size();
-    code_slice_params.tab_size = f_column_size_from_tag_size(code_slice_params.font, code_slice_params.font_size)*df_setting_val_from_code(DF_SettingCode_TabWidth).s32;
+    code_slice_params.tab_size = f_column_size_from_tag_size(code_slice_params.font, code_slice_params.font_size)*df_setting_val_from_code(ws, DF_SettingCode_TabWidth).s32;
     code_slice_params.line_height_px = ui_top_font_size()*1.5f;
     code_slice_params.priority_margin_width_px = 0;
     code_slice_params.catchall_margin_width_px = 0;
@@ -1300,7 +1307,7 @@ DF_GFX_VIEW_RULE_BLOCK_UI_FUNCTION_DEF(disasm)
       }
       code_slice_params.font = df_font_from_slot(DF_FontSlot_Code);
       code_slice_params.font_size = ui_top_font_size();
-      code_slice_params.tab_size = f_column_size_from_tag_size(code_slice_params.font, code_slice_params.font_size)*df_setting_val_from_code(DF_SettingCode_TabWidth).s32;
+      code_slice_params.tab_size = f_column_size_from_tag_size(code_slice_params.font, code_slice_params.font_size)*df_setting_val_from_code(ws, DF_SettingCode_TabWidth).s32;
       code_slice_params.line_height_px = ui_top_font_size()*1.5f;
       code_slice_params.priority_margin_width_px = 0;
       code_slice_params.catchall_margin_width_px = 0;

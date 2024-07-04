@@ -151,6 +151,12 @@ DF_SettingCode_ThreadGlow,
 DF_SettingCode_BreakpointGlow,
 DF_SettingCode_OpaqueBackgrounds,
 DF_SettingCode_TabWidth,
+DF_SettingCode_MainFontSize,
+DF_SettingCode_CodeFontSize,
+DF_SettingCode_SmoothUIText,
+DF_SettingCode_SmoothCodeText,
+DF_SettingCode_HintUIText,
+DF_SettingCode_HintCodeText,
 DF_SettingCode_COUNT,
 } DF_SettingCode;
 
@@ -320,7 +326,7 @@ DF_VIEW_UI_FUNCTION_DEF(bitmap);
 DF_VIEW_UI_FUNCTION_DEF(odin_map);
 DF_VIEW_UI_FUNCTION_DEF(geo);
 C_LINKAGE_BEGIN
-extern DF_StringBindingPair df_g_default_binding_table[105];
+extern DF_StringBindingPair df_g_default_binding_table[106];
 extern String8 df_g_binding_version_remap_old_name_table[5];
 extern String8 df_g_binding_version_remap_new_name_table[5];
 extern DF_ViewSpecInfo df_g_gfx_view_kind_spec_info_table[31];
@@ -343,10 +349,11 @@ extern Vec4F32 df_g_theme_preset_colors__far_manager[75];
 extern Vec4F32* df_g_theme_preset_colors_table[9];
 extern String8 df_g_theme_color_display_string_table[75];
 extern String8 df_g_theme_color_cfg_string_table[75];
-extern String8 df_g_setting_code_display_string_table[13];
-extern String8 df_g_setting_code_lower_string_table[13];
-extern DF_SettingVal df_g_setting_code_default_val_table[13];
-extern Rng1S32 df_g_setting_code_s32_range_table[13];
+extern String8 df_g_setting_code_display_string_table[19];
+extern String8 df_g_setting_code_lower_string_table[19];
+extern B8 df_g_setting_code_default_is_per_window_table[19];
+extern DF_SettingVal df_g_setting_code_default_val_table[19];
+extern Rng1S32 df_g_setting_code_s32_range_table[19];
 read_only global U8 df_g_icon_font_bytes__data[] =
 {
 0x00,0x01,0x00,0x00,0x00,0x0f,0x00,0x80,0x00,0x03,0x00,0x70,0x47,0x53,0x55,0x42,0x20,0x8b,0x25,0x7a,0x00,0x00,0x00,0xfc,0x00,0x00,0x00,0x54,0x4f,0x53,0x2f,0x32,0x56,0x44,0x49,0xa0,0x00,0x00,0x01,0x50,0x00,0x00,0x00,0x60,0x63,0x6d,0x61,0x70,0x2a,0x09,0xe2,0xc2,0x00,0x00,0x01,0xb0,0x00,0x00,0x05,0xec,0x63,0x76,0x74,0x20,

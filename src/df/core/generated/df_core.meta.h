@@ -200,6 +200,7 @@ DF_CoreCmdKind_GoToName,
 DF_CoreCmdKind_GoToNameAtCursor,
 DF_CoreCmdKind_ToggleWatchExpression,
 DF_CoreCmdKind_ToggleWatchExpressionAtCursor,
+DF_CoreCmdKind_ToggleWatchExpressionAtMouse,
 DF_CoreCmdKind_SetColumns,
 DF_CoreCmdKind_ToggleAddressVisibility,
 DF_CoreCmdKind_ToggleCodeBytesVisibility,
@@ -365,6 +366,7 @@ DF_CoreViewRuleKind_Graph,
 DF_CoreViewRuleKind_Bitmap,
 DF_CoreViewRuleKind_Geo,
 DF_CoreViewRuleKind_OdinMap,
+DF_CoreViewRuleKind_OdinSlice,
 DF_CoreViewRuleKind_COUNT,
 } DF_CoreViewRuleKind;
 
@@ -429,6 +431,7 @@ U64 inline_unwind_index;
 DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(array);
 DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(slice);
 DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(bswap);
+DF_CORE_VIEW_RULE_EVAL_RESOLUTION_FUNCTION_DEF(odin_slice);
 DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(list);
 DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(only);
 DF_CORE_VIEW_RULE_VIZ_BLOCK_PROD_FUNCTION_DEF(omit);

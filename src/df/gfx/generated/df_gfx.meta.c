@@ -4,7 +4,7 @@
 //- GENERATED CODE
 
 C_LINKAGE_BEGIN
-DF_StringBindingPair df_g_default_binding_table[105] =
+DF_StringBindingPair df_g_default_binding_table[106] =
 {
 {str8_lit_comp("kill_all"), {OS_Key_F5, 0  |OS_EventFlag_Shift }},
 {str8_lit_comp("step_into_inst"), {OS_Key_F11, 0   |OS_EventFlag_Alt}},
@@ -104,6 +104,7 @@ DF_StringBindingPair df_g_default_binding_table[105] =
 {str8_lit_comp("goto_name"), {OS_Key_J, 0 |OS_EventFlag_Ctrl  }},
 {str8_lit_comp("goto_name_at_cursor"), {OS_Key_F12, 0   }},
 {str8_lit_comp("toggle_watch_expr_at_cursor"), {OS_Key_W, 0   |OS_EventFlag_Alt}},
+{str8_lit_comp("toggle_watch_expr_at_mouse"), {OS_Key_D, 0 |OS_EventFlag_Ctrl  }},
 {str8_lit_comp("toggle_watch_pin_at_cursor"), {OS_Key_F9, 0 |OS_EventFlag_Ctrl  }},
 {str8_lit_comp("toggle_breakpoint_cursor"), {OS_Key_F9, 0   }},
 {str8_lit_comp("add_target"), {OS_Key_T, 0 |OS_EventFlag_Ctrl  }},
@@ -1188,7 +1189,7 @@ str8_lit_comp("thread_error"),
 str8_lit_comp("breakpoint"),
 };
 
-String8 df_g_setting_code_display_string_table[13] =
+String8 df_g_setting_code_display_string_table[19] =
 {
 str8_lit_comp("Hover Animations"),
 str8_lit_comp("Press Animations"),
@@ -1203,9 +1204,15 @@ str8_lit_comp("Thread Glow"),
 str8_lit_comp("Breakpoint Glow"),
 str8_lit_comp("Opaque Backgrounds"),
 str8_lit_comp("Tab Width"),
+str8_lit_comp("Main Font Size"),
+str8_lit_comp("Code Font Size"),
+str8_lit_comp("Smooth UI Text"),
+str8_lit_comp("Smooth Code Text"),
+str8_lit_comp("Hint UI Text"),
+str8_lit_comp("Hint Code Text"),
 };
 
-String8 df_g_setting_code_lower_string_table[13] =
+String8 df_g_setting_code_lower_string_table[19] =
 {
 str8_lit_comp("hover_animations"),
 str8_lit_comp("press_animations"),
@@ -1220,9 +1227,38 @@ str8_lit_comp("thread_glow"),
 str8_lit_comp("breakpoint_glow"),
 str8_lit_comp("opaque_backgrounds"),
 str8_lit_comp("tab_width"),
+str8_lit_comp("main_font_size"),
+str8_lit_comp("code_font_size"),
+str8_lit_comp("smooth_ui_text"),
+str8_lit_comp("smooth_code_text"),
+str8_lit_comp("hint_ui_text"),
+str8_lit_comp("hint_code_text"),
 };
 
-DF_SettingVal df_g_setting_code_default_val_table[13] =
+B8 df_g_setting_code_default_is_per_window_table[19] =
+{
+0,
+0,
+0,
+0,
+0,
+0,
+0,
+0,
+0,
+0,
+0,
+0,
+0,
+1,
+1,
+1,
+1,
+1,
+1,
+};
+
+DF_SettingVal df_g_setting_code_default_val_table[19] =
 {
 {1, 1},
 {1, 1},
@@ -1237,9 +1273,15 @@ DF_SettingVal df_g_setting_code_default_val_table[13] =
 {1, 1},
 {1, 0},
 {1, 4},
+{1, 12},
+{1, 12},
+{1, 1},
+{1, 0},
+{1, 1},
+{1, 1},
 };
 
-Rng1S32 df_g_setting_code_s32_range_table[13] =
+Rng1S32 df_g_setting_code_s32_range_table[19] =
 {
 {0, 1},
 {0, 1},
@@ -1254,6 +1296,12 @@ Rng1S32 df_g_setting_code_s32_range_table[13] =
 {0, 1},
 {0, 1},
 {1, 32},
+{6, 72},
+{6, 72},
+{0, 1},
+{0, 1},
+{0, 1},
+{0, 1},
 };
 
 C_LINKAGE_END
