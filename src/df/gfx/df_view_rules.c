@@ -668,7 +668,7 @@ struct DF_OdinMapData
 internal B32 df_odin_map_data(Arena *arena, EVAL_ParseCtx *parse_ctx, DF_CtrlCtx *ctrl_ctx, DF_Eval eval, DF_OdinMapData *md)
 {
   B32 ok = 0;
-  *md = (DF_OdinMapData){};
+  *md = (DF_OdinMapData){0};
 
   TG_Key type_key = eval.type_key;
   TG_Kind type_kind = tg_kind_from_key(type_key);
@@ -855,7 +855,7 @@ DF_VIEW_SETUP_FUNCTION_DEF(odin_map)
 
 DF_VIEW_STRING_FROM_STATE_FUNCTION_DEF(odin_map)
 {
-  String8 result = (String8){};
+  String8 result = (String8){0};
   return result;
 }
 
