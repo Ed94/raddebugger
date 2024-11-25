@@ -98,7 +98,8 @@ rdi_section_raw_data_from_kind(RDI_Parsed *rdi, RDI_SectionKind kind, RDI_Sectio
   result = &rdi_nil_element_union;
   *size_out = rdi_section_element_size_table[kind];
 #endif
-  if(0 <= kind && kind < rdi->sections_count)
+  if(0 <= kind && kind < rdi->sections_count &&
+     rdi->sections[kind].off < rdi->raw_data_size)
   {
     result = rdi->raw_data+rdi->sections[kind].off;
     *size_out = rdi->sections[kind].encoded_size;
@@ -302,9 +303,9 @@ rdi_line_info_idx_from_voff(RDI_ParsedLineTable *line_info, RDI_U64 voff)
 {
   RDI_U64 count = 0;
   RDI_U64 result = rdi_line_info_idx_range_from_voff(line_info, voff, &count);
-  for(RDI_U64 idx = 0; idx < count && result+idx < line_info->count; idx += 1)
+  for(RDI_S64 idx = count-1; idx >= 0; idx -= 1)
   {
-    if(line_info->lines[result+idx].file_idx != 0)
+    if(result + idx < line_info->count && line_info->lines[result+idx].file_idx != 0)
     {
       result += idx;
       break;
@@ -393,7 +394,7 @@ rdi_line_voffs_from_num(RDI_ParsedSourceLineMap *map, RDI_U32 linenum, RDI_U32 *
   {
     RDI_U32 first = map->ranges[closest_i];
     RDI_U32 opl   = map->ranges[closest_i + 1];
-    if(opl < map->voff_count)
+    if(opl <= map->voff_count)
     {
       result = map->voffs + first;
       *n_out = opl - first;
@@ -635,11 +636,35 @@ rdi_scope_from_voff(RDI_Parsed *rdi, RDI_U64 voff)
   return scope;
 }
 
+RDI_PROC RDI_Scope *
+rdi_parent_from_scope(RDI_Parsed *rdi, RDI_Scope *scope)
+{
+  RDI_Scope *parent = rdi_element_from_name_idx(rdi, Scopes, scope->parent_scope_idx);
+  return parent;
+}
+
 RDI_PROC RDI_Procedure *
 rdi_procedure_from_scope(RDI_Parsed *rdi, RDI_Scope *scope)
 {
   RDI_Procedure *procedure = rdi_element_from_name_idx(rdi, Procedures, scope->proc_idx);
   return procedure;
+}
+
+RDI_PROC RDI_InlineSite *
+rdi_inline_site_from_scope(RDI_Parsed *rdi, RDI_Scope *scope)
+{
+  RDI_InlineSite *inline_site = rdi_element_from_name_idx(rdi, InlineSites, scope->inline_site_idx);
+  return inline_site;
+}
+
+//- global variables
+
+RDI_PROC RDI_GlobalVariable *
+rdi_global_variable_from_voff(RDI_Parsed *rdi, RDI_U64 voff)
+{
+  RDI_U32 idx = rdi_vmap_idx_from_section_kind_voff(rdi, RDI_SectionKind_GlobalVMap, voff);
+  RDI_GlobalVariable *gvar = rdi_element_from_name_idx(rdi, GlobalVariables, idx);
+  return gvar;
 }
 
 //- units

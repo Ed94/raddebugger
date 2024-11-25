@@ -4,10 +4,6 @@
 ////////////////////////////////
 //~ rjf: Build Options
 
-#define BUILD_VERSION_MAJOR 0
-#define BUILD_VERSION_MINOR 9
-#define BUILD_VERSION_PATCH 11
-#define BUILD_RELEASE_PHASE_STRING_LITERAL "ALPHA"
 #define BUILD_TITLE "rdi_from_pdb"
 #define BUILD_CONSOLE_INTERFACE 1
 
@@ -23,26 +19,30 @@
 //- rjf: [h]
 #include "base/base_inc.h"
 #include "os/os_inc.h"
-#include "task_system/task_system.h"
+#include "async/async.h"
 #include "rdi_make/rdi_make_local.h"
 #include "coff/coff.h"
 #include "codeview/codeview.h"
 #include "codeview/codeview_stringize.h"
 #include "msf/msf.h"
+#include "msf/msf_parse.h"
 #include "pdb/pdb.h"
+#include "pdb/pdb_parse.h"
 #include "pdb/pdb_stringize.h"
 #include "rdi_from_pdb.h"
 
 //- rjf: [c]
 #include "base/base_inc.c"
 #include "os/os_inc.c"
-#include "task_system/task_system.c"
+#include "async/async.c"
 #include "rdi_make/rdi_make_local.c"
 #include "coff/coff.c"
 #include "codeview/codeview.c"
 #include "codeview/codeview_stringize.c"
 #include "msf/msf.c"
+#include "msf/msf_parse.c"
 #include "pdb/pdb.c"
+#include "pdb/pdb_parse.c"
 #include "pdb/pdb_stringize.c"
 #include "rdi_from_pdb.c"
 
@@ -81,7 +81,7 @@ entry_point(CmdLine *cmdline)
         fprintf(stderr, "error(input): %.*s\n", str8_varg(n->string));
       }
     }
-    os_exit_process(0);
+    os_abort(0);
   }
   
   //- rjf: convert

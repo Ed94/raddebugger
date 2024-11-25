@@ -12,6 +12,7 @@
 #define UI_FixedHeight(v) DeferLoop(ui_push_fixed_height(v), ui_pop_fixed_height())
 #define UI_PrefWidth(v) DeferLoop(ui_push_pref_width(v), ui_pop_pref_width())
 #define UI_PrefHeight(v) DeferLoop(ui_push_pref_height(v), ui_pop_pref_height())
+#define UI_PermissionFlags(v) DeferLoop(ui_push_permission_flags(v), ui_pop_permission_flags())
 #define UI_Flags(v) DeferLoop(ui_push_flags(v), ui_pop_flags())
 #define UI_FocusHot(v) DeferLoop(ui_push_focus_hot(v), ui_pop_focus_hot())
 #define UI_FocusActive(v) DeferLoop(ui_push_focus_active(v), ui_pop_focus_active())
@@ -41,6 +42,7 @@ internal F32 ui_top_fixed_width(void) { UI_StackTopImpl(ui_state, FixedWidth, fi
 internal F32 ui_top_fixed_height(void) { UI_StackTopImpl(ui_state, FixedHeight, fixed_height) }
 internal UI_Size ui_top_pref_width(void) { UI_StackTopImpl(ui_state, PrefWidth, pref_width) }
 internal UI_Size ui_top_pref_height(void) { UI_StackTopImpl(ui_state, PrefHeight, pref_height) }
+internal UI_PermissionFlags ui_top_permission_flags(void) { UI_StackTopImpl(ui_state, PermissionFlags, permission_flags) }
 internal UI_BoxFlags ui_top_flags(void) { UI_StackTopImpl(ui_state, Flags, flags) }
 internal UI_FocusKind ui_top_focus_hot(void) { UI_StackTopImpl(ui_state, FocusHot, focus_hot) }
 internal UI_FocusKind ui_top_focus_active(void) { UI_StackTopImpl(ui_state, FocusActive, focus_active) }
@@ -50,9 +52,9 @@ internal F32 ui_top_transparency(void) { UI_StackTopImpl(ui_state, Transparency,
 internal UI_Palette*     ui_top_palette(void) { UI_StackTopImpl(ui_state, Palette, palette) }
 internal F32 ui_top_squish(void) { UI_StackTopImpl(ui_state, Squish, squish) }
 internal OS_Cursor ui_top_hover_cursor(void) { UI_StackTopImpl(ui_state, HoverCursor, hover_cursor) }
-internal F_Tag ui_top_font(void) { UI_StackTopImpl(ui_state, Font, font) }
+internal FNT_Tag ui_top_font(void) { UI_StackTopImpl(ui_state, Font, font) }
 internal F32 ui_top_font_size(void) { UI_StackTopImpl(ui_state, FontSize, font_size) }
-internal F_RasterFlags ui_top_text_raster_flags(void) { UI_StackTopImpl(ui_state, TextRasterFlags, text_raster_flags) }
+internal FNT_RasterFlags ui_top_text_raster_flags(void) { UI_StackTopImpl(ui_state, TextRasterFlags, text_raster_flags) }
 internal F32 ui_top_tab_size(void) { UI_StackTopImpl(ui_state, TabSize, tab_size) }
 internal F32 ui_top_corner_radius_00(void) { UI_StackTopImpl(ui_state, CornerRadius00, corner_radius_00) }
 internal F32 ui_top_corner_radius_01(void) { UI_StackTopImpl(ui_state, CornerRadius01, corner_radius_01) }
@@ -69,6 +71,7 @@ internal F32 ui_bottom_fixed_width(void) { UI_StackBottomImpl(ui_state, FixedWid
 internal F32 ui_bottom_fixed_height(void) { UI_StackBottomImpl(ui_state, FixedHeight, fixed_height) }
 internal UI_Size ui_bottom_pref_width(void) { UI_StackBottomImpl(ui_state, PrefWidth, pref_width) }
 internal UI_Size ui_bottom_pref_height(void) { UI_StackBottomImpl(ui_state, PrefHeight, pref_height) }
+internal UI_PermissionFlags ui_bottom_permission_flags(void) { UI_StackBottomImpl(ui_state, PermissionFlags, permission_flags) }
 internal UI_BoxFlags ui_bottom_flags(void) { UI_StackBottomImpl(ui_state, Flags, flags) }
 internal UI_FocusKind ui_bottom_focus_hot(void) { UI_StackBottomImpl(ui_state, FocusHot, focus_hot) }
 internal UI_FocusKind ui_bottom_focus_active(void) { UI_StackBottomImpl(ui_state, FocusActive, focus_active) }
@@ -78,9 +81,9 @@ internal F32 ui_bottom_transparency(void) { UI_StackBottomImpl(ui_state, Transpa
 internal UI_Palette*     ui_bottom_palette(void) { UI_StackBottomImpl(ui_state, Palette, palette) }
 internal F32 ui_bottom_squish(void) { UI_StackBottomImpl(ui_state, Squish, squish) }
 internal OS_Cursor ui_bottom_hover_cursor(void) { UI_StackBottomImpl(ui_state, HoverCursor, hover_cursor) }
-internal F_Tag ui_bottom_font(void) { UI_StackBottomImpl(ui_state, Font, font) }
+internal FNT_Tag ui_bottom_font(void) { UI_StackBottomImpl(ui_state, Font, font) }
 internal F32 ui_bottom_font_size(void) { UI_StackBottomImpl(ui_state, FontSize, font_size) }
-internal F_RasterFlags ui_bottom_text_raster_flags(void) { UI_StackBottomImpl(ui_state, TextRasterFlags, text_raster_flags) }
+internal FNT_RasterFlags ui_bottom_text_raster_flags(void) { UI_StackBottomImpl(ui_state, TextRasterFlags, text_raster_flags) }
 internal F32 ui_bottom_tab_size(void) { UI_StackBottomImpl(ui_state, TabSize, tab_size) }
 internal F32 ui_bottom_corner_radius_00(void) { UI_StackBottomImpl(ui_state, CornerRadius00, corner_radius_00) }
 internal F32 ui_bottom_corner_radius_01(void) { UI_StackBottomImpl(ui_state, CornerRadius01, corner_radius_01) }
@@ -97,6 +100,7 @@ internal F32 ui_push_fixed_width(F32 v) { UI_StackPushImpl(ui_state, FixedWidth,
 internal F32 ui_push_fixed_height(F32 v) { UI_StackPushImpl(ui_state, FixedHeight, fixed_height, F32, v) }
 internal UI_Size ui_push_pref_width(UI_Size v) { UI_StackPushImpl(ui_state, PrefWidth, pref_width, UI_Size, v) }
 internal UI_Size ui_push_pref_height(UI_Size v) { UI_StackPushImpl(ui_state, PrefHeight, pref_height, UI_Size, v) }
+internal UI_PermissionFlags ui_push_permission_flags(UI_PermissionFlags v) { UI_StackPushImpl(ui_state, PermissionFlags, permission_flags, UI_PermissionFlags, v) }
 internal UI_BoxFlags ui_push_flags(UI_BoxFlags v) { UI_StackPushImpl(ui_state, Flags, flags, UI_BoxFlags, v) }
 internal UI_FocusKind ui_push_focus_hot(UI_FocusKind v) { UI_StackPushImpl(ui_state, FocusHot, focus_hot, UI_FocusKind, v) }
 internal UI_FocusKind ui_push_focus_active(UI_FocusKind v) { UI_StackPushImpl(ui_state, FocusActive, focus_active, UI_FocusKind, v) }
@@ -106,9 +110,9 @@ internal F32 ui_push_transparency(F32 v) { UI_StackPushImpl(ui_state, Transparen
 internal UI_Palette*     ui_push_palette(UI_Palette*     v) { UI_StackPushImpl(ui_state, Palette, palette, UI_Palette*    , v) }
 internal F32 ui_push_squish(F32 v) { UI_StackPushImpl(ui_state, Squish, squish, F32, v) }
 internal OS_Cursor ui_push_hover_cursor(OS_Cursor v) { UI_StackPushImpl(ui_state, HoverCursor, hover_cursor, OS_Cursor, v) }
-internal F_Tag ui_push_font(F_Tag v) { UI_StackPushImpl(ui_state, Font, font, F_Tag, v) }
+internal FNT_Tag ui_push_font(FNT_Tag v) { UI_StackPushImpl(ui_state, Font, font, FNT_Tag, v) }
 internal F32 ui_push_font_size(F32 v) { UI_StackPushImpl(ui_state, FontSize, font_size, F32, v) }
-internal F_RasterFlags ui_push_text_raster_flags(F_RasterFlags v) { UI_StackPushImpl(ui_state, TextRasterFlags, text_raster_flags, F_RasterFlags, v) }
+internal FNT_RasterFlags ui_push_text_raster_flags(FNT_RasterFlags v) { UI_StackPushImpl(ui_state, TextRasterFlags, text_raster_flags, FNT_RasterFlags, v) }
 internal F32 ui_push_tab_size(F32 v) { UI_StackPushImpl(ui_state, TabSize, tab_size, F32, v) }
 internal F32 ui_push_corner_radius_00(F32 v) { UI_StackPushImpl(ui_state, CornerRadius00, corner_radius_00, F32, v) }
 internal F32 ui_push_corner_radius_01(F32 v) { UI_StackPushImpl(ui_state, CornerRadius01, corner_radius_01, F32, v) }
@@ -125,6 +129,7 @@ internal F32 ui_pop_fixed_width(void) { UI_StackPopImpl(ui_state, FixedWidth, fi
 internal F32 ui_pop_fixed_height(void) { UI_StackPopImpl(ui_state, FixedHeight, fixed_height) }
 internal UI_Size ui_pop_pref_width(void) { UI_StackPopImpl(ui_state, PrefWidth, pref_width) }
 internal UI_Size ui_pop_pref_height(void) { UI_StackPopImpl(ui_state, PrefHeight, pref_height) }
+internal UI_PermissionFlags ui_pop_permission_flags(void) { UI_StackPopImpl(ui_state, PermissionFlags, permission_flags) }
 internal UI_BoxFlags ui_pop_flags(void) { UI_StackPopImpl(ui_state, Flags, flags) }
 internal UI_FocusKind ui_pop_focus_hot(void) { UI_StackPopImpl(ui_state, FocusHot, focus_hot) }
 internal UI_FocusKind ui_pop_focus_active(void) { UI_StackPopImpl(ui_state, FocusActive, focus_active) }
@@ -134,9 +139,9 @@ internal F32 ui_pop_transparency(void) { UI_StackPopImpl(ui_state, Transparency,
 internal UI_Palette*     ui_pop_palette(void) { UI_StackPopImpl(ui_state, Palette, palette) }
 internal F32 ui_pop_squish(void) { UI_StackPopImpl(ui_state, Squish, squish) }
 internal OS_Cursor ui_pop_hover_cursor(void) { UI_StackPopImpl(ui_state, HoverCursor, hover_cursor) }
-internal F_Tag ui_pop_font(void) { UI_StackPopImpl(ui_state, Font, font) }
+internal FNT_Tag ui_pop_font(void) { UI_StackPopImpl(ui_state, Font, font) }
 internal F32 ui_pop_font_size(void) { UI_StackPopImpl(ui_state, FontSize, font_size) }
-internal F_RasterFlags ui_pop_text_raster_flags(void) { UI_StackPopImpl(ui_state, TextRasterFlags, text_raster_flags) }
+internal FNT_RasterFlags ui_pop_text_raster_flags(void) { UI_StackPopImpl(ui_state, TextRasterFlags, text_raster_flags) }
 internal F32 ui_pop_tab_size(void) { UI_StackPopImpl(ui_state, TabSize, tab_size) }
 internal F32 ui_pop_corner_radius_00(void) { UI_StackPopImpl(ui_state, CornerRadius00, corner_radius_00) }
 internal F32 ui_pop_corner_radius_01(void) { UI_StackPopImpl(ui_state, CornerRadius01, corner_radius_01) }
@@ -153,6 +158,7 @@ internal F32 ui_set_next_fixed_width(F32 v) { UI_StackSetNextImpl(ui_state, Fixe
 internal F32 ui_set_next_fixed_height(F32 v) { UI_StackSetNextImpl(ui_state, FixedHeight, fixed_height, F32, v) }
 internal UI_Size ui_set_next_pref_width(UI_Size v) { UI_StackSetNextImpl(ui_state, PrefWidth, pref_width, UI_Size, v) }
 internal UI_Size ui_set_next_pref_height(UI_Size v) { UI_StackSetNextImpl(ui_state, PrefHeight, pref_height, UI_Size, v) }
+internal UI_PermissionFlags ui_set_next_permission_flags(UI_PermissionFlags v) { UI_StackSetNextImpl(ui_state, PermissionFlags, permission_flags, UI_PermissionFlags, v) }
 internal UI_BoxFlags ui_set_next_flags(UI_BoxFlags v) { UI_StackSetNextImpl(ui_state, Flags, flags, UI_BoxFlags, v) }
 internal UI_FocusKind ui_set_next_focus_hot(UI_FocusKind v) { UI_StackSetNextImpl(ui_state, FocusHot, focus_hot, UI_FocusKind, v) }
 internal UI_FocusKind ui_set_next_focus_active(UI_FocusKind v) { UI_StackSetNextImpl(ui_state, FocusActive, focus_active, UI_FocusKind, v) }
@@ -162,9 +168,9 @@ internal F32 ui_set_next_transparency(F32 v) { UI_StackSetNextImpl(ui_state, Tra
 internal UI_Palette*     ui_set_next_palette(UI_Palette*     v) { UI_StackSetNextImpl(ui_state, Palette, palette, UI_Palette*    , v) }
 internal F32 ui_set_next_squish(F32 v) { UI_StackSetNextImpl(ui_state, Squish, squish, F32, v) }
 internal OS_Cursor ui_set_next_hover_cursor(OS_Cursor v) { UI_StackSetNextImpl(ui_state, HoverCursor, hover_cursor, OS_Cursor, v) }
-internal F_Tag ui_set_next_font(F_Tag v) { UI_StackSetNextImpl(ui_state, Font, font, F_Tag, v) }
+internal FNT_Tag ui_set_next_font(FNT_Tag v) { UI_StackSetNextImpl(ui_state, Font, font, FNT_Tag, v) }
 internal F32 ui_set_next_font_size(F32 v) { UI_StackSetNextImpl(ui_state, FontSize, font_size, F32, v) }
-internal F_RasterFlags ui_set_next_text_raster_flags(F_RasterFlags v) { UI_StackSetNextImpl(ui_state, TextRasterFlags, text_raster_flags, F_RasterFlags, v) }
+internal FNT_RasterFlags ui_set_next_text_raster_flags(FNT_RasterFlags v) { UI_StackSetNextImpl(ui_state, TextRasterFlags, text_raster_flags, FNT_RasterFlags, v) }
 internal F32 ui_set_next_tab_size(F32 v) { UI_StackSetNextImpl(ui_state, TabSize, tab_size, F32, v) }
 internal F32 ui_set_next_corner_radius_00(F32 v) { UI_StackSetNextImpl(ui_state, CornerRadius00, corner_radius_00, F32, v) }
 internal F32 ui_set_next_corner_radius_01(F32 v) { UI_StackSetNextImpl(ui_state, CornerRadius01, corner_radius_01, F32, v) }

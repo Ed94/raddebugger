@@ -13,46 +13,260 @@ typedef U64 CTRL_MachineID;
 #define CTRL_MachineID_Local (1)
 
 ////////////////////////////////
-//~ rjf: Machine/Handle Pair Types
+//~ rjf: Meta Evaluation Types
 
-typedef struct CTRL_MachineIDHandlePair CTRL_MachineIDHandlePair;
-struct CTRL_MachineIDHandlePair
+//- rjf: auto-checkbox b32s
+
+typedef struct CTRL_CheckB32 CTRL_CheckB32;
+struct CTRL_CheckB32
+{
+  B32 b32;
+};
+
+struct_members(CTRL_CheckB32)
+{
+  member_lit_comp(CTRL_CheckB32, type(B32), b32),
+};
+struct_type(CTRL_CheckB32);
+
+//- rjf: styled string types
+
+ptr_type(CTRL_PlainString8__str_ptr_type, type(U8), .flags = TypeFlag_IsPlainText,.count_delimiter_name = str8_lit_comp("size"));
+ptr_type(CTRL_CodeString8__str_ptr_type, type(U8),  .flags = TypeFlag_IsCodeText, .count_delimiter_name = str8_lit_comp("size"));
+ptr_type(CTRL_PathString8__str_ptr_type, type(U8),  .flags = TypeFlag_IsPathText, .count_delimiter_name = str8_lit_comp("size"));
+Member CTRL_PlainString8__members[] =
+{
+  member_lit_comp(String8, &CTRL_PlainString8__str_ptr_type, str,  .pretty_name = str8_lit_comp("Contents")),
+  member_lit_comp(String8, type(U64),                        size, .pretty_name = str8_lit_comp("Size")),
+};
+Member CTRL_CodeString8__members[] =
+{
+  member_lit_comp(String8, &CTRL_CodeString8__str_ptr_type, str,  .pretty_name = str8_lit_comp("Contents")),
+  member_lit_comp(String8, type(U64),                       size, .pretty_name = str8_lit_comp("Size")),
+};
+Member CTRL_PathString8__members[] =
+{
+  member_lit_comp(String8, &CTRL_PathString8__str_ptr_type, str,  .pretty_name = str8_lit_comp("Contents")),
+  member_lit_comp(String8, type(U64),                        size, .pretty_name = str8_lit_comp("Size")),
+};
+named_struct_type(CTRL_PlainString8, String8, .name = str8_lit_comp("string"));
+named_struct_type(CTRL_CodeString8,  String8, .name = str8_lit_comp("string"));
+named_struct_type(CTRL_PathString8,  String8, .name = str8_lit_comp("string"));
+
+//- rjf: meta evaluation callstack types
+
+typedef struct CTRL_MetaEvalFrame CTRL_MetaEvalFrame;
+struct CTRL_MetaEvalFrame
+{
+  U64 vaddr;
+  U64 inline_depth;
+};
+ptr_type(CTRL_MetaEvalFrame__vaddr_type, type(void), .flags = TypeFlag_IsExternal, .size = sizeof(U64));
+struct_members(CTRL_MetaEvalFrame)
+{
+  member_lit_comp(CTRL_MetaEvalFrame, &CTRL_MetaEvalFrame__vaddr_type, vaddr),
+  member_lit_comp(CTRL_MetaEvalFrame, type(U64), inline_depth),
+};
+struct_type(CTRL_MetaEvalFrame, .name = str8_lit_comp("callstack_frame"));
+typedef struct CTRL_MetaEvalFrameArray CTRL_MetaEvalFrameArray;
+struct CTRL_MetaEvalFrameArray
+{
+  U64 count;
+  CTRL_MetaEvalFrame *v;
+};
+ptr_type(CTRL_MetaEvalFrameArray__v_ptr_type, type(CTRL_MetaEvalFrame), .count_delimiter_name = str8_lit_comp("count"));
+struct_members(CTRL_MetaEvalFrameArray)
+{
+  member_lit_comp(CTRL_MetaEvalFrameArray, type(U64), count, .pretty_name = str8_lit_comp("Frame Count")),
+  {str8_lit_comp("v"), str8_lit_comp("Frame Addresses"), &CTRL_MetaEvalFrameArray__v_ptr_type, OffsetOf(CTRL_MetaEvalFrameArray, v)},
+};
+struct_type(CTRL_MetaEvalFrameArray, .name = str8_lit_comp("callstack_frames"));
+
+//- rjf: meta evaluation instance types
+
+typedef struct CTRL_MetaEval CTRL_MetaEval;
+struct CTRL_MetaEval
+{
+#define CTRL_MetaEval_MemberXList \
+X(B32, enabled,            "Enabled")\
+X(B32, frozen,             "Frozen")\
+X(U64, hit_count,          "Hit Count")\
+X(U64, id,                 "ID")\
+X(Rng1U64, vaddr_range,    "Address Range")\
+X(U32, color,              "Color")\
+X(CTRL_CheckB32, debug_subprocesses,"Debug Subprocesses")\
+Y(String8, type(CTRL_CodeString8),  label,             "Label")\
+Y(String8, type(CTRL_PathString8),  exe,               "Executable Path")\
+Y(String8, type(CTRL_PathString8),  dbg,               "Debug Info Path")\
+Y(String8, type(CTRL_PlainString8), args,              "Arguments")\
+Y(String8, type(CTRL_PathString8),  working_directory, "Working Directory")\
+Y(String8, type(CTRL_CodeString8),  entry_point,       "Custom Entry Point")\
+Y(String8, type(CTRL_PathString8),  stdout_path,       "Standard Output Path")\
+Y(String8, type(CTRL_PathString8),  stderr_path,       "Standard Error Path")\
+Y(String8, type(CTRL_PathString8),  stdin_path,        "Standard Input Path")\
+Y(String8, type(CTRL_PathString8),  source_location,   "Source Location")\
+Y(String8, type(CTRL_CodeString8),  function_location, "Function Location")\
+Y(String8, type(CTRL_CodeString8),  address_location,  "Address Location")\
+Y(String8, type(CTRL_PathString8),  source_path,       "Source Path")\
+Y(String8, type(CTRL_PathString8),  destination_path,  "Destination Path")\
+Y(String8, type(CTRL_CodeString8),  type,              "Type")\
+Y(String8, type(CTRL_CodeString8),  view_rule,         "View Rule")\
+Y(String8, type(CTRL_CodeString8),  condition,         "Condition")\
+X(CTRL_MetaEvalFrameArray, callstack, "Call Stack")
+#define X(T, name, pretty_name) T name;
+#define Y(T, ti, name, pretty_name) T name;
+  CTRL_MetaEval_MemberXList
+#undef X
+#undef Y
+};
+struct_members(CTRL_MetaEval)
+{
+#define X(T, name, pretty_name_) member_lit_comp(CTRL_MetaEval, type(T), name, .pretty_name = str8_lit_comp(pretty_name_)),
+#define Y(T, ti, name, pretty_name_) member_lit_comp(CTRL_MetaEval, (ti), name, .pretty_name = str8_lit_comp(pretty_name_)),
+  CTRL_MetaEval_MemberXList
+#undef X
+#undef Y
+};
+struct_type(CTRL_MetaEval);
+
+//- rjf: filters on main meta evaluation bundle
+
+struct_members(CTRL_BreakpointMetaEval)
+{
+  member_lit_comp(CTRL_MetaEval, type(B32),              enabled,           .pretty_name = str8_lit_comp("Enabled")),
+  member_lit_comp(CTRL_MetaEval, type(U32),              color,             .pretty_name = str8_lit_comp("Color")),
+  member_lit_comp(CTRL_MetaEval, type(U64),              hit_count,         .pretty_name = str8_lit_comp("Hit Count")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_CodeString8), label,             .pretty_name = str8_lit_comp("Label")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_CodeString8), condition,         .pretty_name = str8_lit_comp("Condition")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_PathString8), source_location,   .pretty_name = str8_lit_comp("Source Location")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_CodeString8), function_location, .pretty_name = str8_lit_comp("Function Location")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_CodeString8), address_location,  .pretty_name = str8_lit_comp("Address Location")),
+};
+
+struct_members(CTRL_TargetMetaEval)
+{
+  member_lit_comp(CTRL_MetaEval, type(CTRL_CodeString8), label,              .pretty_name = str8_lit_comp("Label")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_PathString8), exe,                .pretty_name = str8_lit_comp("Executable")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_PlainString8),args,               .pretty_name = str8_lit_comp("Arguments")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_PathString8), working_directory,  .pretty_name = str8_lit_comp("Working Directory")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_CodeString8), entry_point,        .pretty_name = str8_lit_comp("Custom Entry Point")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_PathString8), stdout_path,        .pretty_name = str8_lit_comp("Standard Output Path")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_PathString8), stderr_path,        .pretty_name = str8_lit_comp("Standard Error Path")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_PathString8), stdin_path,         .pretty_name = str8_lit_comp("Standard Input Path")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_CheckB32),    debug_subprocesses, .pretty_name = str8_lit_comp("Debug Subprocesses")),
+};
+
+struct_members(CTRL_PinMetaEval)
+{
+  member_lit_comp(CTRL_MetaEval, type(CTRL_CodeString8), label,              .pretty_name = str8_lit_comp("Expression")),
+  member_lit_comp(CTRL_MetaEval, type(U32),              color,              .pretty_name = str8_lit_comp("Color")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_PathString8), source_location,    .pretty_name = str8_lit_comp("Source Location")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_CodeString8), address_location,   .pretty_name = str8_lit_comp("Address Location")),
+};
+
+struct_members(CTRL_FilePathMapMetaEval)
+{
+  member_lit_comp(CTRL_MetaEval, type(CTRL_PathString8), source_path,        .pretty_name = str8_lit_comp("Source Path")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_PathString8), destination_path,   .pretty_name = str8_lit_comp("Destination Path")),
+};
+
+struct_members(CTRL_AutoViewRuleMetaEval)
+{
+  member_lit_comp(CTRL_MetaEval, type(CTRL_CodeString8), type,        .pretty_name = str8_lit_comp("Type")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_CodeString8), view_rule,   .pretty_name = str8_lit_comp("View Rule")),
+};
+
+struct_members(CTRL_MachineMetaEval)
+{
+  member_lit_comp(CTRL_MetaEval, type(B32),              frozen,    .pretty_name = str8_lit_comp("Frozen")),
+  member_lit_comp(CTRL_MetaEval, type(U32),              color,     .pretty_name = str8_lit_comp("Color")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_CodeString8), label,     .pretty_name = str8_lit_comp("Name")),
+};
+
+struct_members(CTRL_ProcessMetaEval)
+{
+  member_lit_comp(CTRL_MetaEval, type(B32),              frozen,    .pretty_name = str8_lit_comp("Frozen")),
+  member_lit_comp(CTRL_MetaEval, type(U32),              color,     .pretty_name = str8_lit_comp("Color")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_CodeString8), label,     .pretty_name = str8_lit_comp("Name")),
+  member_lit_comp(CTRL_MetaEval, type(U64),              id,        .pretty_name = str8_lit_comp("ID")),
+};
+
+struct_members(CTRL_ModuleMetaEval)
+{
+  member_lit_comp(CTRL_MetaEval, type(U32),              color,       .pretty_name = str8_lit_comp("Color")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_CodeString8), label,       .pretty_name = str8_lit_comp("Name")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_PathString8), exe,         .pretty_name = str8_lit_comp("Executable Path")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_PathString8), dbg,         .pretty_name = str8_lit_comp("Debug Info Path")),
+  member_lit_comp(CTRL_MetaEval, type(Rng1U64),          vaddr_range, .pretty_name = str8_lit_comp("Address Range")),
+};
+
+struct_members(CTRL_ThreadMetaEval)
+{
+  member_lit_comp(CTRL_MetaEval, type(B32),                     frozen,    .pretty_name = str8_lit_comp("Frozen")),
+  member_lit_comp(CTRL_MetaEval, type(U32),                     color,     .pretty_name = str8_lit_comp("Color")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_CodeString8),        label,     .pretty_name = str8_lit_comp("Name")),
+  member_lit_comp(CTRL_MetaEval, type(U64),                     id,        .pretty_name = str8_lit_comp("ID")),
+  member_lit_comp(CTRL_MetaEval, type(CTRL_MetaEvalFrameArray), callstack, .pretty_name = str8_lit_comp("Call Stack")),
+};
+
+named_struct_type(CTRL_BreakpointMetaEval,  CTRL_MetaEval, .name = str8_lit_comp("breakpoint"));
+named_struct_type(CTRL_TargetMetaEval,      CTRL_MetaEval, .name = str8_lit_comp("target"));
+named_struct_type(CTRL_PinMetaEval,         CTRL_MetaEval, .name = str8_lit_comp("pin"));
+named_struct_type(CTRL_FilePathMapMetaEval, CTRL_MetaEval, .name = str8_lit_comp("file_path_map"));
+named_struct_type(CTRL_AutoViewRuleMetaEval,CTRL_MetaEval, .name = str8_lit_comp("auto_view_rule"));
+named_struct_type(CTRL_MachineMetaEval,     CTRL_MetaEval, .name = str8_lit_comp("machine"));
+named_struct_type(CTRL_ProcessMetaEval,     CTRL_MetaEval, .name = str8_lit_comp("process"));
+named_struct_type(CTRL_ModuleMetaEval,      CTRL_MetaEval, .name = str8_lit_comp("module"));
+named_struct_type(CTRL_ThreadMetaEval,      CTRL_MetaEval, .name = str8_lit_comp("thread"));
+
+//- rjf: meta evaluation array
+
+typedef struct CTRL_MetaEvalArray CTRL_MetaEvalArray;
+struct CTRL_MetaEvalArray
+{
+  CTRL_MetaEval *v;
+  U64 count;
+};
+ptr_type(CTRL_MetaEvalArray__v_ptr_type, type(CTRL_BreakpointMetaEval), .count_delimiter_name = str8_lit_comp("count"));
+struct_members(CTRL_MetaEvalArray)
+{
+  {str8_lit_comp("v"), {0}, &CTRL_MetaEvalArray__v_ptr_type, OffsetOf(CTRL_MetaEvalArray, v)},
+  member_lit_comp(CTRL_MetaEvalArray, type(U64), count),
+};
+struct_type(CTRL_MetaEvalArray);
+
+////////////////////////////////
+//~ rjf: Entity Handle Types
+
+typedef struct CTRL_Handle CTRL_Handle;
+struct CTRL_Handle
 {
   CTRL_MachineID machine_id;
-  DMN_Handle handle;
+  DMN_Handle dmn_handle;
 };
 
-typedef struct CTRL_MachineIDHandlePairNode CTRL_MachineIDHandlePairNode;
-struct CTRL_MachineIDHandlePairNode
+typedef struct CTRL_HandleNode CTRL_HandleNode;
+struct CTRL_HandleNode
 {
-  CTRL_MachineIDHandlePairNode *next;
-  CTRL_MachineIDHandlePair v;
+  CTRL_HandleNode *next;
+  CTRL_Handle v;
 };
 
-typedef struct CTRL_MachineIDHandlePairList CTRL_MachineIDHandlePairList;
-struct CTRL_MachineIDHandlePairList
+typedef struct CTRL_HandleList CTRL_HandleList;
+struct CTRL_HandleList
 {
-  CTRL_MachineIDHandlePairNode *first;
-  CTRL_MachineIDHandlePairNode *last;
+  CTRL_HandleNode *first;
+  CTRL_HandleNode *last;
   U64 count;
 };
 
 ////////////////////////////////
-//~ rjf: Entity Types
+//~ rjf: Generated Code
 
-typedef enum CTRL_EntityKind
-{
-  CTRL_EntityKind_Null,
-  CTRL_EntityKind_Root,
-  CTRL_EntityKind_Machine,
-  CTRL_EntityKind_Process,
-  CTRL_EntityKind_Thread,
-  CTRL_EntityKind_Module,
-  CTRL_EntityKind_EntryPoint,
-  CTRL_EntityKind_DebugInfoPath,
-  CTRL_EntityKind_COUNT
-}
-CTRL_EntityKind;
+#include "generated/ctrl.meta.h"
+
+////////////////////////////////
+//~ rjf: Entity Types
 
 typedef struct CTRL_Entity CTRL_Entity;
 struct CTRL_Entity
@@ -63,13 +277,45 @@ struct CTRL_Entity
   CTRL_Entity *prev;
   CTRL_Entity *parent;
   CTRL_EntityKind kind;
-  Architecture arch;
-  CTRL_MachineID machine_id;
-  DMN_Handle handle;
+  Arch arch;
+  B32 is_frozen;
+  U32 rgba;
+  CTRL_Handle handle;
   U64 id;
   Rng1U64 vaddr_range;
+  U64 stack_base;
   U64 timestamp;
   String8 string;
+};
+
+typedef struct CTRL_EntityNode CTRL_EntityNode;
+struct CTRL_EntityNode
+{
+  CTRL_EntityNode *next;
+  CTRL_Entity *v;
+};
+
+typedef struct CTRL_EntityList CTRL_EntityList;
+struct CTRL_EntityList
+{
+  CTRL_EntityNode *first;
+  CTRL_EntityNode *last;
+  U64 count;
+};
+
+typedef struct CTRL_EntityArray CTRL_EntityArray;
+struct CTRL_EntityArray
+{
+  CTRL_Entity **v;
+  U64 count;
+};
+
+typedef struct CTRL_EntityRec CTRL_EntityRec;
+struct CTRL_EntityRec
+{
+  CTRL_Entity *next;
+  S32 push_count;
+  S64 pop_count;
 };
 
 typedef struct CTRL_EntityHashNode CTRL_EntityHashNode;
@@ -104,6 +350,11 @@ struct CTRL_EntityStore
   CTRL_EntityHashNode *hash_node_free;
   U64 hash_slots_count;
   CTRL_EntityStringChunkNode *free_string_chunks[8];
+  U64 entity_kind_counts[CTRL_EntityKind_COUNT];
+  Arena *entity_kind_lists_arenas[CTRL_EntityKind_COUNT];
+  U64 entity_kind_lists_gens[CTRL_EntityKind_COUNT];
+  U64 entity_kind_alloc_gens[CTRL_EntityKind_COUNT];
+  CTRL_EntityList entity_kind_lists[CTRL_EntityKind_COUNT];
 };
 
 ////////////////////////////////
@@ -148,6 +399,37 @@ struct CTRL_Unwind
 {
   CTRL_UnwindFrameArray frames;
   CTRL_UnwindFlags flags;
+};
+
+////////////////////////////////
+//~ rjf: Call Stack Types
+
+typedef struct CTRL_CallStackInlineFrame CTRL_CallStackInlineFrame;
+struct CTRL_CallStackInlineFrame
+{
+  CTRL_CallStackInlineFrame *next;
+  CTRL_CallStackInlineFrame *prev;
+  RDI_InlineSite *inline_site;
+};
+
+typedef struct CTRL_CallStackFrame CTRL_CallStackFrame;
+struct CTRL_CallStackFrame
+{
+  CTRL_CallStackInlineFrame *first_inline_frame;
+  CTRL_CallStackInlineFrame *last_inline_frame;
+  U64 inline_frame_count;
+  void *regs;
+  RDI_Parsed *rdi;
+  RDI_Procedure *procedure;
+};
+
+typedef struct CTRL_CallStack CTRL_CallStack;
+struct CTRL_CallStack
+{
+  CTRL_CallStackFrame *frames;
+  U64 concrete_frame_count;
+  U64 inline_frame_count;
+  U64 total_frame_count;
 };
 
 ////////////////////////////////
@@ -199,6 +481,7 @@ struct CTRL_Spoof
 
 typedef enum CTRL_UserBreakpointKind
 {
+  CTRL_UserBreakpointKind_Null,
   CTRL_UserBreakpointKind_FileNameAndLineColNumber,
   CTRL_UserBreakpointKind_SymbolNameAndOffset,
   CTRL_UserBreakpointKind_VirtualAddress,
@@ -232,9 +515,14 @@ struct CTRL_UserBreakpointList
 };
 
 ////////////////////////////////
-//~ rjf: Generated Code
+//~ rjf: Evaluation Spaces
 
-#include "generated/ctrl.meta.h"
+typedef U64 CTRL_EvalSpaceKind;
+enum
+{
+  CTRL_EvalSpaceKind_Entity = E_SpaceKind_FirstUserDefined,
+  CTRL_EvalSpaceKind_Meta,
+};
 
 ////////////////////////////////
 //~ rjf: Message Types
@@ -245,11 +533,14 @@ typedef enum CTRL_MsgKind
   CTRL_MsgKind_Launch,
   CTRL_MsgKind_Attach,
   CTRL_MsgKind_Kill,
+  CTRL_MsgKind_KillAll,
   CTRL_MsgKind_Detach,
   CTRL_MsgKind_Run,
   CTRL_MsgKind_SingleStep,
   CTRL_MsgKind_SetUserEntryPoints,
   CTRL_MsgKind_SetModuleDebugInfoPath,
+  CTRL_MsgKind_FreezeThread,
+  CTRL_MsgKind_ThawThread,
   CTRL_MsgKind_COUNT,
 }
 CTRL_MsgKind;
@@ -266,21 +557,23 @@ struct CTRL_Msg
   CTRL_MsgKind kind;
   CTRL_RunFlags run_flags;
   CTRL_MsgID msg_id;
-  CTRL_MachineID machine_id;
-  DMN_Handle entity;
-  DMN_Handle parent;
+  CTRL_Handle entity;
+  CTRL_Handle parent;
   U32 entity_id;
   U32 exit_code;
   B32 env_inherit;
+  B32 debug_subprocesses;
   U64 exception_code_filters[(CTRL_ExceptionCodeKind_COUNT+63)/64];
   String8 path;
   String8List entry_points;
   String8List cmd_line_string_list;
   String8List env_string_list;
+  String8 stdout_path;
+  String8 stderr_path;
+  String8 stdin_path;
   CTRL_TrapList traps;
   CTRL_UserBreakpointList user_bps;
-  CTRL_MachineIDHandlePairList freeze_state_threads; // NOTE(rjf): can be frozen or unfrozen, depending on `freeze_state_is_frozen`
-  B32 freeze_state_is_frozen;
+  CTRL_MetaEvalArray meta_evals;
 };
 
 typedef struct CTRL_MsgNode CTRL_MsgNode;
@@ -318,12 +611,17 @@ typedef enum CTRL_EventKind
   CTRL_EventKind_EndThread,
   CTRL_EventKind_EndModule,
   
+  //- rjf: thread freeze state changes
+  CTRL_EventKind_ThreadFrozen,
+  CTRL_EventKind_ThreadThawed,
+  
   //- rjf: debug info changes
   CTRL_EventKind_ModuleDebugInfoPathChange,
   
-  //- rjf: debug strings
+  //- rjf: debug strings / decorations
   CTRL_EventKind_DebugString,
   CTRL_EventKind_ThreadName,
+  CTRL_EventKind_ThreadColor,
   
   //- rjf: memory
   CTRL_EventKind_MemReserve,
@@ -367,10 +665,9 @@ struct CTRL_Event
   CTRL_EventCause cause;
   CTRL_ExceptionKind exception_kind;
   CTRL_MsgID msg_id;
-  CTRL_MachineID machine_id;
-  DMN_Handle entity;
-  DMN_Handle parent;
-  Architecture arch;
+  CTRL_Handle entity;
+  CTRL_Handle parent;
+  Arch arch;
   U64 u64_code;
   U32 entity_id;
   Rng1U64 vaddr_rng;
@@ -379,6 +676,7 @@ struct CTRL_Event
   U64 tls_root;
   U64 timestamp;
   U32 exception_code;
+  U32 rgba;
   String8 string;
 };
 
@@ -426,8 +724,7 @@ struct CTRL_ProcessMemoryCacheNode
   CTRL_ProcessMemoryCacheNode *next;
   CTRL_ProcessMemoryCacheNode *prev;
   Arena *arena;
-  CTRL_MachineID machine_id;
-  DMN_Handle process;
+  CTRL_Handle handle;
   U64 range_hash_slots_count;
   CTRL_ProcessMemoryRangeHashSlot *range_hash_slots;
 };
@@ -474,8 +771,7 @@ struct CTRL_ThreadRegCacheNode
 {
   CTRL_ThreadRegCacheNode *next;
   CTRL_ThreadRegCacheNode *prev;
-  CTRL_MachineID machine_id;
-  DMN_Handle thread;
+  CTRL_Handle handle;
   U64 block_size;
   void *block;
   U64 reg_gen;
@@ -512,8 +808,7 @@ struct CTRL_ModuleImageInfoCacheNode
 {
   CTRL_ModuleImageInfoCacheNode *next;
   CTRL_ModuleImageInfoCacheNode *prev;
-  CTRL_MachineID machine_id;
-  DMN_Handle module;
+  CTRL_Handle module;
   Arena *arena;
   PE_IntelPdata *pdatas;
   U64 pdatas_count;
@@ -546,6 +841,23 @@ struct CTRL_ModuleImageInfoCache
 };
 
 ////////////////////////////////
+//~ rjf: Touched Debug Info Directory Cache
+
+typedef struct CTRL_DbgDirNode CTRL_DbgDirNode;
+struct CTRL_DbgDirNode
+{
+  CTRL_DbgDirNode *first;
+  CTRL_DbgDirNode *last;
+  CTRL_DbgDirNode *next;
+  CTRL_DbgDirNode *prev;
+  CTRL_DbgDirNode *parent;
+  String8 name;
+  U64 search_count;
+  U64 child_count;
+  U64 module_direct_count;
+};
+
+////////////////////////////////
 //~ rjf: Wakeup Hook Function Types
 
 #define CTRL_WAKEUP_FUNCTION_DEF(name) void name(void)
@@ -561,8 +873,8 @@ struct CTRL_State
   CTRL_WakeupFunctionType *wakeup_hook;
   
   // rjf: name -> register/alias hash tables for eval
-  EVAL_String2NumMap arch_string2reg_tables[Architecture_COUNT];
-  EVAL_String2NumMap arch_string2alias_tables[Architecture_COUNT];
+  E_String2NumMap arch_string2reg_tables[Arch_COUNT];
+  E_String2NumMap arch_string2alias_tables[Arch_COUNT];
   
   // rjf: caches
   CTRL_ProcessMemoryCache process_memory_cache;
@@ -597,8 +909,12 @@ struct CTRL_State
   DMN_EventNode *free_dmn_event_node;
   Arena *user_entry_point_arena;
   String8List user_entry_points;
+  Arena *user_meta_eval_arena;
+  CTRL_MetaEvalArray user_meta_evals;
   U64 exception_code_filters[(CTRL_ExceptionCodeKind_COUNT+63)/64];
   U64 process_counter;
+  Arena *dbg_dir_arena;
+  CTRL_DbgDirNode *dbg_dir_root;
   
   // rjf: user -> memstream ring buffer
   U64 u2ms_ring_size;
@@ -607,10 +923,6 @@ struct CTRL_State
   U64 u2ms_ring_read_pos;
   OS_Handle u2ms_ring_mutex;
   OS_Handle u2ms_ring_cv;
-  
-  // rjf: memory stream threads
-  U64 ms_thread_count;
-  OS_Handle *ms_threads;
 };
 
 ////////////////////////////////
@@ -635,16 +947,19 @@ read_only global CTRL_Entity ctrl_entity_nil =
 //~ rjf: Basic Type Functions
 
 internal U64 ctrl_hash_from_string(String8 string);
-internal U64 ctrl_hash_from_machine_id_handle(CTRL_MachineID machine_id, DMN_Handle handle);
+internal U64 ctrl_hash_from_handle(CTRL_Handle handle);
 internal CTRL_EventCause ctrl_event_cause_from_dmn_event_kind(DMN_EventKind event_kind);
 internal String8 ctrl_string_from_event_kind(CTRL_EventKind kind);
 internal String8 ctrl_string_from_msg_kind(CTRL_MsgKind kind);
 
 ////////////////////////////////
-//~ rjf: Machine/Handle Pair Type Functions
+//~ rjf: Handle Type Functions
 
-internal void ctrl_machine_id_handle_pair_list_push(Arena *arena, CTRL_MachineIDHandlePairList *list, CTRL_MachineIDHandlePair *pair);
-internal CTRL_MachineIDHandlePairList ctrl_machine_id_handle_pair_list_copy(Arena *arena, CTRL_MachineIDHandlePairList *src);
+internal CTRL_Handle ctrl_handle_zero(void);
+internal CTRL_Handle ctrl_handle_make(CTRL_MachineID machine_id, DMN_Handle dmn_handle);
+internal B32 ctrl_handle_match(CTRL_Handle a, CTRL_Handle b);
+internal void ctrl_handle_list_push(Arena *arena, CTRL_HandleList *list, CTRL_Handle *pair);
+internal CTRL_HandleList ctrl_handle_list_copy(Arena *arena, CTRL_HandleList *src);
 
 ////////////////////////////////
 //~ rjf: Trap Type Functions
@@ -666,6 +981,8 @@ internal void ctrl_msg_deep_copy(Arena *arena, CTRL_Msg *dst, CTRL_Msg *src);
 
 //- rjf: list building
 internal CTRL_Msg *ctrl_msg_list_push(Arena *arena, CTRL_MsgList *list);
+internal CTRL_MsgList ctrl_msg_list_deep_copy(Arena *arena, CTRL_MsgList *src);
+internal void ctrl_msg_list_concat_in_place(CTRL_MsgList *dst, CTRL_MsgList *src);
 
 //- rjf: serialization
 internal String8 ctrl_serialized_string_from_msg_list(Arena *arena, CTRL_MsgList *msgs);
@@ -685,6 +1002,14 @@ internal CTRL_Event ctrl_event_from_serialized_string(Arena *arena, String8 stri
 ////////////////////////////////
 //~ rjf: Entity Type Functions
 
+//- rjf: entity list data structures
+internal void ctrl_entity_list_push(Arena *arena, CTRL_EntityList *list, CTRL_Entity *entity);
+internal CTRL_EntityList ctrl_entity_list_from_handle_list(Arena *arena, CTRL_EntityStore *store, CTRL_HandleList *list);
+#define ctrl_entity_list_first(list) ((list)->first ? (list)->first->v : &ctrl_entity_nil)
+
+//- rjf: entity array data structure
+internal CTRL_EntityArray ctrl_entity_array_from_list(Arena *arena, CTRL_EntityList *list);
+
 //- rjf: cache creation/destruction
 internal CTRL_EntityStore *ctrl_entity_store_alloc(void);
 internal void ctrl_entity_store_release(CTRL_EntityStore *store);
@@ -695,15 +1020,32 @@ internal String8 ctrl_entity_string_alloc(CTRL_EntityStore *store, String8 strin
 internal void ctrl_entity_string_release(CTRL_EntityStore *store, String8 string);
 
 //- rjf: entity construction/deletion
-internal CTRL_Entity *ctrl_entity_alloc(CTRL_EntityStore *store, CTRL_Entity *parent, CTRL_EntityKind kind, Architecture arch, CTRL_MachineID machine_id, DMN_Handle handle, U64 id);
+internal CTRL_Entity *ctrl_entity_alloc(CTRL_EntityStore *store, CTRL_Entity *parent, CTRL_EntityKind kind, Arch arch, CTRL_Handle handle, U64 id);
 internal void ctrl_entity_release(CTRL_EntityStore *store, CTRL_Entity *entity);
 
 //- rjf: entity equipment
 internal void ctrl_entity_equip_string(CTRL_EntityStore *store, CTRL_Entity *entity, String8 string);
 
 //- rjf: entity store lookups
-internal CTRL_Entity *ctrl_entity_from_machine_id_handle(CTRL_EntityStore *store, CTRL_MachineID machine_id, DMN_Handle handle);
+internal CTRL_Entity *ctrl_entity_from_handle(CTRL_EntityStore *store, CTRL_Handle handle);
 internal CTRL_Entity *ctrl_entity_child_from_kind(CTRL_Entity *parent, CTRL_EntityKind kind);
+internal CTRL_Entity *ctrl_entity_ancestor_from_kind(CTRL_Entity *entity, CTRL_EntityKind kind);
+internal CTRL_Entity *ctrl_process_from_entity(CTRL_Entity *entity);
+internal CTRL_Entity *ctrl_module_from_process_vaddr(CTRL_Entity *process, U64 vaddr);
+internal DI_Key ctrl_dbgi_key_from_module(CTRL_Entity *module);
+internal CTRL_EntityList ctrl_modules_from_dbgi_key(Arena *arena, CTRL_EntityStore *store, DI_Key *dbgi_key);
+internal CTRL_Entity *ctrl_module_from_thread_candidates(CTRL_EntityStore *store, CTRL_Entity *thread, CTRL_EntityList *candidates);
+internal CTRL_EntityList ctrl_entity_list_from_kind(CTRL_EntityStore *store, CTRL_EntityKind kind);
+internal U64 ctrl_vaddr_from_voff(CTRL_Entity *module, U64 voff);
+internal U64 ctrl_voff_from_vaddr(CTRL_Entity *module, U64 vaddr);
+internal Rng1U64 ctrl_vaddr_range_from_voff_range(CTRL_Entity *module, Rng1U64 voff_range);
+internal Rng1U64 ctrl_voff_range_from_vaddr_range(CTRL_Entity *module, Rng1U64 vaddr_range);
+internal B32 ctrl_entity_tree_is_frozen(CTRL_Entity *root);
+
+//- rjf: entity tree iteration
+internal CTRL_EntityRec ctrl_entity_rec_depth_first(CTRL_Entity *entity, CTRL_Entity *subtree_root, U64 sib_off, U64 child_off);
+#define ctrl_entity_rec_depth_first_pre(entity, subtree_root)  ctrl_entity_rec_depth_first((entity), (subtree_root), OffsetOf(CTRL_Entity, next), OffsetOf(CTRL_Entity, first))
+#define ctrl_entity_rec_depth_first_post(entity, subtree_root) ctrl_entity_rec_depth_first((entity), (subtree_root), OffsetOf(CTRL_Entity, prev), OffsetOf(CTRL_Entity, last))
 
 //- rjf: applying events to entity caches
 internal void ctrl_entity_store_apply_events(CTRL_EntityStore *store, CTRL_EventList *list);
@@ -722,57 +1064,62 @@ internal void ctrl_set_wakeup_hook(CTRL_WakeupFunctionType *wakeup_hook);
 //~ rjf: Process Memory Functions
 
 //- rjf: process memory cache interaction
-internal U128 ctrl_calc_hash_store_key_from_process_vaddr_range(CTRL_MachineID machine_id, DMN_Handle process, Rng1U64 range, B32 zero_terminated);
-internal U128 ctrl_stored_hash_from_process_vaddr_range(CTRL_MachineID machine_id, DMN_Handle process, Rng1U64 range, B32 zero_terminated, B32 *out_is_stale, U64 endt_us);
+internal U128 ctrl_calc_hash_store_key_from_process_vaddr_range(CTRL_Handle process, Rng1U64 range, B32 zero_terminated);
+internal U128 ctrl_stored_hash_from_process_vaddr_range(CTRL_Handle process, Rng1U64 range, B32 zero_terminated, B32 *out_is_stale, U64 endt_us);
 
 //- rjf: bundled key/stream helper
-internal U128 ctrl_hash_store_key_from_process_vaddr_range(CTRL_MachineID machine_id, DMN_Handle process, Rng1U64 range, B32 zero_terminated);
+internal U128 ctrl_hash_store_key_from_process_vaddr_range(CTRL_Handle process, Rng1U64 range, B32 zero_terminated);
 
 //- rjf: process memory cache reading helpers
-internal CTRL_ProcessMemorySlice ctrl_query_cached_data_from_process_vaddr_range(Arena *arena, CTRL_MachineID machine_id, DMN_Handle process, Rng1U64 range, U64 endt_us);
-internal CTRL_ProcessMemorySlice ctrl_query_cached_zero_terminated_data_from_process_vaddr_limit(Arena *arena, CTRL_MachineID machine_id, DMN_Handle process, U64 vaddr, U64 limit, U64 element_size, U64 endt_us);
-internal B32 ctrl_read_cached_process_memory(CTRL_MachineID machine_id, DMN_Handle process, Rng1U64 range, B32 *is_stale_out, void *out, U64 endt_us);
-#define ctrl_read_cached_process_memory_struct(machine_id, process, vaddr, is_stale_out, ptr, endt_us) ctrl_read_cached_process_memory((machine_id), (process), r1u64((vaddr), (vaddr)+(sizeof(*(ptr)))), (is_stale_out), (ptr), (endt_us))
+internal CTRL_ProcessMemorySlice ctrl_query_cached_data_from_process_vaddr_range(Arena *arena, CTRL_Handle process, Rng1U64 range, U64 endt_us);
+internal CTRL_ProcessMemorySlice ctrl_query_cached_zero_terminated_data_from_process_vaddr_limit(Arena *arena, CTRL_Handle process, U64 vaddr, U64 limit, U64 element_size, U64 endt_us);
+internal B32 ctrl_read_cached_process_memory(CTRL_Handle process, Rng1U64 range, B32 *is_stale_out, void *out, U64 endt_us);
+#define ctrl_read_cached_process_memory_struct(process, vaddr, is_stale_out, ptr, endt_us) ctrl_read_cached_process_memory((process), r1u64((vaddr), (vaddr)+(sizeof(*(ptr)))), (is_stale_out), (ptr), (endt_us))
 
 //- rjf: process memory writing
-internal B32 ctrl_process_write(CTRL_MachineID machine_id, DMN_Handle process, Rng1U64 range, void *src);
+internal B32 ctrl_process_write(CTRL_Handle process, Rng1U64 range, void *src);
 
 ////////////////////////////////
 //~ rjf: Thread Register Functions
 
 //- rjf: thread register cache reading
-internal void *ctrl_query_cached_reg_block_from_thread(Arena *arena, CTRL_EntityStore *store, CTRL_MachineID machine_id, DMN_Handle thread);
-internal U64 ctrl_query_cached_tls_root_vaddr_from_thread(CTRL_EntityStore *store, CTRL_MachineID machine_id, DMN_Handle thread);
-internal U64 ctrl_query_cached_rip_from_thread(CTRL_EntityStore *store, CTRL_MachineID machine_id, DMN_Handle thread);
-internal U64 ctrl_query_cached_rsp_from_thread(CTRL_EntityStore *store, CTRL_MachineID machine_id, DMN_Handle thread);
+internal void *ctrl_query_cached_reg_block_from_thread(Arena *arena, CTRL_EntityStore *store, CTRL_Handle handle);
+internal U64 ctrl_query_cached_tls_root_vaddr_from_thread(CTRL_EntityStore *store, CTRL_Handle handle);
+internal U64 ctrl_query_cached_rip_from_thread(CTRL_EntityStore *store, CTRL_Handle handle);
+internal U64 ctrl_query_cached_rsp_from_thread(CTRL_EntityStore *store, CTRL_Handle handle);
 
 //- rjf: thread register writing
-internal B32 ctrl_thread_write_reg_block(CTRL_MachineID machine_id, DMN_Handle thread, void *block);
+internal B32 ctrl_thread_write_reg_block(CTRL_Handle thread, void *block);
 
 ////////////////////////////////
 //~ rjf: Module Image Info Functions
 
 //- rjf: cache lookups
-internal PE_IntelPdata *ctrl_intel_pdata_from_module_voff(Arena *arena, CTRL_MachineID machine_id, DMN_Handle module_handle, U64 voff);
-internal U64 ctrl_entry_point_voff_from_module(CTRL_MachineID machine_id, DMN_Handle module_handle);
-internal Rng1U64 ctrl_tls_vaddr_range_from_module(CTRL_MachineID machine_id, DMN_Handle module_handle);
-internal String8 ctrl_initial_debug_info_path_from_module(Arena *arena, CTRL_MachineID machine_id, DMN_Handle module_handle);
+internal PE_IntelPdata *ctrl_intel_pdata_from_module_voff(Arena *arena, CTRL_Handle module_handle, U64 voff);
+internal U64 ctrl_entry_point_voff_from_module(CTRL_Handle module_handle);
+internal Rng1U64 ctrl_tls_vaddr_range_from_module(CTRL_Handle module_handle);
+internal String8 ctrl_initial_debug_info_path_from_module(Arena *arena, CTRL_Handle module_handle);
 
 ////////////////////////////////
 //~ rjf: Unwinding Functions
 
 //- rjf: unwind deep copier
-internal CTRL_Unwind ctrl_unwind_deep_copy(Arena *arena, Architecture arch, CTRL_Unwind *src);
+internal CTRL_Unwind ctrl_unwind_deep_copy(Arena *arena, Arch arch, CTRL_Unwind *src);
 
 //- rjf: [x64]
 internal REGS_Reg64 *ctrl_unwind_reg_from_pe_gpr_reg__pe_x64(REGS_RegBlockX64 *regs, PE_UnwindGprRegX64 gpr_reg);
-internal CTRL_UnwindStepResult ctrl_unwind_step__pe_x64(CTRL_EntityStore *store, CTRL_MachineID machine_id, DMN_Handle process_handle, DMN_Handle module, REGS_RegBlockX64 *regs, U64 endt_us);
+internal CTRL_UnwindStepResult ctrl_unwind_step__pe_x64(CTRL_EntityStore *store, CTRL_Handle process_handle, CTRL_Handle module_handle, REGS_RegBlockX64 *regs, U64 endt_us);
 
 //- rjf: abstracted unwind step
-internal CTRL_UnwindStepResult ctrl_unwind_step(CTRL_EntityStore *store, CTRL_MachineID machine_id, DMN_Handle process_handle, DMN_Handle module, Architecture arch, void *reg_block, U64 endt_us);
+internal CTRL_UnwindStepResult ctrl_unwind_step(CTRL_EntityStore *store, CTRL_Handle process, CTRL_Handle module, Arch arch, void *reg_block, U64 endt_us);
 
 //- rjf: abstracted full unwind
-internal CTRL_Unwind ctrl_unwind_from_thread(Arena *arena, CTRL_EntityStore *store, CTRL_MachineID machine_id, DMN_Handle thread, U64 endt_us);
+internal CTRL_Unwind ctrl_unwind_from_thread(Arena *arena, CTRL_EntityStore *store, CTRL_Handle thread, U64 endt_us);
+
+////////////////////////////////
+//~ rjf: Call Stack Building Functions
+
+internal CTRL_CallStack ctrl_call_stack_from_unwind(Arena *arena, DI_Scope *di_scope, CTRL_Entity *process, CTRL_Unwind *base_unwind);
 
 ////////////////////////////////
 //~ rjf: Halting All Attached Processes
@@ -788,8 +1135,8 @@ internal U64 ctrl_mem_gen(void);
 internal U64 ctrl_reg_gen(void);
 
 //- rjf: name -> register/alias hash tables, for eval
-internal EVAL_String2NumMap *ctrl_string2reg_from_arch(Architecture arch);
-internal EVAL_String2NumMap *ctrl_string2alias_from_arch(Architecture arch);
+internal E_String2NumMap *ctrl_string2reg_from_arch(Arch arch);
+internal E_String2NumMap *ctrl_string2alias_from_arch(Arch arch);
 
 ////////////////////////////////
 //~ rjf: Control-Thread Functions
@@ -806,18 +1153,18 @@ internal CTRL_EventList ctrl_c2u_pop_events(Arena *arena);
 internal void ctrl_thread__entry_point(void *p);
 
 //- rjf: breakpoint resolution
-internal void ctrl_thread__append_resolved_module_user_bp_traps(Arena *arena, CTRL_MachineID machine_id, DMN_Handle process, DMN_Handle module, CTRL_UserBreakpointList *user_bps, DMN_TrapChunkList *traps_out);
-internal void ctrl_thread__append_resolved_process_user_bp_traps(Arena *arena, CTRL_MachineID machine_id, DMN_Handle process, CTRL_UserBreakpointList *user_bps, DMN_TrapChunkList *traps_out);
+internal void ctrl_thread__append_resolved_module_user_bp_traps(Arena *arena, CTRL_Handle process, CTRL_Handle module, CTRL_UserBreakpointList *user_bps, DMN_TrapChunkList *traps_out);
+internal void ctrl_thread__append_resolved_process_user_bp_traps(Arena *arena, CTRL_Handle process, CTRL_UserBreakpointList *user_bps, DMN_TrapChunkList *traps_out);
 
 //- rjf: module lifetime open/close work
-internal void ctrl_thread__module_open(CTRL_MachineID machine_id, DMN_Handle process, DMN_Handle module, Rng1U64 vaddr_range, String8 path);
-internal void ctrl_thread__module_close(CTRL_MachineID machine_id, DMN_Handle module);
+internal void ctrl_thread__module_open(CTRL_Handle process, CTRL_Handle module, Rng1U64 vaddr_range, String8 path);
+internal void ctrl_thread__module_close(CTRL_Handle module);
 
 //- rjf: attached process running/event gathering
 internal DMN_Event *ctrl_thread__next_dmn_event(Arena *arena, DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg, DMN_RunCtrls *run_ctrls, CTRL_Spoof *spoof);
 
 //- rjf: eval helpers
-internal B32 ctrl_eval_memory_read(void *u, void *out, U64 addr, U64 size);
+internal B32 ctrl_eval_space_read(void *u, E_Space space, void *out, Rng1U64 vaddr_range);
 
 //- rjf: log flusher
 internal void ctrl_thread__flush_info_log(String8 string);
@@ -827,6 +1174,7 @@ internal void ctrl_thread__end_and_flush_info_log(void);
 internal void ctrl_thread__launch(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg);
 internal void ctrl_thread__attach(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg);
 internal void ctrl_thread__kill(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg);
+internal void ctrl_thread__kill_all(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg);
 internal void ctrl_thread__detach(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg);
 internal void ctrl_thread__run(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg);
 internal void ctrl_thread__single_step(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg);
@@ -835,10 +1183,11 @@ internal void ctrl_thread__single_step(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg);
 //~ rjf: Memory-Stream Thread Functions
 
 //- rjf: user -> memory stream communication
-internal B32 ctrl_u2ms_enqueue_req(CTRL_MachineID machine_id, DMN_Handle process, Rng1U64 vaddr_range, B32 zero_terminated, U64 endt_us);
-internal void ctrl_u2ms_dequeue_req(CTRL_MachineID *out_machine_id, DMN_Handle *out_process, Rng1U64 *out_vaddr_range, B32 *out_zero_terminated);
+internal B32 ctrl_u2ms_enqueue_req(CTRL_Handle process, Rng1U64 vaddr_range, B32 zero_terminated, U64 endt_us);
+internal void ctrl_u2ms_dequeue_req(CTRL_Handle *out_process, Rng1U64 *out_vaddr_range, B32 *out_zero_terminated);
 
 //- rjf: entry point
+ASYNC_WORK_DEF(ctrl_mem_stream_work);
 internal void ctrl_mem_stream_thread__entry_point(void *p);
 
 #endif // CTRL_CORE_H

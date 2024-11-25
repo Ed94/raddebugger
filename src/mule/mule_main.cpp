@@ -252,6 +252,22 @@ struct Has_A_Post_Forward_Reference{
   struct Gets_Referenced_Forwardly value;
 };
 
+struct TypeWithMemberFunction
+{
+  int x;
+  int y;
+  int z;
+  char *name;
+  __declspec(noinline) void SetInfo(int _x, int _y, char *_name)
+  {
+    x = _x;
+    y = _y;
+    z = 0;
+    name = _name;
+    OutputDebugStringA("setting info\n");
+  }
+};
+
 static void
 no_params1(void){
   
@@ -263,8 +279,8 @@ few_params1(Pair *pairs, int count, Function_No_Params_Type *no_params_type){
 }
 
 static void
-type_coverage_eval_tests(void){
-  
+type_coverage_eval_tests(void)
+{
   Basics basics = {-1, 1, -2, 2, -4, 4, -8, 8, 1.5f, 1.50000000000001};
   Basics_Stdint basics_stdint = {-1, 1, -2, 2, -4, 4, -8, 8, 1.5f, 1.50000000000001};
   
@@ -379,8 +395,46 @@ type_coverage_eval_tests(void){
   stks *stks_first = &stks_test[0];
   stks *stks_ptr = stks_first + 8;
   
+  TypeWithMemberFunction twmf = {0};
+  twmf.SetInfo(123, 456, "foobar");
+  
   TestFunction *function = mule_get_module_function("dll_type_eval_tests");
   function();
+  
+  int abc = 0;
+  for(int i = 0; i < 1000; i += 1)
+  {
+    if(i == 500)
+    {
+      abc+= 1;
+    }
+    int a = i + abc;
+    int b = a*5;
+  }
+  
+  char *names[] =
+  {
+    "samwise gamgee", "mithrandir", "grima wormtongue", "theodred", "theoden", "eomer", "eowyn",
+    "arwen", "sauron", "baggins", "proudfoot", "hardbottle", "bag end", "hobbiton",
+    "bree", "imladris", "isengard", "moria", "mount doom", "helm's deep", "bracegirdle",
+    "buckleberry ferry", "amun sul", "frodo", "bilbo", "buckland", "fangorn", "elrond",
+    "numenor", "treebeard", "shadowfax", "brego", "erod", "azufel", "dunedain",
+    "saruman", "aragorn", "gandalf", "meriadoc brandybuck", "peregrine took", "faramir", "boromir",
+    "ecthelion", "denethor", "mithrandil", "isildur", "haldir", "elessar", "elendil",
+    "dead marsh", "rohan", "gondor", "anarion", "earendil", "cirith ungol", "minas morghul",
+    "minas tirith", "barad-dur", "rivendell", "pellenor", "ithilien", "anduril", "narsil",
+    "edoras", "mordor", "osgiliath",
+  };
+  
+  for(int i = 0; i < sizeof(names)/sizeof(names[0]); i += 1)
+  {
+    OutputDebugStringA(names[i]);
+    OutputDebugStringA("\n");
+  }
+  
+  const int32_t x1 = 3;
+  const int32_t y1 = -10;
+  const int32_t z1 = x1 + y1;
   
   int x = (int)(Anonymous_D);
 }
@@ -1558,6 +1612,16 @@ mule_bswap_u32(unsigned int x)
 static void
 fancy_viz_eval_tests(void)
 {
+  //- rjf: windows -> GetLastError
+#if _WIN32
+  DWORD error_code = 0;
+  SetLastError(1234);
+  error_code = GetLastError();
+  SetLastError(4567);
+  error_code = GetLastError();
+  (void)error_code;
+#endif
+  
   //- rjf: colors
   float example_color_4f32[4] = {1.00f, 0.85f, 0.25f, 1.00f};
   unsigned int example_color_u32 = 0xff6f30ff;
@@ -1828,7 +1892,7 @@ fancy_viz_eval_tests(void)
     136, 137, 138, 138, 139, 136, 140, 141, 142, 142, 143, 140, 144, 145, 146, 146, 147, 144, 148, 149, 150, 150, 151, 148,
     152, 153, 154, 154, 155, 152, 156, 157, 158, 158, 159, 156, 160, 161, 162, 162, 163, 160, 164, 165, 166, 166, 167, 164,
   };
-  raddbg_pin(index_data, "geo: { count:(sizeof index_data / 4), vertices_base:(vertex_data), vertices_size:(sizeof vertex_data) }");
+  raddbg_pin(index_data, "geo3d: { count:(sizeof index_data/4), vtx:(vertex_data), vtx_size:(sizeof vertex_data) }");
   int x3 = 0;
 }
 

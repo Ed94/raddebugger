@@ -130,9 +130,7 @@ path_normalized_list_from_string(Arena *arena, String8 path_string, PathStyle *s
   // prepend current path to convert relative -> absolute
   PathStyle path_style_full = path_style;
   if (path.node_count != 0 && path_style == PathStyle_Relative){
-    String8List current_path_strs = {0};
-    os_string_list_from_system_path(arena, OS_SystemPath_Current, &current_path_strs);
-    String8 current_path_string = str8_list_first(&current_path_strs);
+    String8 current_path_string = os_get_current_path(arena);
     
     PathStyle current_path_style = path_style_from_str8(current_path_string);
     Assert(current_path_style != PathStyle_Relative);
@@ -165,3 +163,16 @@ path_normalized_from_string(Arena *arena, String8 path_string){
   return(result);
 }
 
+internal B32
+path_match_normalized(String8 left, String8 right)
+{
+  B32 result = 0;
+  {
+    Temp scratch = scratch_begin(0, 0);
+    String8 left_normalized = path_normalized_from_string(scratch.arena, left);
+    String8 right_normalized = path_normalized_from_string(scratch.arena, right);
+    result = str8_match(left_normalized, right_normalized, StringMatchFlag_CaseInsensitive);
+    scratch_end(scratch);
+  }
+  return result;
+}

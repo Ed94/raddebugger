@@ -67,13 +67,13 @@ txt_extension_from_lang_kind(TXT_LangKind kind)
 }
 
 internal TXT_LangKind
-txt_lang_kind_from_architecture(Architecture arch)
+txt_lang_kind_from_arch(Arch arch)
 {
   TXT_LangKind kind = TXT_LangKind_Null;
   switch(arch)
   {
     default:{}break;
-    case Architecture_x64:{kind = TXT_LangKind_DisasmX64Intel;}break;
+    case Arch_x64:{kind = TXT_LangKind_DisasmX64Intel;}break;
   }
   return kind;
 }
@@ -160,7 +160,9 @@ txt_token_array_from_list(Arena *arena, TXT_TokenList *list)
 internal TXT_TokenArray
 txt_token_array_from_string__c_cpp(Arena *arena, U64 *bytes_processed_counter, String8 string)
 {
+  ProfBeginFunction();
   Temp scratch = scratch_begin(&arena, 1);
+  U64 chunk_size = Clamp(8, string.size/8, 4096);
   
   //- rjf: generate token list
   TXT_TokenChunkList tokens = {0};
@@ -234,7 +236,7 @@ txt_token_array_from_string__c_cpp(Arena *arena, U64 *bytes_processed_counter, S
         else
         {
           TXT_Token token = {TXT_TokenKind_Error, r1u64(idx, idx+1)};
-          txt_token_chunk_list_push(scratch.arena, &tokens, 4096, &token);
+          txt_token_chunk_list_push(scratch.arena, &tokens, chunk_size, &token);
         }
       }
       
@@ -420,7 +422,7 @@ txt_token_array_from_string__c_cpp(Arena *arena, U64 *bytes_processed_counter, S
               break;
             }
           }
-          txt_token_chunk_list_push(scratch.arena, &tokens, 4096, &token);
+          txt_token_chunk_list_push(scratch.arena, &tokens, chunk_size, &token);
         }
         
         // rjf: split symbols by maximum-munch-rule
@@ -455,14 +457,14 @@ txt_token_array_from_string__c_cpp(Arena *arena, U64 *bytes_processed_counter, S
             B32 found = 0;
             for(U64 idx = 0; idx < ArrayCount(c_cpp_multichar_symbol_strings); idx += 1)
             {
-              if(str8_match(str8_substr(string, r1u64(off, off+c_cpp_multichar_symbol_strings[idx].size)),
+              if(str8_match(str8_substr(token_string, r1u64(off, off+c_cpp_multichar_symbol_strings[idx].size)),
                             c_cpp_multichar_symbol_strings[idx],
                             0))
               {
                 found = 1;
                 next_off = off + c_cpp_multichar_symbol_strings[idx].size;
                 TXT_Token token = {TXT_TokenKind_Symbol, r1u64(active_token_start_idx+off, active_token_start_idx+next_off)};
-                txt_token_chunk_list_push(scratch.arena, &tokens, 4096, &token);
+                txt_token_chunk_list_push(scratch.arena, &tokens, chunk_size, &token);
                 break;
               }
             }
@@ -470,7 +472,7 @@ txt_token_array_from_string__c_cpp(Arena *arena, U64 *bytes_processed_counter, S
             {
               next_off = off+1;
               TXT_Token token = {TXT_TokenKind_Symbol, r1u64(active_token_start_idx+off, active_token_start_idx+next_off)};
-              txt_token_chunk_list_push(scratch.arena, &tokens, 4096, &token);
+              txt_token_chunk_list_push(scratch.arena, &tokens, chunk_size, &token);
             }
           }
         }
@@ -478,7 +480,7 @@ txt_token_array_from_string__c_cpp(Arena *arena, U64 *bytes_processed_counter, S
         // rjf: all other tokens
         else
         {
-          txt_token_chunk_list_push(scratch.arena, &tokens, 4096, &token);
+          txt_token_chunk_list_push(scratch.arena, &tokens, chunk_size, &token);
         }
         
         // rjf: increment by ender padding
@@ -497,6 +499,7 @@ txt_token_array_from_string__c_cpp(Arena *arena, U64 *bytes_processed_counter, S
   //- rjf: token list -> token array
   TXT_TokenArray result = txt_token_array_from_chunk_list(arena, &tokens);
   scratch_end(scratch);
+  ProfEnd();
   return result;
 }
 
@@ -741,7 +744,7 @@ txt_token_array_from_string__odin(Arena *arena, U64 *bytes_processed_counter, St
             B32 found = 0;
             for(U64 idx = 0; idx < ArrayCount(odin_multichar_symbol_strings); idx += 1)
             {
-              if(str8_match(str8_substr(string, r1u64(off, off+odin_multichar_symbol_strings[idx].size)),
+              if(str8_match(str8_substr(token_string, r1u64(off, off+odin_multichar_symbol_strings[idx].size)),
                             odin_multichar_symbol_strings[idx],
                             0))
               {
@@ -1026,7 +1029,7 @@ txt_token_array_from_string__jai(Arena *arena, U64 *bytes_processed_counter, Str
             B32 found = 0;
             for(U64 idx = 0; idx < ArrayCount(jai_multichar_symbol_strings); idx += 1)
             {
-              if(str8_match(str8_substr(string, r1u64(off, off+jai_multichar_symbol_strings[idx].size)),
+              if(str8_match(str8_substr(token_string, r1u64(off, off+jai_multichar_symbol_strings[idx].size)),
                             jai_multichar_symbol_strings[idx],
                             0))
               {
@@ -1317,7 +1320,7 @@ txt_token_array_from_string__zig(Arena *arena, U64 *bytes_processed_counter, Str
             B32 found = 0;
             for(U64 idx = 0; idx < ArrayCount(zig_multichar_symbol_strings); idx += 1)
             {
-              if(str8_match(str8_substr(string, r1u64(off, off+zig_multichar_symbol_strings[idx].size)),
+              if(str8_match(str8_substr(token_string, r1u64(off, off+zig_multichar_symbol_strings[idx].size)),
                             zig_multichar_symbol_strings[idx],
                             0))
               {
@@ -1377,6 +1380,7 @@ txt_token_array_from_string__disasm_x64_intel(Arena *arena, U64 *bytes_processed
     B32 string_is_char = 0;
     S32 brace_nest = 0;
     S32 paren_nest = 0;
+    S32 string_tick_nest = 0;
     for(U64 advance = 0; off <= string.size; off += advance)
     {
       U8 byte      = (off+0 < string.size) ? string.str[off+0] : 0;
@@ -1424,6 +1428,13 @@ txt_token_array_from_string__disasm_x64_intel(Arena *arena, U64 *bytes_processed
             active_token_kind = TXT_TokenKind_String;
             advance = 1;
             string_is_char = 0;
+          }
+          else if(byte == '`')
+          {
+            active_token_start_off = off;
+            active_token_kind = TXT_TokenKind_String;
+            advance = 1;
+            string_tick_nest += 1;
           }
           else if(('0' <= byte && byte <= '9') || (byte == '.' && '0' <= next_byte && next_byte <= '9'))
           {
@@ -1479,11 +1490,20 @@ txt_token_array_from_string__disasm_x64_intel(Arena *arena, U64 *bytes_processed
         }break;
         case TXT_TokenKind_String:
         {
-          U8 ender_byte = string_is_char ? '\'' : '"';
+          U8 ender_byte = (string_tick_nest > 0 ? '\'' :
+                           string_is_char ? '\''
+                           : '"');
           if(!escaped && byte == ender_byte)
           {
-            ender_found = 1;
-            advance = 1;
+            if(string_tick_nest > 0)
+            {
+              string_tick_nest -= 1;
+            }
+            if(string_tick_nest == 0)
+            {
+              ender_found = 1;
+              advance = 1;
+            }
           }
           else if(escaped)
           {
@@ -1494,6 +1514,10 @@ txt_token_array_from_string__disasm_x64_intel(Arena *arena, U64 *bytes_processed
           {
             escaped = 1;
             advance = 1;
+          }
+          else if(string_tick_nest > 0 && byte == '`')
+          {
+            string_tick_nest += 1;
           }
           else
           {
@@ -1574,7 +1598,7 @@ txt_init(void)
   txt_shared->arena = arena;
   txt_shared->slots_count = 1024;
   txt_shared->slots = push_array(arena, TXT_Slot, txt_shared->slots_count);
-  txt_shared->stripes_count = Min(txt_shared->slots_count, os_logical_core_count());
+  txt_shared->stripes_count = Min(txt_shared->slots_count, os_get_system_info()->logical_processor_count);
   txt_shared->stripes = push_array(arena, TXT_Stripe, txt_shared->stripes_count);
   txt_shared->stripes_free_nodes = push_array(arena, TXT_Node *, txt_shared->stripes_count);
   for(U64 idx = 0; idx < txt_shared->stripes_count; idx += 1)
@@ -1587,13 +1611,7 @@ txt_init(void)
   txt_shared->u2p_ring_base = push_array_no_zero(arena, U8, txt_shared->u2p_ring_size);
   txt_shared->u2p_ring_cv = os_condition_variable_alloc();
   txt_shared->u2p_ring_mutex = os_mutex_alloc();
-  txt_shared->parse_thread_count = Clamp(1, os_logical_core_count()-1, 4);
-  txt_shared->parse_threads = push_array(arena, OS_Handle, txt_shared->parse_thread_count);
-  for(U64 idx = 0; idx < txt_shared->parse_thread_count; idx += 1)
-  {
-    txt_shared->parse_threads[idx] = os_launch_thread(txt_parse_thread__entry_point, (void *)idx, 0);
-  }
-  txt_shared->evictor_thread = os_launch_thread(txt_evictor_thread__entry_point, 0, 0);
+  txt_shared->evictor_thread = os_thread_launch(txt_evictor_thread__entry_point, 0, 0);
 }
 
 ////////////////////////////////
@@ -1608,21 +1626,6 @@ txt_tctx_ensure_inited(void)
     txt_tctx = push_array(arena, TXT_TCTX, 1);
     txt_tctx->arena = arena;
   }
-}
-
-////////////////////////////////
-//~ rjf: User Clock
-
-internal void
-txt_user_clock_tick(void)
-{
-  ins_atomic_u64_inc_eval(&txt_shared->user_clock_idx);
-}
-
-internal U64
-txt_user_clock_idx(void)
-{
-  return ins_atomic_u64_eval(&txt_shared->user_clock_idx);
 }
 
 ////////////////////////////////
@@ -1678,7 +1681,7 @@ txt_scope_touch_node__stripe_r_guarded(TXT_Scope *scope, TXT_Node *node)
   TXT_Touch *touch = txt_tctx->free_touch;
   ins_atomic_u64_inc_eval(&node->scope_ref_count);
   ins_atomic_u64_eval_assign(&node->last_time_touched_us, os_now_microseconds());
-  ins_atomic_u64_eval_assign(&node->last_user_clock_idx_touched, txt_user_clock_idx());
+  ins_atomic_u64_eval_assign(&node->last_user_clock_idx_touched, update_tick_idx());
   if(touch != 0)
   {
     SLLStackPop(txt_tctx->free_touch);
@@ -1758,6 +1761,7 @@ txt_text_info_from_hash_lang(TXT_Scope *scope, U128 hash, TXT_LangKind lang)
     if(node_is_new)
     {
       txt_u2p_enqueue_req(hash, lang, max_U64);
+      async_push_work(txt_parse_work);
     }
   }
   return info;
@@ -1767,7 +1771,7 @@ internal TXT_TextInfo
 txt_text_info_from_key_lang(TXT_Scope *scope, U128 key, TXT_LangKind lang, U128 *hash_out)
 {
   TXT_TextInfo result = {0};
-  for(U64 rewind_idx = 0; rewind_idx < 2; rewind_idx += 1)
+  for(U64 rewind_idx = 0; rewind_idx < HS_KEY_HASH_HISTORY_COUNT; rewind_idx += 1)
   {
     U128 hash = hs_hash_from_key(key, rewind_idx);
     result = txt_text_info_from_hash_lang(scope, hash, lang);
@@ -1873,7 +1877,6 @@ txt_expr_off_range_from_line_off_range_string_tokens(U64 off, Rng1U64 line_range
           }break;
           case TXT_TokenKind_Identifier:
           case TXT_TokenKind_Keyword:
-          case TXT_TokenKind_String:
           case TXT_TokenKind_Meta:
           {
             token_ender = 1;
@@ -2128,202 +2131,202 @@ txt_u2p_dequeue_req(U128 *hash_out, TXT_LangKind *lang_out)
   os_condition_variable_broadcast(txt_shared->u2p_ring_cv);
 }
 
-internal void
-txt_parse_thread__entry_point(void *p)
+ASYNC_WORK_DEF(txt_parse_work)
 {
-  for(;;)
+  ProfBeginFunction();
+  
+  //- rjf: get next key
+  U128 hash = {0};
+  TXT_LangKind lang = TXT_LangKind_Null;
+  txt_u2p_dequeue_req(&hash, &lang);
+  HS_Scope *scope = hs_scope_open();
+  
+  //- rjf: unpack hash
+  U64 slot_idx = hash.u64[1]%txt_shared->slots_count;
+  U64 stripe_idx = slot_idx%txt_shared->stripes_count;
+  TXT_Slot *slot = &txt_shared->slots[slot_idx];
+  TXT_Stripe *stripe = &txt_shared->stripes[stripe_idx];
+  
+  //- rjf: take task
+  B32 got_task = 0;
+  OS_MutexScopeR(stripe->rw_mutex)
   {
-    //- rjf: get next key
-    U128 hash = {0};
-    TXT_LangKind lang = TXT_LangKind_Null;
-    txt_u2p_dequeue_req(&hash, &lang);
-    HS_Scope *scope = hs_scope_open();
+    for(TXT_Node *n = slot->first; n != 0; n = n->next)
+    {
+      if(u128_match(n->hash, hash) && n->lang == lang)
+      {
+        got_task = !ins_atomic_u32_eval_cond_assign(&n->is_working, 1, 0);
+        break;
+      }
+    }
+  }
+  
+  //- rjf: hash -> data
+  String8 data = {0};
+  if(got_task)
+  {
+    data = hs_data_from_hash(scope, hash);
+  }
+  
+  //- rjf: data -> text info
+  Arena *info_arena = 0;
+  TXT_TextInfo info = {0};
+  if(got_task && !u128_match(hash, u128_zero()))
+  {
+    info_arena = arena_alloc();
     
-    //- rjf: unpack hash
-    U64 slot_idx = hash.u64[1]%txt_shared->slots_count;
-    U64 stripe_idx = slot_idx%txt_shared->stripes_count;
-    TXT_Slot *slot = &txt_shared->slots[slot_idx];
-    TXT_Stripe *stripe = &txt_shared->stripes[stripe_idx];
-    
-    //- rjf: take task
-    B32 got_task = 0;
+    //- rjf: grab pointers to working counters
+    U64 *bytes_processed_ptr = 0;
+    U64 *bytes_to_process_ptr = 0;
     OS_MutexScopeR(stripe->rw_mutex)
     {
       for(TXT_Node *n = slot->first; n != 0; n = n->next)
       {
         if(u128_match(n->hash, hash) && n->lang == lang)
         {
-          got_task = !ins_atomic_u32_eval_cond_assign(&n->is_working, 1, 0);
-          break;
+          bytes_processed_ptr = &n->info.bytes_processed;
+          bytes_to_process_ptr = &n->info.bytes_to_process;
         }
       }
     }
     
-    //- rjf: hash -> data
-    String8 data = {0};
-    if(got_task)
+    //- rjf: set # of bytes to process
+    if(bytes_to_process_ptr)
     {
-      data = hs_data_from_hash(scope, hash);
+      //                                               (line ending calc)     (line counting)    (line measuring)   (lexing)
+      ins_atomic_u64_eval_assign(bytes_to_process_ptr, Min(data.size, 1024) + data.size        + data.size        + data.size*(lang != TXT_LangKind_Null));
     }
     
-    //- rjf: data -> text info
-    Arena *info_arena = 0;
-    TXT_TextInfo info = {0};
-    if(got_task && data.size != 0)
+    //- rjf: detect line end kind
+    TXT_LineEndKind line_end_kind = TXT_LineEndKind_Null;
     {
-      info_arena = arena_alloc();
-      
-      //- rjf: grab pointers to working counters
-      U64 *bytes_processed_ptr = 0;
-      U64 *bytes_to_process_ptr = 0;
-      OS_MutexScopeR(stripe->rw_mutex)
+      U64 lf_count = 0;
+      U64 cr_count = 0;
+      for(U64 idx = 0; idx < data.size && idx < 1024; idx += 1)
       {
-        for(TXT_Node *n = slot->first; n != 0; n = n->next)
+        if(data.str[idx] == '\r')
         {
-          if(u128_match(n->hash, hash) && n->lang == lang)
-          {
-            bytes_processed_ptr = &n->info.bytes_processed;
-            bytes_to_process_ptr = &n->info.bytes_to_process;
-          }
+          cr_count += 1;
+        }
+        if(data.str[idx] == '\n')
+        {
+          lf_count += 1;
         }
       }
-      
-      //- rjf: set # of bytes to process
-      if(bytes_to_process_ptr)
+      if(cr_count >= lf_count/2 && lf_count >= 1)
       {
-        //                                               (line ending calc)     (line counting)    (line measuring)   (lexing)
-        ins_atomic_u64_eval_assign(bytes_to_process_ptr, Min(data.size, 1024) + data.size        + data.size        + data.size*(lang != TXT_LangKind_Null));
+        line_end_kind = TXT_LineEndKind_CRLF;
       }
-      
-      //- rjf: detect line end kind
-      TXT_LineEndKind line_end_kind = TXT_LineEndKind_Null;
+      else if(lf_count >= 1)
       {
-        U64 lf_count = 0;
-        U64 cr_count = 0;
-        for(U64 idx = 0; idx < data.size && idx < 1024; idx += 1)
-        {
-          if(data.str[idx] == '\r')
-          {
-            cr_count += 1;
-          }
-          if(data.str[idx] == '\n')
-          {
-            lf_count += 1;
-          }
-        }
-        if(cr_count >= lf_count/2 && lf_count >= 1)
-        {
-          line_end_kind = TXT_LineEndKind_CRLF;
-        }
-        else if(lf_count >= 1)
-        {
-          line_end_kind = TXT_LineEndKind_LF;
-        }
-        info.line_end_kind = line_end_kind;
+        line_end_kind = TXT_LineEndKind_LF;
       }
-      
-      //- rjf: bump progress
-      if(bytes_processed_ptr)
-      {
-        ins_atomic_u64_eval_assign(bytes_processed_ptr, Min(data.size, 1024));
-      }
-      
-      //- rjf: count # of lines
-      U64 line_count = 1;
-      U64 byte_process_start_idx = 0;
-      for(U64 idx = 0; idx < data.size; idx += 1)
-      {
-        if(data.str[idx] == '\n' || data.str[idx] == '\r')
-        {
-          line_count += 1;
-          if(data.str[idx] == '\r')
-          {
-            idx += 1;
-          }
-        }
-        if(idx && idx%1000 == 0)
-        {
-          ins_atomic_u64_add_eval(bytes_processed_ptr, 1000);
-        }
-      }
-      
-      //- rjf: bump progress
-      if(bytes_processed_ptr)
-      {
-        ins_atomic_u64_eval_assign(bytes_processed_ptr, Min(data.size, 1024) + data.size);
-      }
-      
-      //- rjf: allocate & store line ranges
-      info.lines_count = line_count;
-      info.lines_ranges = push_array_no_zero(info_arena, Rng1U64, info.lines_count);
-      U64 line_idx = 0;
-      U64 line_start_idx = 0;
-      for(U64 idx = 0; idx <= data.size; idx += 1)
-      {
-        if(idx == data.size || data.str[idx] == '\n' || data.str[idx] == '\r')
-        {
-          Rng1U64 line_range = r1u64(line_start_idx, idx);
-          U64 line_size = dim_1u64(line_range);
-          info.lines_ranges[line_idx] = line_range;
-          info.lines_max_size = Max(info.lines_max_size, line_size);
-          line_idx += 1;
-          line_start_idx = idx+1;
-          if(idx < data.size && data.str[idx] == '\r')
-          {
-            line_start_idx += 1;
-            idx += 1;
-          }
-        }
-        if(idx && idx%1000 == 0)
-        {
-          ins_atomic_u64_add_eval(bytes_processed_ptr, 1000);
-        }
-      }
-      
-      //- rjf: bump progress
-      if(bytes_processed_ptr)
-      {
-        ins_atomic_u64_eval_assign(bytes_processed_ptr, Min(data.size, 1024) + data.size + data.size);
-      }
-      
-      //- rjf: lang -> lex function
-      TXT_LangLexFunctionType *lex_function = txt_lex_function_from_lang_kind(lang);
-      
-      //- rjf: lex function * data -> tokens
-      TXT_TokenArray tokens = {0};
-      if(lex_function != 0)
-      {
-        tokens = lex_function(info_arena, bytes_processed_ptr, data);
-      }
-      info.tokens = tokens;
-      
-      //- rjf: bump progress
-      if(bytes_processed_ptr)
-      {
-        ins_atomic_u64_eval_assign(bytes_processed_ptr, Min(data.size, 1024) + data.size + data.size + data.size*(lex_function != 0));
-      }
+      info.line_end_kind = line_end_kind;
     }
     
-    //- rjf: commit results to cache
-    if(got_task) OS_MutexScopeW(stripe->rw_mutex)
+    //- rjf: bump progress
+    if(bytes_processed_ptr)
     {
-      for(TXT_Node *n = slot->first; n != 0; n = n->next)
+      ins_atomic_u64_eval_assign(bytes_processed_ptr, Min(data.size, 1024));
+    }
+    
+    //- rjf: count # of lines
+    U64 line_count = 1;
+    U64 byte_process_start_idx = 0;
+    for(U64 idx = 0; idx < data.size; idx += 1)
+    {
+      if(data.str[idx] == '\n' || data.str[idx] == '\r')
       {
-        if(u128_match(n->hash, hash) && n->lang == lang)
+        line_count += 1;
+        if(data.str[idx] == '\r')
         {
-          n->arena = info_arena;
-          info.bytes_processed = n->info.bytes_processed;
-          info.bytes_to_process = n->info.bytes_to_process;
-          MemoryCopyStruct(&n->info, &info);
-          ins_atomic_u32_eval_assign(&n->is_working, 0);
-          ins_atomic_u64_inc_eval(&n->load_count);
-          break;
+          idx += 1;
         }
+      }
+      if(idx && idx%1000 == 0)
+      {
+        ins_atomic_u64_add_eval(bytes_processed_ptr, 1000);
       }
     }
     
-    hs_scope_close(scope);
+    //- rjf: bump progress
+    if(bytes_processed_ptr)
+    {
+      ins_atomic_u64_eval_assign(bytes_processed_ptr, Min(data.size, 1024) + data.size);
+    }
+    
+    //- rjf: allocate & store line ranges
+    info.lines_count = line_count;
+    info.lines_ranges = push_array_no_zero(info_arena, Rng1U64, info.lines_count);
+    U64 line_idx = 0;
+    U64 line_start_idx = 0;
+    for(U64 idx = 0; idx <= data.size; idx += 1)
+    {
+      if(idx == data.size || data.str[idx] == '\n' || data.str[idx] == '\r')
+      {
+        Rng1U64 line_range = r1u64(line_start_idx, idx);
+        U64 line_size = dim_1u64(line_range);
+        info.lines_ranges[line_idx] = line_range;
+        info.lines_max_size = Max(info.lines_max_size, line_size);
+        line_idx += 1;
+        line_start_idx = idx+1;
+        if(idx < data.size && data.str[idx] == '\r')
+        {
+          line_start_idx += 1;
+          idx += 1;
+        }
+      }
+      if(idx && idx%1000 == 0)
+      {
+        ins_atomic_u64_add_eval(bytes_processed_ptr, 1000);
+      }
+    }
+    
+    //- rjf: bump progress
+    if(bytes_processed_ptr)
+    {
+      ins_atomic_u64_eval_assign(bytes_processed_ptr, Min(data.size, 1024) + data.size + data.size);
+    }
+    
+    //- rjf: lang -> lex function
+    TXT_LangLexFunctionType *lex_function = txt_lex_function_from_lang_kind(lang);
+    
+    //- rjf: lex function * data -> tokens
+    TXT_TokenArray tokens = {0};
+    if(lex_function != 0)
+    {
+      tokens = lex_function(info_arena, bytes_processed_ptr, data);
+    }
+    info.tokens = tokens;
+    
+    //- rjf: bump progress
+    if(bytes_processed_ptr)
+    {
+      ins_atomic_u64_eval_assign(bytes_processed_ptr, Min(data.size, 1024) + data.size + data.size + data.size*(lex_function != 0));
+    }
   }
+  
+  //- rjf: commit results to cache
+  if(got_task) OS_MutexScopeW(stripe->rw_mutex)
+  {
+    for(TXT_Node *n = slot->first; n != 0; n = n->next)
+    {
+      if(u128_match(n->hash, hash) && n->lang == lang)
+      {
+        n->arena = info_arena;
+        info.bytes_processed = n->info.bytes_processed;
+        info.bytes_to_process = n->info.bytes_to_process;
+        MemoryCopyStruct(&n->info, &info);
+        ins_atomic_u32_eval_assign(&n->is_working, 0);
+        ins_atomic_u64_inc_eval(&n->load_count);
+        break;
+      }
+    }
+  }
+  
+  hs_scope_close(scope);
+  ProfEnd();
+  return 0;
 }
 
 ////////////////////////////////
@@ -2332,10 +2335,11 @@ txt_parse_thread__entry_point(void *p)
 internal void
 txt_evictor_thread__entry_point(void *p)
 {
+  ThreadNameF("[txt] evictor thread");
   for(;;)
   {
     U64 check_time_us = os_now_microseconds();
-    U64 check_time_user_clocks = txt_user_clock_idx();
+    U64 check_time_user_clocks = update_tick_idx();
     U64 evict_threshold_us = 10*1000000;
     U64 evict_threshold_user_clocks = 10;
     for(U64 slot_idx = 0; slot_idx < txt_shared->slots_count; slot_idx += 1)

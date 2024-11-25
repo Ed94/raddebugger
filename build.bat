@@ -1,14 +1,14 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 cd /D "%~dp0"
 
 :: --- Usage Notes (2024/1/10) ------------------------------------------------
 ::
-:: This is a central build script for the RAD Debugger project. It takes a list
-:: of simple alphanumeric-only arguments which control (a) what is built, (b)
-:: which compiler & linker are used, and (c) extra high-level build options. By
-:: default, if no options are passed, then the main "raddbg" graphical debugger
-:: is built.
+:: This is a central build script for the RAD Debugger project, for use in
+:: Windows development environments. It takes a list of simple alphanumeric-
+:: only arguments which control (a) what is built, (b) which compiler & linker
+:: are used, and (c) extra high-level build options. By default, if no options
+:: are passed, then the main "raddbg" graphical debugger is built.
 ::
 :: Below is a non-exhaustive list of possible ways to use the script:
 :: `build raddbg`
@@ -43,18 +43,29 @@ if "%asan%"=="1"      set auto_compile_flags=%auto_compile_flags% -fsanitize=add
 
 :: --- Compile/Link Line Definitions ------------------------------------------
 set cl_common=     /I..\src\ /I..\local\ /nologo /FC /Z7
-set clang_common=  -I..\src\ -I..\local\ -gcodeview -fdiagnostics-absolute-paths -Wall -Wno-unknown-warning-option -Wno-missing-braces -Wno-unused-function -Wno-writable-strings -Wno-unused-value -Wno-unused-variable -Wno-unused-local-typedef -Wno-deprecated-register -Wno-deprecated-declarations -Wno-unused-but-set-variable -Wno-single-bit-bitfield-constant-conversion -Wno-compare-distinct-pointer-types -Wno-initializer-overrides -Wno-incompatible-pointer-types-discards-qualifiers -Xclang -flto-visibility-public-std -D_USE_MATH_DEFINES -Dstrdup=_strdup -Dgnu_printf=printf
+set clang_common=  -I..\src\ -I..\local\ -gcodeview -fdiagnostics-absolute-paths -Wall -Wno-unknown-warning-option -Wno-missing-braces -Wno-unused-function -Wno-writable-strings -Wno-unused-value -Wno-unused-variable -Wno-unused-local-typedef -Wno-deprecated-register -Wno-deprecated-declarations -Wno-unused-but-set-variable -Wno-single-bit-bitfield-constant-conversion -Wno-compare-distinct-pointer-types -Wno-initializer-overrides -Wno-incompatible-pointer-types-discards-qualifiers -Xclang -flto-visibility-public-std -D_USE_MATH_DEFINES -Dstrdup=_strdup -Dgnu_printf=printf -ferror-limit=10000
 set cl_debug=      call cl /Od /Ob1 /DBUILD_DEBUG=1 %cl_common% %auto_compile_flags%
 set cl_release=    call cl /O2 /DBUILD_DEBUG=0 %cl_common% %auto_compile_flags%
 set clang_debug=   call clang -g -O0 -DBUILD_DEBUG=1 %clang_common% %auto_compile_flags%
 set clang_release= call clang -g -O2 -DBUILD_DEBUG=0 %clang_common% %auto_compile_flags%
-set cl_link=       /link /MANIFEST:EMBED /INCREMENTAL:NO /natvis:"%~dp0\src\natvis\base.natvis" logo.res
-set clang_link=    -fuse-ld=lld -Xlinker /MANIFEST:EMBED -Xlinker /natvis:"%~dp0\src\natvis\base.natvis" logo.res
+set cl_link=       /link /MANIFEST:EMBED /INCREMENTAL:NO /pdbaltpath:%%%%_PDB%%%%
+set clang_link=    -fuse-ld=lld -Xlinker /MANIFEST:EMBED -Xlinker /pdbaltpath:%%%%_PDB%%%%
 set cl_out=        /out:
 set clang_out=     -o
 
+:: --- NATVIS -----------------------------------------------------------------
+set natvis= /NATVIS:"%~dp0\src\natvis\base.natvis"
+if "%radlink%"=="1" set natvis= %natvis% /NATVIS:"%~dp0\src\linker\linker.natvis"
+
+if "%clang%"=="1" (
+  set result=
+  for %%n in (%natvis%) do set result= !result! -Xlinker %%n
+  set natvis= !result!
+)
+
 :: --- Per-Build Settings -----------------------------------------------------
 set link_dll=-DLL
+set link_icon=logo.res
 if "%msvc%"=="1"    set only_compile=/c
 if "%clang%"=="1"   set only_compile=-c
 if "%msvc%"=="1"    set EHsc=/EHsc
@@ -76,6 +87,9 @@ if "%clang%"=="1"     set out=%clang_out%
 if "%debug%"=="1"     set compile=%compile_debug%
 if "%release%"=="1"   set compile=%compile_release%
 
+:: --- Append NATVIS to link line ---------------------------------------------
+set compile_link= %compile_link% %natvis%
+
 :: --- Prep Directories -------------------------------------------------------
 if not exist build mkdir build
 if not exist local mkdir local
@@ -86,7 +100,8 @@ pushd build
 popd
 
 :: --- Get Current Git Commit Id ----------------------------------------------
-for /f %%i in ('call git describe --always --dirty') do set compile=%compile% -DBUILD_GIT_HASH=\"%%i\"
+for /f %%i in ('call git describe --always --dirty')   do set compile=%compile% -DBUILD_GIT_HASH=\"%%i\"
+for /f %%i in ('call git rev-parse HEAD')              do set compile=%compile% -DBUILD_GIT_HASH_FULL=\"%%i\"
 
 :: --- Build & Run Metaprogram ------------------------------------------------
 if "%no_meta%"=="1" echo [skipping metagen]
@@ -99,16 +114,18 @@ if not "%no_meta%"=="1" (
 
 :: --- Build Everything (@build_targets) --------------------------------------
 pushd build
-if "%raddbg%"=="1"                     set didbuild=1 && %compile%             ..\src\raddbg\raddbg_main.c                                                  %compile_link% %out%raddbg.exe || exit /b 1
-if "%rdi_from_pdb%"=="1"               set didbuild=1 && %compile%             ..\src\rdi_from_pdb\rdi_from_pdb_main.c                                      %compile_link% %out%rdi_from_pdb.exe || exit /b 1
-if "%rdi_from_dwarf%"=="1"             set didbuild=1 && %compile%             ..\src\rdi_from_dwarf\rdi_from_dwarf.c                                       %compile_link% %out%rdi_from_dwarf.exe || exit /b 1
-if "%rdi_dump%"=="1"                   set didbuild=1 && %compile%             ..\src\rdi_dump\rdi_dump_main.c                                              %compile_link% %out%rdi_dump.exe || exit /b 1
-if "%rdi_breakpad_from_pdb%"=="1"      set didbuild=1 && %compile%             ..\src\rdi_breakpad_from_pdb\rdi_breakpad_from_pdb_main.c                    %compile_link% %out%rdi_breakpad_from_pdb.exe || exit /b 1
-if "%ryan_scratch%"=="1"               set didbuild=1 && %compile%             ..\src\scratch\ryan_scratch.c                                                %compile_link% %out%ryan_scratch.exe || exit /b 1
-if "%cpp_tests%"=="1"                  set didbuild=1 && %compile%             ..\src\scratch\i_hate_c_plus_plus.cpp                                        %compile_link% %out%cpp_tests.exe || exit /b 1
-if "%look_at_raddbg%"=="1"             set didbuild=1 && %compile%             ..\src\scratch\look_at_raddbg.c                                              %compile_link% %out%look_at_raddbg.exe || exit /b 1
+if "%raddbg%"=="1"                     set didbuild=1 && %compile% ..\src\raddbg\raddbg_main.c                               %compile_link% %link_icon% %out%raddbg.exe || exit /b 1
+if "%radlink%"=="1"                    set didbuild=1 && %compile%  ..\src\linker\lnk.c                                      %compile_link% %out%radlink.exe || exit /b 1
+if "%rdi_from_pdb%"=="1"               set didbuild=1 && %compile% ..\src\rdi_from_pdb\rdi_from_pdb_main.c                   %compile_link% %out%rdi_from_pdb.exe || exit /b 1
+if "%rdi_from_dwarf%"=="1"             set didbuild=1 && %compile% ..\src\rdi_from_dwarf\rdi_from_dwarf.c                    %compile_link% %out%rdi_from_dwarf.exe || exit /b 1
+if "%rdi_dump%"=="1"                   set didbuild=1 && %compile% ..\src\rdi_dump\rdi_dump_main.c                           %compile_link% %out%rdi_dump.exe || exit /b 1
+if "%rdi_breakpad_from_pdb%"=="1"      set didbuild=1 && %compile% ..\src\rdi_breakpad_from_pdb\rdi_breakpad_from_pdb_main.c %compile_link% %out%rdi_breakpad_from_pdb.exe || exit /b 1
+if "%tester%"=="1"                     set didbuild=1 && %compile% ..\src\tester\tester_main.c                               %compile_link% %out%tester.exe || exit /b 1
+if "%ryan_scratch%"=="1"               set didbuild=1 && %compile% ..\src\scratch\ryan_scratch.c                             %compile_link% %out%ryan_scratch.exe || exit /b 1
+if "%textperf%"=="1"                   set didbuild=1 && %compile% ..\src\scratch\textperf.c                                 %compile_link% %out%textperf.exe || exit /b 1
+if "%parse_inline_sites%"=="1"         set didbuild=1 && %compile% ..\src\scratch\parse_inline_sites.c                       %compile_link% %out%parse_inline_sites.exe || exit /b 1
 if "%mule_main%"=="1"                  set didbuild=1 && del vc*.pdb mule*.pdb && %compile_release% %only_compile% ..\src\mule\mule_inline.cpp && %compile_release% %only_compile% ..\src\mule\mule_o2.cpp && %compile_debug% %EHsc% ..\src\mule\mule_main.cpp ..\src\mule\mule_c.c mule_inline.obj mule_o2.obj %compile_link% %no_aslr% %out%mule_main.exe || exit /b 1
-if "%mule_module%"=="1"                set didbuild=1 && %compile%             ..\src\mule\mule_module.cpp                                                  %compile_link% %link_dll% %out%mule_module.dll || exit /b 1
+if "%mule_module%"=="1"                set didbuild=1 && %compile% ..\src\mule\mule_module.cpp                               %compile_link% %link_dll% %out%mule_module.dll || exit /b 1
 if "%mule_hotload%"=="1"               set didbuild=1 && %compile% ..\src\mule\mule_hotload_main.c %compile_link% %out%mule_hotload.exe & %compile% ..\src\mule\mule_hotload_module_main.c %compile_link% %link_dll% %out%mule_hotload_module.dll || exit /b 1
 if "%mule_peb_trample%"=="1" (
   set didbuild=1
@@ -119,16 +136,6 @@ if "%mule_peb_trample%"=="1" (
   move mule_peb_trample_new.exe mule_peb_trample.exe
 )
 popd
-
-:: --- Unset ------------------------------------------------------------------
-for %%a in (%*) do set "%%a=0"
-set raddbg=
-set compile=
-set compile_link=
-set out=
-set msvc=
-set debug=
-set release=
 
 :: --- Warn On No Builds ------------------------------------------------------
 if "%didbuild%"=="" (

@@ -1,8 +1,8 @@
 // Copyright (c) 2024 Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
-#undef RADDBG_LAYER_COLOR
-#define RADDBG_LAYER_COLOR 0.80f, 0.60f, 0.20f
+#undef MARKUP_LAYER_COLOR
+#define MARKUP_LAYER_COLOR 0.80f, 0.60f, 0.20f
 
 ////////////////////////////////
 //~ rjf: Input Layout Element Tables
@@ -39,7 +39,7 @@ internal R_D3D11_Window *
 r_d3d11_window_from_handle(R_Handle handle)
 {
   R_D3D11_Window *window = (R_D3D11_Window *)handle.u64[0];
-  if(window->generation != handle.u64[1])
+  if(window == 0)
   {
     window = &r_d3d11_window_nil;
   }
@@ -51,7 +51,6 @@ r_d3d11_handle_from_window(R_D3D11_Window *window)
 {
   R_Handle handle = {0};
   handle.u64[0] = (U64)window;
-  handle.u64[1] = window->generation;
   return handle;
 }
 
@@ -59,7 +58,7 @@ internal R_D3D11_Tex2D *
 r_d3d11_tex2d_from_handle(R_Handle handle)
 {
   R_D3D11_Tex2D *texture = (R_D3D11_Tex2D *)handle.u64[0];
-  if(texture == 0 || texture->generation != handle.u64[1])
+  if(texture == 0)
   {
     texture = &r_d3d11_tex2d_nil;
   }
@@ -71,7 +70,6 @@ r_d3d11_handle_from_tex2d(R_D3D11_Tex2D *texture)
 {
   R_Handle handle = {0};
   handle.u64[0] = (U64)texture;
-  handle.u64[1] = texture->generation;
   return handle;
 }
 
@@ -79,7 +77,7 @@ internal R_D3D11_Buffer *
 r_d3d11_buffer_from_handle(R_Handle handle)
 {
   R_D3D11_Buffer *buffer = (R_D3D11_Buffer *)handle.u64[0];
-  if(buffer == 0 || buffer->generation != handle.u64[1])
+  if(buffer == 0)
   {
     buffer = &r_d3d11_buffer_nil;
   }
@@ -91,7 +89,6 @@ r_d3d11_handle_from_buffer(R_D3D11_Buffer *buffer)
 {
   R_Handle handle = {0};
   handle.u64[0] = (U64)buffer;
-  handle.u64[1] = buffer->generation;
   return handle;
 }
 
@@ -205,7 +202,7 @@ r_init(CmdLine *cmdln)
     char buffer[256] = {0};
     raddbg_snprintf(buffer, sizeof(buffer), "D3D11 device creation failure (%lx). The process is terminating.", error);
     os_graphical_message(1, str8_lit("Fatal Error"), str8_cstring(buffer));
-    os_exit_process(1);
+    os_abort(1);
   }
   ProfEnd();
   
@@ -514,8 +511,8 @@ r_window_equip(OS_Handle handle)
     //- rjf: map os window handle -> hwnd
     HWND hwnd = {0};
     {
-      W32_Window *w32_layer_window = w32_window_from_os_window(handle);
-      hwnd = w32_hwnd_from_window(w32_layer_window);
+      OS_W32_Window *w32_layer_window = os_w32_window_from_handle(handle);
+      hwnd = os_w32_hwnd_from_window(w32_layer_window);
     }
     
     //- rjf: create swapchain
@@ -540,7 +537,7 @@ r_window_equip(OS_Handle handle)
       char buffer[256] = {0};
       raddbg_snprintf(buffer, sizeof(buffer), "DXGI swap chain creation failure (%lx). The process is terminating.", error);
       os_graphical_message(1, str8_lit("Fatal Error"), str8_cstring(buffer));
-      os_exit_process(1);
+      os_abort(1);
     }
     
     r_d3d11_state->dxgi_factory->lpVtbl->MakeWindowAssociation(r_d3d11_state->dxgi_factory, hwnd, DXGI_MWA_NO_ALT_ENTER);
@@ -1034,7 +1031,7 @@ r_window_end_frame(OS_Handle window, R_Handle window_equip)
       char buffer[256] = {0};
       raddbg_snprintf(buffer, sizeof(buffer), "D3D11 present failure (%lx). The process is terminating.", error);
       os_graphical_message(1, str8_lit("Fatal Error"), str8_cstring(buffer));
-      os_exit_process(1);
+      os_abort(1);
     }
     d_ctx->lpVtbl->ClearState(d_ctx);
   }

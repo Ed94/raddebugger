@@ -86,6 +86,7 @@ enum
 
 typedef enum PathStyle
 {
+  PathStyle_Null,
   PathStyle_Relative,
   PathStyle_WindowsAbsolute,
   PathStyle_UnixAbsolute,
@@ -192,6 +193,8 @@ internal String8  str8_cstring(char *c);
 internal String16 str16_cstring(U16 *c);
 internal String32 str32_cstring(U32 *c);
 internal String8  str8_cstring_capped(void *cstr, void *cap);
+internal String16 str16_cstring_capped(void *cstr, void *cap);
+internal String8  str8_cstring_capped_reverse(void *raw_start, void *raw_cap);
 
 ////////////////////////////////
 //~ rjf: String Stylization
@@ -205,6 +208,7 @@ internal String8 backslashed_from_str8(Arena *arena, String8 string);
 
 internal B32 str8_match(String8 a, String8 b, StringMatchFlags flags);
 internal U64 str8_find_needle(String8 string, U64 start_pos, String8 needle, StringMatchFlags flags);
+internal U64 str8_find_needle_reverse(String8 string, U64 start_pos, String8 needle, StringMatchFlags flags);
 internal B32 str8_ends_with(String8 string, String8 end, StringMatchFlags flags);
 
 ////////////////////////////////
@@ -237,7 +241,10 @@ internal B32 try_u64_from_str8_c_rules(String8 string, U64 *x);
 internal B32 try_s64_from_str8_c_rules(String8 string, S64 *x);
 
 //- rjf: integer -> string
-internal String8 str8_from_memory_size(Arena *arena, U64 z);
+internal String8 str8_from_memory_size(Arena *arena, U64 size);
+internal String8 str8_from_count(Arena *arena, U64 count);
+internal String8 str8_from_bits_u32(Arena *arena, U32 x);
+internal String8 str8_from_bits_u64(Arena *arena, U64 x);
 internal String8 str8_from_u64(Arena *arena, U64 u64, U32 radix, U8 min_digits, U8 digit_group_separator);
 internal String8 str8_from_s64(Arena *arena, S64 s64, U32 radix, U8 min_digits, U8 digit_group_separator);
 
@@ -310,12 +317,17 @@ internal String8 str8_from_32(Arena *arena, String32 in);
 internal String32 str32_from_8(Arena *arena, String8 in);
 
 ////////////////////////////////
+//~ String -> Enum Conversions
+
+internal OperatingSystem operating_system_from_string(String8 string);
+
+////////////////////////////////
 //~ rjf: Basic Types & Space Enum -> String Conversions
 
 internal String8 string_from_dimension(Dimension dimension);
 internal String8 string_from_side(Side side);
 internal String8 string_from_operating_system(OperatingSystem os);
-internal String8 string_from_architecture(Architecture arch);
+internal String8 string_from_arch(Arch arch);
 
 ////////////////////////////////
 //~ rjf: Time Types -> String
@@ -327,9 +339,22 @@ internal String8 push_file_name_date_time_string(Arena *arena, DateTime *date_ti
 internal String8 string_from_elapsed_time(Arena *arena, DateTime dt);
 
 ////////////////////////////////
+//~ Globally Unique Ids
+
+internal String8 string_from_guid(Arena *arena, Guid guid);
+internal B32     try_guid_from_string(String8 string, Guid *guid_out);
+internal Guid    guid_from_string(String8 string);
+
+////////////////////////////////
 //~ rjf: Basic Text Indentation
 
 internal String8 indented_from_string(Arena *arena, String8 string);
+
+////////////////////////////////
+//~ rjf: Text Escaping
+
+internal String8 escaped_from_raw_str8(Arena *arena, String8 string);
+internal String8 raw_from_escaped_str8(Arena *arena, String8 string);
 
 ////////////////////////////////
 //~ rjf: Text Wrapping

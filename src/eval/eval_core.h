@@ -5,65 +5,134 @@
 #define EVAL_CORE_H
 
 ////////////////////////////////
-//~ rjf: Errors
+//~ rjf: Messages
 
-typedef enum EVAL_ErrorKind
+typedef enum E_MsgKind
 {
-  EVAL_ErrorKind_Null,
-  EVAL_ErrorKind_MalformedInput,
-  EVAL_ErrorKind_MissingInfo,
-  EVAL_ErrorKind_ResolutionFailure,
-  EVAL_ErrorKind_InterpretationError,
-  EVAL_ErrorKind_COUNT
+  E_MsgKind_Null,
+  E_MsgKind_MalformedInput,
+  E_MsgKind_MissingInfo,
+  E_MsgKind_ResolutionFailure,
+  E_MsgKind_InterpretationError,
+  E_MsgKind_COUNT
 }
-EVAL_ErrorKind;
+E_MsgKind;
 
-typedef struct EVAL_Error EVAL_Error;
-struct EVAL_Error
+typedef struct E_Msg E_Msg;
+struct E_Msg
 {
-  EVAL_Error *next;
-  EVAL_ErrorKind kind;
+  E_Msg *next;
+  E_MsgKind kind;
   void *location;
   String8 text;
 };
 
-typedef struct EVAL_ErrorList EVAL_ErrorList;
-struct EVAL_ErrorList
+typedef struct E_MsgList E_MsgList;
+struct E_MsgList
 {
-  EVAL_Error *first;
-  EVAL_Error *last;
-  EVAL_ErrorKind max_kind;
+  E_Msg *first;
+  E_Msg *last;
+  E_MsgKind max_kind;
   U64 count;
 };
 
 ////////////////////////////////
-//~ rjf: Operation Types
+//~ rjf: Register-Sized Value Type
 
-enum
+typedef union E_Value E_Value;
+union E_Value
 {
-  EVAL_IRExtKind_Bytecode = RDI_EvalOp_COUNT,
-  EVAL_IRExtKind_COUNT
+  U64 u512[8];
+  U64 u256[4];
+  U128 u128;
+  U64 u64;
+  U32 u32;
+  U16 u16;
+  S64 s64;
+  S32 s32;
+  S32 s16;
+  F64 f64;
+  F32 f32;
 };
 
-typedef struct EVAL_Op EVAL_Op;
-struct EVAL_Op
+////////////////////////////////
+//~ rjf: Operator Info
+
+typedef enum E_OpKind
 {
-  EVAL_Op *next;
-  RDI_EvalOp opcode;
+  E_OpKind_Null,
+  E_OpKind_UnaryPrefix,
+  E_OpKind_Binary,
+}
+E_OpKind;
+
+typedef struct E_OpInfo E_OpInfo;
+struct E_OpInfo
+{
+  E_OpKind kind;
+  S64 precedence;
+  String8 pre;
+  String8 sep;
+  String8 post;
+};
+
+////////////////////////////////
+//~ rjf: Evaluation Spaces
+//
+// NOTE(rjf): Evaluations occur within the context of a "space". Each "space"
+// refers to a different offset/address-space, but it's a bit looser of a
+// concept than just address space, since it can also refer to offsets into
+// a register block, and it is also used to refer to spaces of unique IDs for
+// key-value stores, e.g. for information in the debugger.
+//
+// Effectively, when considering the result of an evaluation, you use the
+// value for understanding a key *into* a space, e.g. 1+2 -> 3, in a null
+// space, or &foo, in the space of PID: 1234.
+
+typedef U64 E_SpaceKind;
+enum
+{
+  E_SpaceKind_Null,
+  E_SpaceKind_FileSystem,
+  E_SpaceKind_FirstUserDefined,
+};
+
+typedef struct E_Space E_Space;
+struct E_Space
+{
+  E_SpaceKind kind;
   union
   {
-    U64 p;
-    String8 bytecode;
+    U64 u64s[3];
+    struct
+    {
+      U64 u64_0;
+      U128 u128;
+    };
   };
 };
 
-typedef struct EVAL_OpList EVAL_OpList;
-struct EVAL_OpList
+////////////////////////////////
+//~ rjf: Evaluation Modes
+
+typedef enum E_Mode
 {
-  EVAL_Op *first_op;
-  EVAL_Op *last_op;
-  U32 op_count;
-  U32 encoded_size;
+  E_Mode_Null,
+  E_Mode_Value,
+  E_Mode_Offset,
+}
+E_Mode;
+
+////////////////////////////////
+//~ rjf: Modules
+
+typedef struct E_Module E_Module;
+struct E_Module
+{
+  RDI_Parsed *rdi;
+  Rng1U64 vaddr_range;
+  Arch arch;
+  E_Space space;
 };
 
 ////////////////////////////////
@@ -72,161 +141,21 @@ struct EVAL_OpList
 #include "eval/generated/eval.meta.h"
 
 ////////////////////////////////
-//~ rjf: Expression Tree Types
+//~ rjf: Basic Helper Functions
 
-typedef enum EVAL_EvalMode
-{
-  EVAL_EvalMode_NULL,
-  EVAL_EvalMode_Value,
-  EVAL_EvalMode_Addr,
-  EVAL_EvalMode_Reg
-}
-EVAL_EvalMode;
-
-typedef struct EVAL_Expr EVAL_Expr;
-struct EVAL_Expr
-{
-  EVAL_ExprKind kind;
-  void *location;
-  union
-  {
-    EVAL_Expr *children[3];
-    U32 u32;
-    U64 u64;
-    F32 f32;
-    F64 f64;
-    struct
-    {
-      EVAL_Expr *child;
-      U64 u64;
-    } child_and_constant;
-    String8 name;
-    struct
-    {
-      TG_Key type_key;
-      String8 bytecode;
-      EVAL_EvalMode mode;
-    };
-  };
-};
+internal U64 e_hash_from_string(U64 seed, String8 string);
+#define e_value_u64(v) (E_Value){.u64 = (v)}
 
 ////////////////////////////////
-//~ rjf: IR Tree Types
+//~ rjf: Message Functions
 
-typedef struct EVAL_IRTree EVAL_IRTree;
-struct EVAL_IRTree{
-  RDI_EvalOp op;
-  EVAL_IRTree *children[3];
-  union{
-    U64 p;
-    String8 bytecode;
-  };
-};
-
-typedef struct EVAL_IRTreeAndType EVAL_IRTreeAndType;
-struct EVAL_IRTreeAndType{
-  EVAL_IRTree *tree;
-  TG_Key type_key;
-  EVAL_EvalMode mode;
-};
+internal void e_msg(Arena *arena, E_MsgList *msgs, E_MsgKind kind, void *location, String8 text);
+internal void e_msgf(Arena *arena, E_MsgList *msgs, E_MsgKind kind, void *location, char *fmt, ...);
+internal void e_msg_list_concat_in_place(E_MsgList *dst, E_MsgList *to_push);
 
 ////////////////////////////////
-//~ rjf: Map Types
+//~ rjf: Space Functions
 
-//- rjf: string -> num
-
-typedef struct EVAL_String2NumMapNode EVAL_String2NumMapNode;
-struct EVAL_String2NumMapNode
-{
-  EVAL_String2NumMapNode *order_next;
-  EVAL_String2NumMapNode *hash_next;
-  String8 string;
-  U64 num;
-};
-
-typedef struct EVAL_String2NumMapNodeArray EVAL_String2NumMapNodeArray;
-struct EVAL_String2NumMapNodeArray
-{
-  EVAL_String2NumMapNode **v;
-  U64 count;
-};
-
-typedef struct EVAL_String2NumMapSlot EVAL_String2NumMapSlot;
-struct EVAL_String2NumMapSlot
-{
-  EVAL_String2NumMapNode *first;
-  EVAL_String2NumMapNode *last;
-};
-
-typedef struct EVAL_String2NumMap EVAL_String2NumMap;
-struct EVAL_String2NumMap
-{
-  U64 slots_count;
-  U64 node_count;
-  EVAL_String2NumMapSlot *slots;
-  EVAL_String2NumMapNode *first;
-  EVAL_String2NumMapNode *last;
-};
-
-//- rjf: string -> expr
-
-typedef struct EVAL_String2ExprMapNode EVAL_String2ExprMapNode;
-struct EVAL_String2ExprMapNode
-{
-  EVAL_String2ExprMapNode *hash_next;
-  String8 string;
-  EVAL_Expr *expr;
-  U64 poison_count;
-};
-
-typedef struct EVAL_String2ExprMapSlot EVAL_String2ExprMapSlot;
-struct EVAL_String2ExprMapSlot
-{
-  EVAL_String2ExprMapNode *first;
-  EVAL_String2ExprMapNode *last;
-};
-
-typedef struct EVAL_String2ExprMap EVAL_String2ExprMap;
-struct EVAL_String2ExprMap
-{
-  U64 slots_count;
-  EVAL_String2ExprMapSlot *slots;
-};
-
-////////////////////////////////
-//~ rjf: Globals
-
-global read_only EVAL_Expr eval_expr_nil = {0};
-global read_only EVAL_IRTree eval_irtree_nil = {0};
-
-////////////////////////////////
-//~ rjf: Basic Functions
-
-internal U64 eval_hash_from_string(String8 string);
-
-////////////////////////////////
-//~ rjf: Error List Building Functions
-
-internal void eval_error(Arena *arena, EVAL_ErrorList *list, EVAL_ErrorKind kind, void *location, String8 text);
-internal void eval_errorf(Arena *arena, EVAL_ErrorList *list, EVAL_ErrorKind kind, void *location, char *fmt, ...);
-internal void eval_error_list_concat_in_place(EVAL_ErrorList *dst, EVAL_ErrorList *to_push);
-
-////////////////////////////////
-//~ rjf: Map Functions
-
-//- rjf: string -> num
-internal EVAL_String2NumMap eval_string2num_map_make(Arena *arena, U64 slot_count);
-internal void eval_string2num_map_insert(Arena *arena, EVAL_String2NumMap *map, String8 string, U64 num);
-internal U64 eval_num_from_string(EVAL_String2NumMap *map, String8 string);
-internal EVAL_String2NumMapNodeArray eval_string2num_map_node_array_from_map(Arena *arena, EVAL_String2NumMap *map);
-internal int eval_string2num_map_node_qsort_compare__num_ascending(EVAL_String2NumMapNode **a, EVAL_String2NumMapNode **b);
-internal void eval_string2num_map_node_array_sort__in_place(EVAL_String2NumMapNodeArray *array);
-
-//- rjf: string -> expr
-internal EVAL_String2ExprMap eval_string2expr_map_make(Arena *arena, U64 slot_count);
-internal void eval_string2expr_map_insert(Arena *arena, EVAL_String2ExprMap *map, String8 string, EVAL_Expr *expr);
-internal void eval_string2expr_map_inc_poison(EVAL_String2ExprMap *map, String8 string);
-internal void eval_string2expr_map_dec_poison(EVAL_String2ExprMap *map, String8 string);
-internal EVAL_Expr *eval_expr_from_string(EVAL_String2ExprMap *map, String8 string);
+internal E_Space e_space_make(E_SpaceKind kind);
 
 #endif // EVAL_CORE_H

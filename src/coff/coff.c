@@ -28,7 +28,7 @@ coff_is_obj(String8 data)
     switch (header->machine) {
       case COFF_MachineType_UNKNOWN:
       case COFF_MachineType_X86:    case COFF_MachineType_X64:
-      case COFF_MachineType_ARM33:  case COFF_MachineType_ARM:
+      case COFF_MachineType_AM33:   case COFF_MachineType_ARM:
       case COFF_MachineType_ARM64:  case COFF_MachineType_ARMNT:
       case COFF_MachineType_EBC:    case COFF_MachineType_IA64:
       case COFF_MachineType_M32R:   case COFF_MachineType_MIPS16:
@@ -97,15 +97,17 @@ coff_header_info_from_data(String8 data)
   COFF_HeaderInfo info = {0};
   if (coff_is_big_obj(data)) {
     COFF_HeaderBigObj *big_header = (COFF_HeaderBigObj*)data.str;
-    info.machine               = big_header->machine;
-    info.section_array_off     = sizeof(COFF_HeaderBigObj);
-    info.section_count_no_null = big_header->section_count;
-    info.string_table_off      = big_header->pointer_to_symbol_table + sizeof(COFF_Symbol32) * big_header->number_of_symbols;
-    info.symbol_size           = sizeof(COFF_Symbol32);
-    info.symbol_off            = big_header->pointer_to_symbol_table;
-    info.symbol_count          = big_header->number_of_symbols;
+    info.type                     = COFF_DataType_BIG_OBJ;
+    info.machine                  = big_header->machine;
+    info.section_array_off        = sizeof(COFF_HeaderBigObj);
+    info.section_count_no_null    = big_header->section_count;
+    info.string_table_off         = big_header->pointer_to_symbol_table + sizeof(COFF_Symbol32) * big_header->number_of_symbols;
+    info.symbol_size              = sizeof(COFF_Symbol32);
+    info.symbol_off               = big_header->pointer_to_symbol_table;
+    info.symbol_count             = big_header->number_of_symbols;
   } else if (coff_is_obj(data)) {
-    COFF_Header *header = (COFF_Header*)data.str;
+    COFF_Header *header        = (COFF_Header*)data.str;
+    info.type                  = COFF_DataType_OBJ;
     info.machine               = header->machine;
     info.section_array_off     = sizeof(COFF_Header);
     info.section_count_no_null = header->section_count;
@@ -141,6 +143,30 @@ coff_align_size_from_section_flags(COFF_SectionFlags flags)
     case COFF_SectionAlign_8192BYTES: align = 8192; break;
   }
   return align;
+}
+
+internal COFF_SectionFlags
+coff_section_flag_from_align_size(U64 align)
+{
+  COFF_SectionFlags flags = 0;
+  switch (align) {
+  case 1:    flags = COFF_SectionAlign_1BYTES;    break;
+  case 2:    flags = COFF_SectionAlign_2BYTES;    break;
+  case 4:    flags = COFF_SectionAlign_4BYTES;    break;
+  case 8:    flags = COFF_SectionAlign_8BYTES;    break;
+  case 16:   flags = COFF_SectionAlign_16BYTES;   break;
+  case 32:   flags = COFF_SectionAlign_32BYTES;   break;
+  case 64:   flags = COFF_SectionAlign_64BYTES;   break;
+  case 128:  flags = COFF_SectionAlign_128BYTES;  break;
+  case 256:  flags = COFF_SectionAlign_256BYTES;  break;
+  case 512:  flags = COFF_SectionAlign_512BYTES;  break;
+  case 1024: flags = COFF_SectionAlign_1024BYTES; break;
+  case 2048: flags = COFF_SectionAlign_2048BYTES; break;
+  case 4096: flags = COFF_SectionAlign_4096BYTES; break;
+  case 8192: flags = COFF_SectionAlign_8192BYTES; break;
+  }
+  flags <<= COFF_SectionFlag_ALIGN_SHIFT;
+  return flags;
 }
 
 internal COFF_SymbolValueInterpType
@@ -304,7 +330,7 @@ coff_symbol_array_from_data_16(Arena *arena, String8 data, U64 symbol_array_off,
 {
   COFF_Symbol32Array result;
   result.count = symbol_count;
-  result.v = push_array_no_zero(arena, COFF_Symbol32, result.count);
+  result.v = push_array_no_zero_aligned(arena, COFF_Symbol32, result.count, 8);
   
   COFF_Symbol16 *sym16_arr = (COFF_Symbol16 *)(data.str + symbol_array_off);
   for (U64 isymbol = 0; isymbol < symbol_count; isymbol += 1) {
@@ -387,10 +413,32 @@ coff_word_size_from_machine(COFF_MachineType machine)
 {
   U64 result = 0;
   switch (machine) {
-    case COFF_MachineType_X64: result = 8; break;
-    case COFF_MachineType_X86: result = 4; break;
+  case COFF_MachineType_X64: result = 8; break;
+  case COFF_MachineType_X86: result = 4; break;
   }
   return result;
+}
+
+internal U64
+coff_default_exe_base_from_machine(COFF_MachineType machine)
+{
+  U64 exe_base = 0;
+  switch (coff_word_size_from_machine(machine)) {
+  case 4: exe_base = 0x400000;    break;
+  case 8: exe_base = 0x140000000; break;
+  }
+  return exe_base;
+}
+
+internal U64
+coff_default_dll_base_from_machine(COFF_MachineType machine)
+{
+  U64 dll_base = 0;
+  switch (coff_word_size_from_machine(machine)) {
+  case 4: dll_base = 0x10000000;  break;
+  case 8: dll_base = 0x180000000; break;
+  }
+  return dll_base;
 }
 
 internal String8
@@ -421,6 +469,147 @@ coff_make_ordinal_64(U16 hint)
 
 ////////////////////////////////
 
+internal String8
+coff_make_import_header_by_name(Arena                *arena,
+                                String8               dll_name,
+                                COFF_MachineType      machine,
+                                COFF_TimeStamp        time_stamp,
+                                String8               name,
+                                U16                   hint,
+                                COFF_ImportHeaderType type)
+{
+  struct {
+    U16              sig1;
+    U16              sig2;
+    U16              version;
+    COFF_MachineType machine;
+    COFF_TimeStamp   time_stamp;
+    U32              sizeof_data;
+    U16              hint_ordinal;
+    U16              flags;
+  } import_header = {
+    COFF_MachineType_UNKNOWN, // sig1
+    max_U16, // sig2
+    0,       // version
+    machine, 
+    time_stamp,
+    safe_cast_u32(name.size + dll_name.size + 2), // sizeof_data
+    0,       // hint_ordinal
+    0,       // flags
+  };
+  
+  import_header.flags |= (U16)(type & COFF_IMPORT_HEADER_TYPE_MASK) << COFF_IMPORT_HEADER_TYPE_SHIFT;
+  import_header.flags |= COFF_ImportHeaderNameType_NAME << COFF_IMPORT_HEADER_NAME_TYPE_SHIFT;
+  import_header.hint_ordinal = hint;
+  
+  // alloc memory
+  U64 buffer_size = sizeof(import_header) + import_header.sizeof_data;
+  U8 *buffer = push_array_no_zero(arena, U8, buffer_size);
+  
+  // copy header
+  MemoryCopy(buffer, &import_header, sizeof(import_header));
+  
+  // copy function name
+  U8 *func_name = buffer + sizeof(import_header);
+  MemoryCopy(func_name, name.str, name.size);
+  func_name[name.size] = 0;
+  
+  // copy dll name
+  U8 *dll_name_buffer = buffer + sizeof(import_header) + name.size + 1;
+  MemoryCopy(dll_name_buffer, dll_name.str, dll_name.size);
+  dll_name_buffer[dll_name.size] = 0;
+  
+  String8 import_data = str8(buffer, buffer_size);
+  return import_data;
+}
+
+internal String8
+coff_make_import_header_by_ordinal(Arena                *arena,
+                                   String8               dll_name,
+                                   COFF_MachineType      machine,
+                                   COFF_TimeStamp        time_stamp,
+                                   U16                   ordinal,
+                                   COFF_ImportHeaderType type)
+{
+  struct {
+    U16              sig1;
+    U16              sig2;
+    U16              version;
+    COFF_MachineType machine;
+    COFF_TimeStamp   time_stamp;
+    U32              sizeof_data;
+    U16              hint_ordinal;
+    U16              flags;
+  } import_header = {
+    COFF_MachineType_UNKNOWN, // sig1
+    max_U16, // sig2
+    0, // version
+    machine, 
+    time_stamp,
+    safe_cast_u32(/* name.size + */ dll_name.size + 2), // sizeof_data
+    0, // hint_ordinal
+    0, // flags
+  };
+  
+  import_header.flags |= (U16)(type & COFF_IMPORT_HEADER_TYPE_MASK) << COFF_IMPORT_HEADER_TYPE_SHIFT;
+  import_header.flags |= COFF_ImportHeaderNameType_ORDINAL << COFF_IMPORT_HEADER_NAME_TYPE_SHIFT;
+  import_header.hint_ordinal = ordinal;
+  
+  // alloc memory
+  U64 buffer_size = sizeof(import_header) + import_header.sizeof_data;
+  U8 *buffer = push_array_no_zero(arena, U8, buffer_size);
+  
+  // copy header
+  MemoryCopyStruct(buffer, &import_header);
+  
+  // no function name write zero
+  U8 *func_name = buffer + sizeof(import_header);
+  func_name[0] = 0;
+  
+  // copy dll name
+  U8 *dll_name_buffer = buffer + sizeof(import_header) + /* name.size */ + 1;
+  MemoryCopy(dll_name_buffer, dll_name.str, dll_name.size);
+  dll_name_buffer[dll_name.size] = 0;
+  
+  String8 import_data = str8(buffer, buffer_size);
+  return import_data;
+}
+
+////////////////////////////////
+//~ Resources
+
+internal String8
+coff_resource_string_from_str16(Arena *arena, String16 string)
+{
+  AssertAlways(string.size <= max_U16);
+  U16 size16 = (U16)string.size;
+
+  U16 *buffer = push_array_no_zero(arena, U16, size16 + 1);
+  MemoryCopy(buffer + 0, &size16,    sizeof(size16));
+  MemoryCopy(buffer + 1, string.str, size16 * sizeof(string.str[0]));
+
+  return str8_array(buffer, size16 + 1);
+}
+
+internal String8
+coff_resource_string_from_str8(Arena *arena, String8 string)
+{
+  Temp scratch = scratch_begin(&arena, 1);
+  String16 string16 = str16_from_8(scratch.arena, string);
+  String8 result = coff_resource_string_from_str16(arena, string16);
+  scratch_end(scratch);
+  return result;
+}
+
+internal String8
+coff_resource_number_from_u16(Arena *arena, U16 number)
+{
+  U16 *buffer = push_array_no_zero(arena, U16, 2);
+  buffer[0] = max_U16;
+  buffer[1] = number;
+  return str8_array(buffer, 2);
+}
+
 internal B32
 coff_resource_id_is_equal(COFF_ResourceID a, COFF_ResourceID b)
 {
@@ -437,28 +626,9 @@ coff_resource_id_is_equal(COFF_ResourceID a, COFF_ResourceID b)
 }
 
 internal COFF_ResourceID
-coff_resource_id_copy(Arena *arena, COFF_ResourceID id)
+coff_utf8_resource_id_from_utf16(Arena *arena, COFF_ResourceID_16 *id_16)
 {
-  COFF_ResourceID result = zero_struct;
-  switch (id.type) {
-    case COFF_ResourceIDType_NULL: break;
-    case COFF_ResourceIDType_NUMBER: {
-      result.type = COFF_ResourceIDType_NUMBER;
-      result.u.number = id.u.number;
-    } break;
-    case COFF_ResourceIDType_STRING: {
-      result.type = COFF_ResourceIDType_STRING;
-      result.u.string = id.u.string;
-    } break;
-    default: Assert(!"invalid resource id type");
-  }
-  return result;
-}
-
-internal COFF_ResourceID
-coff_convert_resource_id(Arena *arena, COFF_ResourceID_16 *id_16)
-{
-  COFF_ResourceID id;
+  COFF_ResourceID id = {0};
   id.type = id_16->type;
   switch (id_16->type) {
     case COFF_ResourceIDType_NULL: break;
@@ -468,23 +638,22 @@ coff_convert_resource_id(Arena *arena, COFF_ResourceID_16 *id_16)
     case COFF_ResourceIDType_STRING: {
       id.u.string = str8_from_16(arena, id_16->u.string);
     } break;
-    default: Assert(!"invalid resource id type");
+    default: InvalidPath;
   }
   return id;
 }
 
 internal U64
-coff_read_resource_id(String8 data, U64 off, COFF_ResourceID_16 *id_out)
+coff_read_resource_id_utf16(String8 data, U64 off, COFF_ResourceID_16 *id_out)
 {
   U64 cursor = off;
   
   U16 flag = 0;
   str8_deserial_read_struct(data, cursor, &flag);
   
-  B32 is_number = flag == max_U16;
-  if (is_number) {
-    cursor += sizeof(flag);
+  if (flag == max_U16) {
     id_out->type = COFF_ResourceIDType_NUMBER;
+    cursor += sizeof(flag);
     cursor += str8_deserial_read_struct(data, cursor, &id_out->u.number);
   } else {
     id_out->type = COFF_ResourceIDType_STRING;
@@ -492,70 +661,128 @@ coff_read_resource_id(String8 data, U64 off, COFF_ResourceID_16 *id_out)
   }
   
   U64 read_size = cursor - off;
+  read_size     = AlignPow2(read_size, COFF_RES_ALIGN);
   return read_size;
 }
 
 internal U64
 coff_read_resource(String8 raw_res, U64 off, Arena *arena, COFF_Resource *res_out)
 {
-  // parse header
-  COFF_ResourceHeaderPrefix prefix; MemoryZeroStruct(&prefix);
-  U64 cursor = str8_deserial_read_struct(raw_res, off, &prefix);
-  String8 header_data = str8_substr(raw_res, rng_1u64(off, off + prefix.header_size));
+  String8 raw_header    = str8_skip(raw_res, off);
+  U64     header_cursor = 0;
+
+  // prefix
+  COFF_ResourceHeaderPrefix prefix = {0};
+  header_cursor += str8_deserial_read_struct(raw_header, header_cursor, &prefix);
+
+  Assert(prefix.header_size >= sizeof(COFF_ResourceHeaderPrefix));
+  raw_header = str8_prefix(raw_header, prefix.header_size);
+
+  // header
+  COFF_ResourceID_16 type_16 = {0};
+  COFF_ResourceID_16 name_16 = {0};
+  header_cursor += coff_read_resource_id_utf16(raw_header, header_cursor, &type_16);
+  header_cursor += coff_read_resource_id_utf16(raw_header, header_cursor, &name_16);
+  header_cursor += str8_deserial_read_struct(raw_header, header_cursor, &res_out->data_version);
+  header_cursor += str8_deserial_read_struct(raw_header, header_cursor, &res_out->memory_flags);
+  header_cursor += str8_deserial_read_struct(raw_header, header_cursor, &res_out->language_id);
+  header_cursor += str8_deserial_read_struct(raw_header, header_cursor, &res_out->version);
+  header_cursor += str8_deserial_read_struct(raw_header, header_cursor, &res_out->characteristics);
+  Assert(prefix.header_size == header_cursor);
+
+  // convert utf-16 resource ids to utf-8
+  res_out->type = coff_utf8_resource_id_from_utf16(arena, &type_16);
+  res_out->name = coff_utf8_resource_id_from_utf16(arena, &name_16);
+
+  // read data
+  U64 data_read_size = str8_deserial_read_block(raw_res, off + prefix.header_size, prefix.data_size, &res_out->data);
+  Assert(prefix.data_size == data_read_size);
   
-  COFF_ResourceID_16 type_16; MemoryZeroStruct(&type_16);
-  cursor += coff_read_resource_id(header_data, cursor, &type_16);
-  cursor = AlignPow2(cursor, COFF_RES_ALIGN);
-  
-  COFF_ResourceID_16 name_16; MemoryZeroStruct(&name_16);
-  cursor += coff_read_resource_id(header_data, cursor, &name_16);
-  cursor = AlignPow2(cursor, COFF_RES_ALIGN);
-  
-  U32 data_version = 0;
-  cursor += str8_deserial_read_struct(header_data, cursor, &data_version);
-  
-  COFF_ResourceMemoryFlags memory_flags = 0;
-  cursor += str8_deserial_read_struct(header_data, cursor, &memory_flags);
-  
-  U16 language_id = 0;
-  cursor += str8_deserial_read_struct(header_data, cursor, &language_id);
-  
-  U32 version = 0;
-  cursor += str8_deserial_read_struct(header_data, cursor, &version);
-  
-  U32 characteristics = 0;
-  cursor += str8_deserial_read_struct(header_data, cursor, &characteristics);
-  
-  String8 data;
-  cursor += str8_deserial_read_block(raw_res, off + prefix.header_size, prefix.data_size, &data);
-  
-  // was resource parsed?
-  Assert(cursor >= prefix.data_size + prefix.header_size);
-  
-  // fill out result
-  res_out->type         = coff_convert_resource_id(arena, &type_16);
-  res_out->name         = coff_convert_resource_id(arena, &name_16);
-  res_out->language_id  = language_id;
-  res_out->data_version = data_version;
-  res_out->version      = version;
-  res_out->memory_flags = memory_flags;
-  res_out->data         = data;
-  
-  U64 resource_size = AlignPow2(prefix.data_size + prefix.header_size, COFF_RES_ALIGN);
-  return resource_size;
+  // compute read size
+  U64 read_size = Max(prefix.header_size, sizeof(prefix)) + AlignPow2(prefix.data_size, COFF_RES_ALIGN);
+  return read_size;
 }
 
 internal COFF_ResourceList
 coff_resource_list_from_data(Arena *arena, String8 data)
 {
-  COFF_ResourceList list; MemoryZeroStruct(&list);
-  for (U64 cursor = 0, stride; cursor < data.size; cursor += stride) {
+  COFF_ResourceList list = {0};
+  U64 cursor;
+  for (cursor = 0 ; cursor < data.size; ) {
     COFF_ResourceNode *node = push_array(arena, COFF_ResourceNode, 1);
-    stride = coff_read_resource(data, cursor, arena, &node->data);
-    list.count += 1;
+    cursor += coff_read_resource(data, cursor, arena, &node->data);
     SLLQueuePush(list.first, list.last, node);
+    ++list.count;
   }
+  Assert(cursor == data.size);
   return list;
+}
+
+internal String8
+coff_write_resource_id(Arena *arena, COFF_ResourceID id)
+{
+  String8 result = str8_zero();
+  switch (id.type) {
+  case COFF_ResourceIDType_NULL: break;
+  case COFF_ResourceIDType_NUMBER: {
+    result = coff_resource_number_from_u16(arena, id.u.number);
+  } break;
+  case COFF_ResourceIDType_STRING: {
+    result = coff_resource_string_from_str8(arena, id.u.string);
+  } break;
+  default: InvalidPath;
+  }
+  return result;
+}
+
+internal String8
+coff_write_resource(Arena          *arena,
+                    COFF_ResourceID type,
+                    COFF_ResourceID name,
+                    U32             data_version,
+                    COFF_ResourceMemoryFlags memory_flags,
+                    U16             language_id,
+                    U32             version,
+                    U32             characteristics,
+                    String8         data)
+{
+  Temp scratch = scratch_begin(&arena, 1);
+
+  String8List list = {0};
+
+  COFF_ResourceHeaderPrefix *prefix      = push_array(scratch.arena, COFF_ResourceHeaderPrefix, 1);
+  String8                    packed_type = coff_write_resource_id(scratch.arena, type);
+  String8                    packed_name = coff_write_resource_id(scratch.arena, name);
+
+  // prefix + header
+  str8_list_push(scratch.arena, &list, str8_struct(prefix));
+  str8_list_push(scratch.arena, &list, packed_type);
+  str8_list_push(scratch.arena, &list, packed_name);
+  str8_list_push(scratch.arena, &list, str8_struct(&data_version));
+  str8_list_push(scratch.arena, &list, str8_struct(&memory_flags));
+  str8_list_push(scratch.arena, &list, str8_struct(&language_id));
+  str8_list_push(scratch.arena, &list, str8_struct(&version));
+  str8_list_push(scratch.arena, &list, str8_struct(&characteristics));
+
+  prefix->data_size   = safe_cast_u32(data.size);
+  prefix->header_size = safe_cast_u32(list.total_size);
+
+  // data
+  str8_list_push(scratch.arena, &list, data);
+
+  // magic
+  str8_list_push_front(scratch.arena, &list, str8_array_fixed(g_coff_res_magic));
+
+  // align
+  U64 align_size = AlignPow2(list.total_size, COFF_RES_ALIGN) - list.total_size;
+  U8 *align      = push_array(scratch.arena, U8, align_size);
+  str8_list_push(scratch.arena, &list, str8(align, align_size));
+
+  // join
+  String8 res = str8_list_join(arena, &list, 0);
+
+  scratch_end(scratch);
+  return res;
 }
 
 ////////////////////////////////
@@ -567,12 +794,10 @@ coff_data_type_from_data(String8 data)
   if (is_big_obj) {
     return COFF_DataType_BIG_OBJ;
   }
-  
   B32 is_import = coff_is_import(data);
   if (is_import) {
     return COFF_DataType_IMPORT;
   }
-  
   return COFF_DataType_OBJ;
 }
 
@@ -591,18 +816,22 @@ coff_is_import(String8 data)
 internal B32
 coff_is_archive(String8 data)
 {
-  U64 sig = 0;
-  str8_deserial_read_struct(data, 0, &sig);
-  B32 is_archive = sig == COFF_ARCHIVE_SIG;
+  B32 is_archive = 0;
+  U8 sig[sizeof(g_coff_archive_sig)];
+  if (str8_deserial_read_struct(data, 0, &sig) == sizeof(sig)) {
+    is_archive = MemoryCompare(&sig[0], &g_coff_archive_sig[0], sizeof(g_coff_archive_sig)) == 0;
+  }
   return is_archive;
 }
 
 internal B32
 coff_is_thin_archive(String8 data)
 {
-  U64 sig = 0;
-  str8_deserial_read_struct(data, 0, &sig);
-  B32 is_archive = sig == COFF_THIN_ARCHIVE_SIG;
+  B32 is_archive = 0;
+  U8 sig[sizeof(g_coff_thin_archive_sig)];
+  if (str8_deserial_read_struct(data, 0, &sig) == sizeof(sig)) {
+    is_archive = MemoryCompare(&sig[0], &g_coff_thin_archive_sig[0], sizeof(g_coff_thin_archive_sig)) == 0;
+  }
   return is_archive;
 }
 
@@ -751,11 +980,9 @@ coff_read_archive_long_name(String8 long_names, String8 name)
 internal U64
 coff_archive_member_iter_init(String8 data)
 {
-  U64 cursor = 0;
-  U64 sig = 0;
-  cursor += str8_deserial_read_struct(data, cursor, &sig);
-  if (sig != COFF_ARCHIVE_SIG) {
-    cursor = data.size;
+  U64 cursor = data.size;
+  if (coff_is_archive(data)) {
+    cursor = sizeof(g_coff_archive_sig);
   }
   return cursor;
 }
@@ -915,11 +1142,9 @@ coff_archive_from_data(Arena *arena, String8 data)
 internal U64
 coff_thin_archive_member_iter_init(String8 data)
 {
-  U64 cursor = 0;
-  U64 sig = 0;
-  cursor += str8_deserial_read_struct(data, cursor, &sig);
-  if (sig != COFF_THIN_ARCHIVE_SIG) {
-    cursor = data.size;
+  U64 cursor = data.size;
+  if (coff_is_thin_archive(data)) {
+    cursor = sizeof(g_coff_thin_archive_sig);
   }
   return cursor;
 }
@@ -990,18 +1215,59 @@ coff_archive_parse_from_data(Arena *arena, String8 data)
 
 ////////////////////////////////
 
+read_only struct
+{
+  String8          string;
+  COFF_MachineType machine;
+} g_coff_machine_map[] = {
+  { str8_lit_comp(""),          COFF_MachineType_UNKNOWN   },
+  { str8_lit_comp("X86"),       COFF_MachineType_X86       },
+  { str8_lit_comp("AMD64"),     COFF_MachineType_X64       },
+  { str8_lit_comp("X64"),       COFF_MachineType_X64       },
+  { str8_lit_comp("AM33"),      COFF_MachineType_AM33      },
+  { str8_lit_comp("ARM"),       COFF_MachineType_ARM       },
+  { str8_lit_comp("ARM64"),     COFF_MachineType_ARM64     },
+  { str8_lit_comp("ARMNT"),     COFF_MachineType_ARMNT     },
+  { str8_lit_comp("EBC"),       COFF_MachineType_EBC       },
+  { str8_lit_comp("IA64"),      COFF_MachineType_IA64      },
+  { str8_lit_comp("M32R"),      COFF_MachineType_M32R      },
+  { str8_lit_comp("MIPS16"),    COFF_MachineType_MIPS16    },
+  { str8_lit_comp("MIPSFPU"),   COFF_MachineType_MIPSFPU   },
+  { str8_lit_comp("MIPSFPU16"), COFF_MachineType_MIPSFPU16 },
+  { str8_lit_comp("POWERPC"),   COFF_MachineType_POWERPC   },
+  { str8_lit_comp("POWERPCFP"), COFF_MachineType_POWERPCFP },
+  { str8_lit_comp("R4000"),     COFF_MachineType_R4000     },
+  { str8_lit_comp("RISCV32"),   COFF_MachineType_RISCV32   },
+  { str8_lit_comp("RISCV64"),   COFF_MachineType_RISCV64   },
+  { str8_lit_comp("SH3"),       COFF_MachineType_SH3       },
+  { str8_lit_comp("SH3DSP"),    COFF_MachineType_SH3DSP    },
+  { str8_lit_comp("SH4"),       COFF_MachineType_SH4       },
+  { str8_lit_comp("SH5"),       COFF_MachineType_SH5       },
+  { str8_lit_comp("THUMB"),     COFF_MachineType_THUMB     },
+  { str8_lit_comp("WCEMIPSV2"), COFF_MachineType_WCEMIPSV2 },
+};
+
+read_only static struct {
+  char *                name;
+  COFF_ImportHeaderType type;
+} g_coff_import_header_type_map[] = {
+  { "CODE",  COFF_ImportHeaderType_CODE  },
+  { "DATA",  COFF_ImportHeaderType_DATA  },
+  { "CONST", COFF_ImportHeaderType_CONST },
+};
+
 internal String8
 coff_string_from_comdat_select_type(COFF_ComdatSelectType select)
 {
   String8 result = str8(0,0);
   switch (select) {
-    case COFF_ComdatSelectType_NULL:         result = str8_lit("NULL");         break;
-    case COFF_ComdatSelectType_NODUPLICATES: result = str8_lit("NODUPLICATES"); break;
-    case COFF_ComdatSelectType_ANY:          result = str8_lit("ANY");          break;
-    case COFF_ComdatSelectType_SAME_SIZE:    result = str8_lit("SAME_SIZE");    break;
-    case COFF_ComdatSelectType_EXACT_MATCH:  result = str8_lit("EXACT_MATCH");  break;
-    case COFF_ComdatSelectType_ASSOCIATIVE:  result = str8_lit("ASSOCIATIVE");  break;
-    case COFF_ComdatSelectType_LARGEST:      result = str8_lit("LARGEST");      break;
+  case COFF_ComdatSelectType_NULL:         result = str8_lit("NULL");         break;
+  case COFF_ComdatSelectType_NODUPLICATES: result = str8_lit("NODUPLICATES"); break;
+  case COFF_ComdatSelectType_ANY:          result = str8_lit("ANY");          break;
+  case COFF_ComdatSelectType_SAME_SIZE:    result = str8_lit("SAME_SIZE");    break;
+  case COFF_ComdatSelectType_EXACT_MATCH:  result = str8_lit("EXACT_MATCH");  break;
+  case COFF_ComdatSelectType_ASSOCIATIVE:  result = str8_lit("ASSOCIATIVE");  break;
+  case COFF_ComdatSelectType_LARGEST:      result = str8_lit("LARGEST");      break;
   }
   return result;
 }
@@ -1009,35 +1275,12 @@ coff_string_from_comdat_select_type(COFF_ComdatSelectType select)
 internal String8
 coff_string_from_machine_type(COFF_MachineType machine)
 {
-  String8 result = str8(0,0);
-  switch (machine) {
-    case COFF_MachineType_UNKNOWN:   result = str8_lit("UNKNOWN");   break;
-    case COFF_MachineType_X86:       result = str8_lit("X86");       break;
-    case COFF_MachineType_X64:       result = str8_lit("X64");       break;
-    case COFF_MachineType_ARM33:     result = str8_lit("ARM33");     break;
-    case COFF_MachineType_ARM:       result = str8_lit("ARM");       break;
-    case COFF_MachineType_ARM64:     result = str8_lit("ARM64");     break;
-    case COFF_MachineType_ARMNT:     result = str8_lit("ARMNT");     break;
-    case COFF_MachineType_EBC:       result = str8_lit("EBC");       break;
-    case COFF_MachineType_IA64:      result = str8_lit("IA64");      break;
-    case COFF_MachineType_M32R:      result = str8_lit("M32R");      break;
-    case COFF_MachineType_MIPS16:    result = str8_lit("MIPS16");    break;
-    case COFF_MachineType_MIPSFPU:   result = str8_lit("MIPSFPU");   break;
-    case COFF_MachineType_MIPSFPU16: result = str8_lit("MIPSFPU16"); break;
-    case COFF_MachineType_POWERPC:   result = str8_lit("POWERPC");   break;
-    case COFF_MachineType_POWERPCFP: result = str8_lit("POWERPCFP"); break;
-    case COFF_MachineType_R4000:     result = str8_lit("R4000");     break;
-    case COFF_MachineType_RISCV32:   result = str8_lit("RISCV32");   break;
-    case COFF_MachineType_RISCV64:   result = str8_lit("RISCV64");   break;
-    case COFF_MachineType_RISCV128:  result = str8_lit("RISCV128");  break;
-    case COFF_MachineType_SH3:       result = str8_lit("SH3");       break;
-    case COFF_MachineType_SH3DSP:    result = str8_lit("SH3DSP");    break;
-    case COFF_MachineType_SH4:       result = str8_lit("SH4");       break;
-    case COFF_MachineType_SH5:       result = str8_lit("SH5");       break;
-    case COFF_MachineType_THUMB:     result = str8_lit("THUMB");     break;
-    case COFF_MachineType_WCEMIPSV2: result = str8_lit("WCEMIPSV2"); break;
+  for (U64 i = 0; i < ArrayCount(g_coff_machine_map); ++i) {
+    if (g_coff_machine_map[i].machine == machine) {
+      return g_coff_machine_map[i].string;
+    }
   }
-  return result;
+  return str8_zero();
 }
 
 internal String8
@@ -1115,5 +1358,38 @@ coff_string_from_section_flags(Arena *arena, COFF_SectionFlags flags)
   
   scratch_end(scratch);
   return result;
+}
+
+internal String8
+coff_string_from_import_header_type(COFF_ImportHeaderType type)
+{
+  for (U64 i = 0; i < ArrayCount(g_coff_import_header_type_map); ++i) {
+    if (g_coff_import_header_type_map[i].type == type) {
+      return str8_cstring(g_coff_import_header_type_map[i].name);
+    }
+  }
+  return str8(0,0);
+}
+
+internal COFF_MachineType
+coff_machine_from_string(String8 string)
+{
+  for (U64 i = 0; i < ArrayCount(g_coff_machine_map); ++i) {
+    if (str8_match(g_coff_machine_map[i].string, string, StringMatchFlag_CaseInsensitive)) {
+      return g_coff_machine_map[i].machine;
+    }
+  }
+  return COFF_MachineType_UNKNOWN;
+}
+
+internal COFF_ImportHeaderType
+coff_import_header_type_from_string(String8 name)
+{
+  for (U64 i = 0; i < ArrayCount(g_coff_import_header_type_map); ++i) {
+    if (str8_match(str8_cstring(g_coff_import_header_type_map[i].name), name, StringMatchFlag_CaseInsensitive)) {
+      return g_coff_import_header_type_map[i].type;
+    }
+  }
+  return COFF_ImportHeaderType_COUNT;
 }
 

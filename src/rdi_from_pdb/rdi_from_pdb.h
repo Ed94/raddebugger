@@ -28,6 +28,7 @@ enum
   P2R_ConvertFlag_TypeNameMap             = (1<<15),
   P2R_ConvertFlag_LinkNameProcedureNameMap= (1<<16),
   P2R_ConvertFlag_NormalSourcePathNameMap = (1<<17),
+  P2R_ConvertFlag_Deterministic           = (1<<18),
   P2R_ConvertFlag_All = 0xffffffff,
 };
 
@@ -109,8 +110,8 @@ typedef struct P2R_C13StreamParseIn P2R_C13StreamParseIn;
 struct P2R_C13StreamParseIn
 {
   String8 data;
-  PDB_Strtbl *strtbl;
-  PDB_CoffSectionArray *coff_sections;
+  String8 strtbl;
+  COFF_SectionHeaderArray coff_sections;
 };
 
 //- rjf: comp unit parsing
@@ -127,7 +128,7 @@ typedef struct P2R_CompUnitContributionsParseIn P2R_CompUnitContributionsParseIn
 struct P2R_CompUnitContributionsParseIn
 {
   String8 data;
-  PDB_CoffSectionArray *coff_sections;
+  COFF_SectionHeaderArray coff_sections;
 };
 
 ////////////////////////////////
@@ -174,7 +175,7 @@ typedef struct P2R_UnitConvertIn P2R_UnitConvertIn;
 struct P2R_UnitConvertIn
 {
   PDB_Strtbl *pdb_strtbl;
-  PDB_CoffSectionArray *coff_sections;
+  COFF_SectionHeaderArray coff_sections;
   PDB_CompUnitArray *comp_units;
   PDB_CompUnitContributionArray *comp_unit_contributions;
   CV_SymParsed **comp_unit_syms;
@@ -196,7 +197,7 @@ typedef struct P2R_LinkNameMapBuildIn P2R_LinkNameMapBuildIn;
 struct P2R_LinkNameMapBuildIn
 {
   CV_SymParsed *sym;
-  PDB_CoffSectionArray *coff_sections;
+  COFF_SectionHeaderArray coff_sections;
   P2R_LinkNameMap *link_name_map;
 };
 
@@ -249,7 +250,7 @@ typedef struct P2R_SymbolStreamConvertIn P2R_SymbolStreamConvertIn;
 struct P2R_SymbolStreamConvertIn
 {
   RDI_Arch arch;
-  PDB_CoffSectionArray *coff_sections;
+  COFF_SectionHeaderArray coff_sections;
   PDB_TpiHashParsed *tpi_hash;
   CV_LeafParsed *tpi_leaf;
   CV_LeafParsed *ipi_leaf;
@@ -524,6 +525,22 @@ struct P2R_BakeIdxRunsIn
 };
 
 ////////////////////////////////
+//~ rjf: Top-Level State
+
+typedef struct P2R_State P2R_State;
+struct P2R_State
+{
+  Arena *arena;
+  U64 work_thread_arenas_count;
+  Arena **work_thread_arenas;
+};
+
+////////////////////////////////
+//~ rjf: Globals
+
+global P2R_State *p2r_state = 0;
+
+////////////////////////////////
 //~ rjf: Basic Helpers
 
 internal U64 p2r_end_of_cplusplus_container_name(String8 str);
@@ -542,10 +559,10 @@ internal RDI_BinarySectionFlags p2r_rdi_binary_section_flags_from_coff_section_f
 ////////////////////////////////
 //~ rjf: CodeView => RDI Canonical Conversions
 
-internal RDI_Arch         p2r_rdi_arch_from_cv_arch(CV_Arch arch);
-internal RDI_RegCode p2r_rdi_reg_code_from_cv_reg_code(RDI_Arch arch, CV_Reg reg_code);
-internal RDI_Language     p2r_rdi_language_from_cv_language(CV_Language language);
-internal RDI_TypeKind     p2r_rdi_type_kind_from_cv_basic_type(CV_BasicType basic_type);
+internal RDI_Arch     p2r_rdi_arch_from_cv_arch(CV_Arch arch);
+internal RDI_RegCode  p2r_rdi_reg_code_from_cv_reg_code(RDI_Arch arch, CV_Reg reg_code);
+internal RDI_Language p2r_rdi_language_from_cv_language(CV_Language language);
+internal RDI_TypeKind p2r_rdi_type_kind_from_cv_basic_type(CV_BasicType basic_type);
 
 ////////////////////////////////
 //~ rjf: Location Info Building Helpers
@@ -558,39 +575,39 @@ internal void p2r_location_over_lvar_addr_range(Arena *arena, RDIM_ScopeChunkLis
 ////////////////////////////////
 //~ rjf: Initial Parsing & Preparation Pass Tasks
 
-internal TS_TASK_FUNCTION_DEF(p2r_exe_hash_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_tpi_hash_parse_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_tpi_leaf_parse_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_symbol_stream_parse_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_c13_stream_parse_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_comp_unit_parse_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_comp_unit_contributions_parse_task__entry_point);
+ASYNC_WORK_DEF(p2r_exe_hash_work);
+ASYNC_WORK_DEF(p2r_tpi_hash_parse_work);
+ASYNC_WORK_DEF(p2r_tpi_leaf_work);
+ASYNC_WORK_DEF(p2r_symbol_stream_parse_work);
+ASYNC_WORK_DEF(p2r_c13_stream_parse_work);
+ASYNC_WORK_DEF(p2r_comp_unit_parse_work);
+ASYNC_WORK_DEF(p2r_comp_unit_contributions_parse_work);
 
 ////////////////////////////////
 //~ rjf: Unit Conversion Tasks
 
-internal TS_TASK_FUNCTION_DEF(p2r_units_convert_task__entry_point);
+ASYNC_WORK_DEF(p2r_units_convert_work);
 
 ////////////////////////////////
 //~ rjf: Link Name Map Building Tasks
 
-internal TS_TASK_FUNCTION_DEF(p2r_link_name_map_build_task__entry_point);
+ASYNC_WORK_DEF(p2r_link_name_map_build_work);
 
 ////////////////////////////////
 //~ rjf: Type Parsing/Conversion Tasks
 
-internal TS_TASK_FUNCTION_DEF(p2r_itype_fwd_map_fill_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_itype_chain_build_task__entry_point);
+ASYNC_WORK_DEF(p2r_itype_fwd_map_fill_work);
+ASYNC_WORK_DEF(p2r_itype_chain_build_work);
 
 ////////////////////////////////
 //~ rjf: UDT Conversion Tasks
 
-internal TS_TASK_FUNCTION_DEF(p2r_udt_convert_task__entry_point);
+ASYNC_WORK_DEF(p2r_udt_convert_work);
 
 ////////////////////////////////
 //~ rjf: Symbol Stream Conversion Tasks
 
-internal TS_TASK_FUNCTION_DEF(p2r_symbol_stream_convert_task__entry_point);
+ASYNC_WORK_DEF(p2r_symbol_stream_convert_work);
 
 ////////////////////////////////
 //~ rjf: Top-Level Conversion Entry Point
@@ -601,41 +618,46 @@ internal P2R_Convert2Bake *p2r_convert(Arena *arena, P2R_User2Convert *in);
 //~ rjf: Baking Stage Tasks
 
 //- rjf: unsorted bake string map building
-internal TS_TASK_FUNCTION_DEF(p2r_bake_src_files_strings_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_bake_units_strings_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_bake_types_strings_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_bake_udts_strings_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_bake_symbols_strings_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_bake_scopes_strings_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_bake_line_tables_task__entry_point);
+ASYNC_WORK_DEF(p2r_bake_src_files_strings_work);
+ASYNC_WORK_DEF(p2r_bake_units_strings_work);
+ASYNC_WORK_DEF(p2r_bake_types_strings_work);
+ASYNC_WORK_DEF(p2r_bake_udts_strings_work);
+ASYNC_WORK_DEF(p2r_bake_symbols_strings_work);
+ASYNC_WORK_DEF(p2r_bake_scopes_strings_work);
+ASYNC_WORK_DEF(p2r_bake_line_tables_work);
 
 //- rjf: bake string map joining
-internal TS_TASK_FUNCTION_DEF(p2r_bake_string_map_join_task__entry_point);
+ASYNC_WORK_DEF(p2r_bake_string_map_join_work);
 
 //- rjf: bake string map sorting
-internal TS_TASK_FUNCTION_DEF(p2r_bake_string_map_sort_task__entry_point);
+ASYNC_WORK_DEF(p2r_bake_string_map_sort_work);
 
 //- rjf: pass 1: interner/deduper map builds
-internal TS_TASK_FUNCTION_DEF(p2r_build_bake_name_map_task__entry_point);
+ASYNC_WORK_DEF(p2r_build_bake_name_map_work);
 
 //- rjf: pass 2: string-map-dependent debug info stream builds
-internal TS_TASK_FUNCTION_DEF(p2r_bake_units_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_bake_unit_vmap_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_bake_src_files_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_bake_udts_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_bake_global_variables_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_bake_global_vmap_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_bake_thread_variables_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_bake_procedures_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_bake_scopes_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_bake_scope_vmap_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_bake_file_paths_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_bake_strings_task__entry_point);
+ASYNC_WORK_DEF(p2r_bake_units_work);
+ASYNC_WORK_DEF(p2r_bake_unit_vmap_work);
+ASYNC_WORK_DEF(p2r_bake_src_files_work);
+ASYNC_WORK_DEF(p2r_bake_udts_work);
+ASYNC_WORK_DEF(p2r_bake_global_variables_work);
+ASYNC_WORK_DEF(p2r_bake_global_vmap_work);
+ASYNC_WORK_DEF(p2r_bake_thread_variables_work);
+ASYNC_WORK_DEF(p2r_bake_procedures_work);
+ASYNC_WORK_DEF(p2r_bake_scopes_work);
+ASYNC_WORK_DEF(p2r_bake_scope_vmap_work);
+ASYNC_WORK_DEF(p2r_bake_file_paths_work);
+ASYNC_WORK_DEF(p2r_bake_strings_work);
 
 //- rjf: pass 3: idx-run-map-dependent debug info stream builds
-internal TS_TASK_FUNCTION_DEF(p2r_bake_type_nodes_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_bake_name_map_task__entry_point);
-internal TS_TASK_FUNCTION_DEF(p2r_bake_idx_runs_task__entry_point);
+ASYNC_WORK_DEF(p2r_bake_type_nodes_work);
+ASYNC_WORK_DEF(p2r_bake_name_map_work);
+ASYNC_WORK_DEF(p2r_bake_idx_runs_work);
+
+////////////////////////////////
+//~ rjf: Top-Level Initialization
+
+internal void p2r_init(void);
 
 ////////////////////////////////
 //~ rjf: Top-Level Baking Entry Point

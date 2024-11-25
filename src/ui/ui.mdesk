@@ -7,7 +7,7 @@
 UI_StackTable:
 {
   //- rjf: parents
-  { Parent                             parent                       `UI_Box *`             `&ui_g_nil_box`                    }
+  { Parent                             parent                       `UI_Box *`             `&ui_nil_box`                    }
   
   //- rjf: layout params
   { ChildLayoutAxis                    child_layout_axis             Axis2                 `Axis2_X`                          }
@@ -21,6 +21,7 @@ UI_StackTable:
   { PrefHeight                         pref_height                   UI_Size               `ui_px(30.f, 1.f)`                 }
   
   //- rjf: flags
+  { PermissionFlags                    permission_flags              UI_PermissionFlags    UI_PermissionFlag_All              }
   { Flags                              flags                         UI_BoxFlags           0                                  }
   
   //- rjf: interaction
@@ -40,9 +41,9 @@ UI_StackTable:
   { HoverCursor                        hover_cursor                  OS_Cursor             OS_Cursor_Pointer                  }
   
   //- rjf: font
-  { Font                               font                          F_Tag                 `f_tag_zero()`                     }
+  { Font                               font                          FNT_Tag               `fnt_tag_zero()`                   }
   { FontSize                           font_size                     F32                   24.f                               }
-  { TextRasterFlags                    text_raster_flags             F_RasterFlags         F_RasterFlag_Hinted                }
+  { TextRasterFlags                    text_raster_flags             FNT_RasterFlags       FNT_RasterFlag_Hinted              }
   { TabSize                            tab_size                      F32                   `24.f*4.f`                         }
   
   //- rjf: corner radii

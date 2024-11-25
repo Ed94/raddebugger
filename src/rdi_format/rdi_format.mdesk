@@ -62,7 +62,7 @@
   "";
   "// \"raddbg\0\0\"";
   "#define RDI_MAGIC_CONSTANT   0x0000676264646172";
-  "#define RDI_ENCODING_VERSION 7";
+  "#define RDI_ENCODING_VERSION 10";
   "";
   "////////////////////////////////////////////////////////////////";
   "//~ Format Types & Functions";
@@ -255,7 +255,7 @@ RDI_VMapEntryMemberTable:
 }
 
 ////////////////////////////////
-//~ rjf: Architecture Info Tables
+//~ rjf: Arch Info Tables
 
 @table(name value addr_size)
 RDI_ArchTable:
@@ -383,34 +383,58 @@ RDI_RegCodeX64Table:
   {fpr5            46}
   {fpr6            47}
   {fpr7            48}
-  {ymm0            49}
-  {ymm1            50}
-  {ymm2            51}
-  {ymm3            52}
-  {ymm4            53}
-  {ymm5            54}
-  {ymm6            55}
-  {ymm7            56}
-  {ymm8            57}
-  {ymm9            58}
-  {ymm10           59}
-  {ymm11           60}
-  {ymm12           61}
-  {ymm13           62}
-  {ymm14           63}
-  {ymm15           64}
-  {mxcsr           65}
-  {fsbase          66}
-  {gsbase          67}
-  {fcw             68}
-  {fsw             69}
-  {ftw             70}
-  {fop             71}
-  {fcs             72}
-  {fds             73}
-  {fip             74}
-  {fdp             75}
-  {mxcsr_mask      76}
+  {zmm0            49}
+  {zmm1            50}
+  {zmm2            51}
+  {zmm3            52}
+  {zmm4            53}
+  {zmm5            54}
+  {zmm6            55}
+  {zmm7            56}
+  {zmm8            57}
+  {zmm9            58}
+  {zmm10           59}
+  {zmm11           60}
+  {zmm12           61}
+  {zmm13           62}
+  {zmm14           63}
+  {zmm15           64}
+  {zmm16           65}
+  {zmm17           66}
+  {zmm18           67}
+  {zmm19           68}
+  {zmm20           69}
+  {zmm21           70}
+  {zmm22           71}
+  {zmm23           72}
+  {zmm24           73}
+  {zmm25           74}
+  {zmm26           75}
+  {zmm27           76}
+  {zmm28           77}
+  {zmm29           78}
+  {zmm30           79}
+  {zmm31           80}
+  {k0              81}
+  {k1              82}
+  {k2              83}
+  {k3              84}
+  {k4              85}
+  {k5              86}
+  {k6              87}
+  {k7              88}
+  {mxcsr           89}
+  {fsbase          90}
+  {gsbase          91}
+  {fcw             92}
+  {fsw             93}
+  {ftw             94}
+  {fop             95}
+  {fcs             96}
+  {fds             97}
+  {fip             98}
+  {fdp             99}
+  {mxcsr_mask      100}
 }
 
 @enum(RDI_U32) RDI_Arch:
@@ -433,6 +457,16 @@ RDI_RegCodeX64Table:
 @enum(RDI_U8) RDI_RegCodeX64:
 {
   @expand(RDI_RegCodeX64Table a) `$(a.name .. =>10) = $(a.value)`
+}
+
+@xlist RDI_RegCodeX86_XList:
+{
+  @expand(RDI_RegCodeX86Table a) `$(a.name), $(a.value)`
+}
+
+@xlist RDI_RegCodeX64_XList:
+{
+  @expand(RDI_RegCodeX64Table a) `$(a.name), $(a.value)`
 }
 
 ////////////////////////////////
@@ -664,7 +698,8 @@ RDI_LanguageTable:
   {NULL        0}
   {C           1}
   {CPlusPlus   2}
-  {COUNT       3}
+  {Masm        3}
+  {COUNT       4}
 }
 
 @enum(RDI_U32) RDI_Language:
@@ -687,38 +722,39 @@ RDI_TypeKindTable:
   //-
   {Void                 0x0001     0              FirstBuiltIn                   }
   {Handle               0x0002     0xFFFFFFFF                                    }
-  {Char8                0x0003     1                                             }
-  {Char16               0x0004     2                                             }
-  {Char32               0x0005     4                                             }
-  {UChar8               0x0006     1                                             }
-  {UChar16              0x0007     2                                             }
-  {UChar32              0x0008     4                                             }
-  {U8                   0x0009     1                                             }
-  {U16                  0x000A     2                                             }
-  {U32                  0x000B     4                                             }
-  {U64                  0x000C     8                                             }
-  {U128                 0x000D     16                                            }
-  {U256                 0x000E     32                                            }
-  {U512                 0x000F     64                                            }
-  {S8                   0x0010     1                                             }
-  {S16                  0x0011     2                                             }
-  {S32                  0x0012     4                                             }
-  {S64                  0x0013     8                                             }
-  {S128                 0x0014     16                                            }
-  {S256                 0x0015     32                                            }
-  {S512                 0x0016     64                                            }
-  {Bool                 0x0017     1                                             }
-  {F16                  0x0018     2                                             }
-  {F32                  0x0019     4                                             }
-  {F32PP                0x001A     4                                             }
-  {F48                  0x001B     6                                             }
-  {F64                  0x001C     8                                             }
-  {F80                  0x001D     10                                            }
-  {F128                 0x001E     16                                            }
-  {ComplexF32           0x001F     8                                             }
-  {ComplexF64           0x0020     16                                            }
-  {ComplexF80           0x0021     20                                            }
-  {ComplexF128          0x0022     32              LastBuiltIn                   }
+  {HResult              0x0003     4                                             }
+  {Char8                0x0004     1                                             }
+  {Char16               0x0005     2                                             }
+  {Char32               0x0006     4                                             }
+  {UChar8               0x0007     1                                             }
+  {UChar16              0x0008     2                                             }
+  {UChar32              0x0009     4                                             }
+  {U8                   0x000A     1                                             }
+  {U16                  0x000B     2                                             }
+  {U32                  0x000C     4                                             }
+  {U64                  0x000D     8                                             }
+  {U128                 0x000E     16                                            }
+  {U256                 0x000F     32                                            }
+  {U512                 0x0010     64                                            }
+  {S8                   0x0011     1                                             }
+  {S16                  0x0012     2                                             }
+  {S32                  0x0013     4                                             }
+  {S64                  0x0014     8                                             }
+  {S128                 0x0015     16                                            }
+  {S256                 0x0016     32                                            }
+  {S512                 0x0017     64                                            }
+  {Bool                 0x0018     1                                             }
+  {F16                  0x0019     2                                             }
+  {F32                  0x001A     4                                             }
+  {F32PP                0x001B     4                                             }
+  {F48                  0x001C     6                                             }
+  {F64                  0x001D     8                                             }
+  {F80                  0x001E     10                                            }
+  {F128                 0x001F     16                                            }
+  {ComplexF32           0x0020     8                                             }
+  {ComplexF64           0x0021     16                                            }
+  {ComplexF80           0x0022     20                                            }
+  {ComplexF128          0x0023     32              LastBuiltIn                   }
   //-
   {Modifier             0x1000     0               FirstConstructed              }
   {Ptr                  0x1001     0                                             }
@@ -741,6 +777,7 @@ RDI_TypeKindTable:
   //-
   {Bitfield             0xF000     0                                             }
   {Variadic             0xF001     0                                             }
+  {Count                0xF002     0                                             }
 }
 
 @table(name value)
@@ -1084,17 +1121,17 @@ RDI_LocationRegMemberTable:
 
 @xlist RDI_LinkFlags_XList:
 {
-  @expand(RDI_LinkFlagTable a) `$(a.name)`;
+  @expand(RDI_LinkFlagTable a) `$(a.name != COUNT -> a.name)`;
 }
 
 @xlist RDI_LocalKind_XList:
 {
-  @expand(RDI_LocalKindTable a) `$(a.name)`;
+  @expand(RDI_LocalKindTable a) `$(a.name != COUNT -> a.name)`;
 }
 
 @xlist RDI_LocationKind_XList:
 {
-  @expand(RDI_LocationKindTable a) `$(a.name)`;
+  @expand(RDI_LocationKindTable a) `$(a.name != COUNT -> a.name)`;
 }
 
 @xlist RDI_GlobalVariable_XList:
@@ -1104,7 +1141,7 @@ RDI_LocationRegMemberTable:
 
 @xlist RDI_ThreadVariable_XList:
 {
-  @expand(RDI_ThreadVariableMemberTable a) `$(a.type), $(a.name)`
+  @expand(RDI_ThreadVariableMemberTable a) `$(type), $(a.name)`
 }
 
 @xlist RDI_Procedure_XList:
@@ -1208,7 +1245,7 @@ RDI_EvalOpTable:
   {Stop        0       0 0 0}
   {Noop        1       0 0 0}
   {Cond        2       1 1 0}
-  {Skip        3       1 0 0}
+  {Skip        3       2 0 0}
   {MemRead     4       1 1 1}
   {RegRead     5       4 0 1}
   {RegReadDyn  6       0 1 1}
@@ -1221,48 +1258,52 @@ RDI_EvalOpTable:
   {ConstU16    13      2 0 1}
   {ConstU32    14      4 0 1}
   {ConstU64    15      8 0 1}
-  {Abs         16      1 1 1}
-  {Neg         17      1 1 1}
-  {Add         18      1 2 1}
-  {Sub         19      1 2 1}
-  {Mul         20      1 2 1}
-  {Div         21      1 2 1}
-  {Mod         22      1 2 1}
-  {LShift      23      1 2 1}
-  {RShift      24      1 2 1}
-  {BitAnd      25      1 2 1}
-  {BitOr       26      1 2 1}
-  {BitXor      27      1 2 1}
-  {BitNot      28      1 1 1}
-  {LogAnd      29      1 2 1}
-  {LogOr       30      1 2 1}
-  {LogNot      31      1 1 1}
-  {EqEq        32      1 2 1}
-  {NtEq        33      1 2 1}
-  {LsEq        34      1 2 1}
-  {GrEq        35      1 2 1}
-  {Less        36      1 2 1}
-  {Grtr        37      1 2 1}
-  {Trunc       38      1 1 1}
-  {TruncSigned 39      1 1 1}
-  {Convert     40      2 1 1}
-  {Pick        41      1 0 1}
-  {Pop         42      0 1 0}
-  {Insert      43      1 0 0}
-  {COUNT       44      0 0 0}
+  {ConstU128   16     16 0 1}
+  {ConstString 17      1 0 1}
+  {Abs         18      1 1 1}
+  {Neg         19      1 1 1}
+  {Add         20      1 2 1}
+  {Sub         21      1 2 1}
+  {Mul         22      1 2 1}
+  {Div         23      1 2 1}
+  {Mod         24      1 2 1}
+  {LShift      25      1 2 1}
+  {RShift      26      1 2 1}
+  {BitAnd      27      1 2 1}
+  {BitOr       28      1 2 1}
+  {BitXor      29      1 2 1}
+  {BitNot      30      1 1 1}
+  {LogAnd      31      1 2 1}
+  {LogOr       32      1 2 1}
+  {LogNot      33      1 1 1}
+  {EqEq        34      1 2 1}
+  {NtEq        35      1 2 1}
+  {LsEq        36      1 2 1}
+  {GrEq        37      1 2 1}
+  {Less        38      1 2 1}
+  {Grtr        39      1 2 1}
+  {Trunc       40      1 1 1}
+  {TruncSigned 41      1 1 1}
+  {Convert     42      2 1 1}
+  {Pick        43      1 0 1}
+  {Pop         44      0 1 0}
+  {Insert      45      1 0 0}
+  {ValueRead   46      1 2 1}
+  {ByteSwap    47      1 1 1}
+  {COUNT       48      0 0 0}
 }
 
 // NOTE(rjf): "ck" -> "conversion kind, when converted to type group", used in square matrix form
 // e.g. x:0, y:0 means other -> other, x:3, y:1 means uint -> f32, etc.
-@table(name value      ck0             ck1         ck2          ck3         ck4)
+@table(name value       ck0             ck1         ck2          ck3         ck4)
 RDI_EvalTypeGroupTable:
 {
-  {Other 0              OtherToOther    FromOther   FromOther    FromOther   FromOther }
-  {U     1              ToOther         Noop        Noop         Legal       Legal     }
-  {S     2              ToOther         Noop        Noop         Legal       Legal     }
-  {F32   3              ToOther         Legal       Legal        Noop        Legal     }
-  {F64   4              ToOther         Legal       Legal        Legal       Noop      }
-  {COUNT 5              Noop            Noop        Noop         Noop        Noop      }
+  {Other  0              OtherToOther    FromOther   FromOther    FromOther   FromOther   }
+  {U      1              ToOther         Noop        Noop         Legal       Legal       }
+  {S      2              ToOther         Noop        Noop         Legal       Legal       }
+  {F32    3              ToOther         Legal       Legal        Noop        Legal       }
+  {F64    4              ToOther         Legal       Legal        Legal       Noop        }
+  {COUNT  5              Noop            Noop        Noop         Noop        Noop        }
 }
 
 @table(name value error_string)
@@ -1293,29 +1334,29 @@ RDI_EvalConversionKindTable:
 
 @xlist RDI_EvalOp_XList:
 {
-  @expand(RDI_EvalOpTable a) `$(a.name)`;
+  @expand(RDI_EvalOpTable a) `$(a.name != COUNT -> a.name)`;
 }
 
 @xlist RDI_EvalTypeGroup_XList:
 {
-  @expand(RDI_EvalTypeGroupTable a) `$(a.name)`;
+  @expand(RDI_EvalTypeGroupTable a) `$(a.name != COUNT -> a.name)`;
 }
 
 @xlist RDI_EvalConversionKind_XList:
 {
-  @expand(RDI_EvalConversionKindTable a) `$(a.name)`;
+  @expand(RDI_EvalConversionKindTable a) `$(a.name != COUNT -> a.name)`;
 }
 
 @gen(enums)
 ```
-#define RDI_EVAL_CTRLBITS(decodeN,popN,pushN) ((decodeN) | ((popN) << 4) | ((pushN) << 6))
-#define RDI_DECODEN_FROM_CTRLBITS(ctrlbits)   ((ctrlbits) & 0xf)
-#define RDI_POPN_FROM_CTRLBITS(ctrlbits)      (((ctrlbits) >> 4) & 0x3)
-#define RDI_PUSHN_FROM_CTRLBITS(ctrlbits)     (((ctrlbits) >> 6) & 0x3)
+#define RDI_EVAL_CTRLBITS(decodeN,popN,pushN) (((decodeN) << 8) | ((popN) << 4) | ((pushN) << 0))
+#define RDI_DECODEN_FROM_CTRLBITS(ctrlbits)   (((ctrlbits) >> 8) & 0xff)
+#define RDI_POPN_FROM_CTRLBITS(ctrlbits)      (((ctrlbits) >> 4) & 0xf)
+#define RDI_PUSHN_FROM_CTRLBITS(ctrlbits)     (((ctrlbits) >> 0) & 0xf)
 #define RDI_EncodeRegReadParam(reg,bytesize,bytepos) ((reg)|((bytesize)<<8)|((bytepos)<<16))
 ```
 
-@data(RDI_U8) rdi_eval_op_ctrlbits_table:
+@data(RDI_U16) rdi_eval_op_ctrlbits_table:
 {
   @expand(RDI_EvalOpTable a) `RDI_EVAL_CTRLBITS($(a.num_decodes), $(a.num_pops), $(a.num_pushes))`;
 }
@@ -1381,7 +1422,7 @@ RDI_NameMapNodeMemberTable:
 
 @xlist RDI_NameMapKind_XList:
 {
-  @expand(RDI_NameMapKindTable a) `$(a.name)`;
+  @expand(RDI_NameMapKindTable a) `$(a.name != COUNT -> a.name)`;
 }
 
 @xlist RDI_NameMap_XList:

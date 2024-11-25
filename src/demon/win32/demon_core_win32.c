@@ -492,23 +492,23 @@ dmn_w32_image_info_from_process_base_vaddr(HANDLE process, U64 base_vaddr)
   if(got_coff_header)
   {
     U64 optional_size_off = 0;
-    Architecture arch = Architecture_Null;
+    Arch arch = Arch_Null;
     switch(coff_header.machine)
     {
       case COFF_MachineType_X86:
       {
-        arch = Architecture_x86;
+        arch = Arch_x86;
         optional_size_off = OffsetOf(PE_OptionalHeader32, sizeof_image);
       }break;
       case COFF_MachineType_X64:
       {
-        arch = Architecture_x64;
+        arch = Arch_x64;
         optional_size_off = OffsetOf(PE_OptionalHeader32Plus, sizeof_image);
       }break;
       default:
       {}break;
     }
-    if(arch != Architecture_Null)
+    if(arch != Arch_Null)
     {
       U64 optional_off = coff_header_off + sizeof(coff_header);
       U32 size = 0;
@@ -577,7 +577,7 @@ dmn_w32_xsave_tag_word_from_real_tag_word(U16 ftw)
 }
 
 internal B32
-dmn_w32_thread_read_reg_block(Architecture arch, HANDLE thread, void *reg_block)
+dmn_w32_thread_read_reg_block(Arch arch, HANDLE thread, void *reg_block)
 {
   B32 result = 0;
   ProfBeginFunction();
@@ -586,17 +586,17 @@ dmn_w32_thread_read_reg_block(Architecture arch, HANDLE thread, void *reg_block)
     ////////////////////////////
     //- rjf: unimplemented win32/arch combos
     //
-    case Architecture_Null:
-    case Architecture_COUNT:
+    case Arch_Null:
+    case Arch_COUNT:
     {}break;
-    case Architecture_arm64:
-    case Architecture_arm32:
+    case Arch_arm64:
+    case Arch_arm32:
     {NotImplemented;}break;
     
     ////////////////////////////
     //- rjf: x86
     //
-    case Architecture_x86:
+    case Arch_x86:
     {
       REGS_RegBlockX86 *dst = (REGS_RegBlockX86 *)reg_block;
       
@@ -679,22 +679,18 @@ dmn_w32_thread_read_reg_block(Architecture arch, HANDLE thread, void *reg_block)
     ////////////////////////////
     //- rjf: x64
     //
-    case Architecture_x64:
+    case Arch_x64:
     {
       Temp scratch = scratch_begin(0, 0);
       REGS_RegBlockX64 *dst = (REGS_RegBlockX64 *)reg_block;
       
       //- rjf: unpack info about available features
       U32 feature_mask = GetEnabledXStateFeatures();
-      B32 avx_enabled = !!(feature_mask & XSTATE_MASK_AVX);
+      B32 xstate_enabled = (feature_mask & (XSTATE_MASK_AVX | XSTATE_MASK_AVX512)) != 0;
       
       //- rjf: set up context
       CONTEXT *ctx = 0;
-      U32 ctx_flags = DMN_W32_CTX_X64_ALL;
-      if(avx_enabled)
-      {
-        ctx_flags |= DMN_W32_CTX_INTEL_XSTATE;
-      }
+      U32 ctx_flags = DMN_W32_CTX_X64_ALL | (xstate_enabled ? DMN_W32_CTX_INTEL_XSTATE : 0);
       DWORD size = 0;
       InitializeContext(0, ctx_flags, 0, &size);
       if(GetLastError() == ERROR_INSUFFICIENT_BUFFER)
@@ -707,18 +703,9 @@ dmn_w32_thread_read_reg_block(Architecture arch, HANDLE thread, void *reg_block)
       }
       
       //- rjf: unpack features available on this context
-      B32 avx_available = 0;
-      if(ctx != 0)
+      if (xstate_enabled)
       {
-        if(avx_enabled)
-        {
-          SetXStateFeaturesMask(ctx, XSTATE_MASK_AVX);
-        }
-        DWORD64 xstate_flags = 0;
-        if(GetXStateFeaturesMask(ctx, &xstate_flags))
-        {
-          avx_available = !!(xstate_flags & XSTATE_MASK_AVX);
-        }
+        SetXStateFeaturesMask(ctx, XSTATE_MASK_AVX | XSTATE_MASK_AVX512);
       }
       
       //- rjf: get thread context
@@ -733,6 +720,9 @@ dmn_w32_thread_read_reg_block(Architecture arch, HANDLE thread, void *reg_block)
         break;
       }
       result = 1;
+      
+      DWORD64 xstate_mask = 0;
+      GetXStateFeaturesMask(ctx, &xstate_mask);
       
       //- rjf: convert context -> REGS_RegBlockX64
       XSAVE_FORMAT *xsave = &ctx->FltSave;
@@ -786,32 +776,90 @@ dmn_w32_thread_read_reg_block(Architecture arch, HANDLE thread, void *reg_block)
           MemoryCopy(float_d, float_s, sizeof(*float_d));
         }
       }
-      if(!avx_available)
+      
+      // SSE registers are always available in x64
       {
         M128A *xmm_s = xsave->XmmRegisters;
-        REGS_Reg256 *xmm_d = &dst->ymm0;
-        for(U32 n = 0; n < 16; n += 1, xmm_s += 1, xmm_d += 1)
+        REGS_Reg512 *zmm_d = &dst->zmm0;
+        for(U32 n = 0; n < 16; n += 1, xmm_s += 1, zmm_d += 1)
         {
-          MemoryCopy(xmm_d, xmm_s, sizeof(*xmm_s));
+          MemoryCopy(zmm_d, xmm_s, sizeof(*xmm_s));
         }
       }
-      if(avx_available)
+      
+      // AVX
+      if(xstate_mask & XSTATE_MASK_AVX)
       {
-        DWORD part0_length = 0;
-        M128A *part0 = (M128A*)LocateXStateFeature(ctx, XSTATE_LEGACY_SSE, &part0_length);
-        DWORD part1_length = 0;
-        M128A *part1 = (M128A*)LocateXStateFeature(ctx, XSTATE_AVX, &part1_length);
-        Assert(part0_length == part1_length);
-        DWORD count = part0_length/sizeof(part0[0]);
-        count = ClampTop(count, 16);
-        REGS_Reg256 *ymm_d = &dst->ymm0;
-        for (DWORD i = 0; i < count; i += 1, part0 += 1, part1 += 1, ymm_d += 1)
+        DWORD avx_length = 0;
+        U8* avx_s = (U8*)LocateXStateFeature(ctx, XSTATE_AVX, &avx_length);
+        Assert(avx_length == 16 * sizeof(REGS_Reg128));
+        
+        REGS_Reg512 *zmm_d = &dst->zmm0;
+        for(U32 n = 0; n < 16; n += 1, avx_s += sizeof(REGS_Reg128), zmm_d += 1)
         {
-          // TODO(rjf): confirm ordering of writes
-          ymm_d->u64[3] = part0->Low;
-          ymm_d->u64[2] = part0->High;
-          ymm_d->u64[1] = part1->Low;
-          ymm_d->u64[0] = part1->High;
+          MemoryCopy(&zmm_d->v[16], avx_s, sizeof(REGS_Reg128));
+        }
+      }
+      else
+      {
+        REGS_Reg512 *zmm_d = &dst->zmm0;
+        for(U32 n = 0; n < 16; n += 1, zmm_d += 1)
+        {
+          MemoryZero(&zmm_d->v[16], sizeof(REGS_Reg128));
+        }
+      }
+      
+      // AVX-512
+      if(xstate_mask & XSTATE_MASK_AVX512)
+      {
+        DWORD kmask_length = 0;
+        U64* kmask_s = (U64*)LocateXStateFeature(ctx, XSTATE_AVX512_KMASK, &kmask_length);
+        Assert(kmask_length == 8 * sizeof(U64));
+        
+        REGS_Reg64 *kmask_d = &dst->k0;
+        for(U32 n = 0; n < 8; n += 1, kmask_s += 1, kmask_d += 1)
+        {
+          MemoryCopy(kmask_d, kmask_s, sizeof(*kmask_s));
+        }
+        
+        DWORD avx512h_length = 0;
+        U8* avx512h_s = (U8*)LocateXStateFeature(ctx, XSTATE_AVX512_ZMM_H, &avx512h_length);
+        Assert(avx512h_length == 16 * sizeof(REGS_Reg256));
+        
+        REGS_Reg512 *zmmh_d = &dst->zmm0;
+        for(U32 n = 0; n < 16; n += 1, avx512h_s += sizeof(REGS_Reg256), zmmh_d += 1)
+        {
+          MemoryCopy(&zmmh_d->v[32], avx512h_s, sizeof(REGS_Reg256));
+        }
+        
+        DWORD avx512_length = 0;
+        U8* avx512_s = (U8*)LocateXStateFeature(ctx, XSTATE_AVX512_ZMM, &avx512_length);
+        Assert(avx512_length == 16 * sizeof(REGS_Reg512));
+        
+        REGS_Reg512 *zmm_d = &dst->zmm16;
+        for(U32 n = 0; n < 16; n += 1, avx512_s += sizeof(REGS_Reg512), zmm_d += 1)
+        {
+          MemoryCopy(zmm_d, avx512_s, sizeof(REGS_Reg512));
+        }
+      }
+      else
+      {
+        REGS_Reg64 *kmask_d = &dst->k0;
+        for(U32 n = 0; n < 8; n += 1, kmask_d += 1)
+        {
+          MemoryZero(kmask_d, sizeof(*kmask_d));
+        }
+        
+        REGS_Reg512 *zmmh_d = &dst->zmm0;
+        for(U32 n = 0; n < 16; n += 1, zmmh_d += 1)
+        {
+          MemoryZero(&zmmh_d->v[32], sizeof(REGS_Reg256));
+        }
+        
+        REGS_Reg512 *zmm_d = &dst->zmm16;
+        for(U32 n = 0; n < 16; n += 1, zmm_d += 1)
+        {
+          MemoryZero(zmm_d, sizeof(*zmm_d));
         }
       }
       
@@ -823,7 +871,7 @@ dmn_w32_thread_read_reg_block(Architecture arch, HANDLE thread, void *reg_block)
 }
 
 internal B32
-dmn_w32_thread_write_reg_block(Architecture arch, HANDLE thread, void *reg_block)
+dmn_w32_thread_write_reg_block(Arch arch, HANDLE thread, void *reg_block)
 {
   B32 result = 0;
   ProfBeginFunction();
@@ -832,17 +880,17 @@ dmn_w32_thread_write_reg_block(Architecture arch, HANDLE thread, void *reg_block
     ////////////////////////////
     //- rjf: unimplemented win32/arch combos
     //
-    case Architecture_Null:
-    case Architecture_COUNT:
+    case Arch_Null:
+    case Arch_COUNT:
     {}break;
-    case Architecture_arm64:
-    case Architecture_arm32:
+    case Arch_arm64:
+    case Arch_arm32:
     {NotImplemented;}break;
     
     ////////////////////////////
     //- rjf: x86
     //
-    case Architecture_x86:
+    case Arch_x86:
     {
       REGS_RegBlockX86 *src = (REGS_RegBlockX86 *)reg_block;
       
@@ -910,22 +958,18 @@ dmn_w32_thread_write_reg_block(Architecture arch, HANDLE thread, void *reg_block
     ////////////////////////////
     //- rjf: x64
     //
-    case Architecture_x64:
+    case Arch_x64:
     {
       Temp scratch = scratch_begin(0, 0);
       REGS_RegBlockX64 *src = (REGS_RegBlockX64 *)reg_block;
       
       //- rjf: unpack info about available features
       U32 feature_mask = GetEnabledXStateFeatures();
-      B32 avx_enabled = !!(feature_mask & XSTATE_MASK_AVX);
+      B32 xstate_enabled = (feature_mask & (XSTATE_MASK_AVX | XSTATE_MASK_AVX512)) != 0;
       
       //- rjf: set up context
       CONTEXT *ctx = 0;
-      U32 ctx_flags = DMN_W32_CTX_X64_ALL;
-      if(avx_enabled)
-      {
-        ctx_flags |= DMN_W32_CTX_INTEL_XSTATE;
-      }
+      U32 ctx_flags = DMN_W32_CTX_X64_ALL | (xstate_enabled ? DMN_W32_CTX_INTEL_XSTATE : 0);
       DWORD size = 0;
       InitializeContext(0, ctx_flags, 0, &size);
       if(GetLastError() == ERROR_INSUFFICIENT_BUFFER)
@@ -938,30 +982,14 @@ dmn_w32_thread_write_reg_block(Architecture arch, HANDLE thread, void *reg_block
       }
       
       //- rjf: unpack features available on this context
-      B32 avx_available = 0;
-      if(ctx != 0)
+      if (xstate_enabled)
       {
-        if(avx_enabled)
-        {
-          SetXStateFeaturesMask(ctx, XSTATE_MASK_AVX);
-        }
-        DWORD64 xstate_flags = 0;
-        if(GetXStateFeaturesMask(ctx, &xstate_flags))
-        {
-          avx_available = !!(xstate_flags & XSTATE_MASK_AVX);
-        }
-      }
-      
-      //- rjf: get thread context
-      if(!GetThreadContext(thread, ctx))
-      {
-        ctx = 0;
+        SetXStateFeaturesMask(ctx, XSTATE_MASK_AVX | XSTATE_MASK_AVX512);
       }
       
       //- rjf: bad context -> abort
       if(ctx == 0)
       {
-        DWORD error = GetLastError();
         break;
       }
       
@@ -1015,32 +1043,62 @@ dmn_w32_thread_write_reg_block(Architecture arch, HANDLE thread, void *reg_block
           MemoryCopy(float_d, float_s, 10);
         }
       }
-      if(!avx_available)
+      
+      // SSE registers are always available in x64
       {
         M128A *xmm_d = fxsave->XmmRegisters;
-        REGS_Reg256 *xmm_s = &src->ymm0;
-        for(U32 n = 0; n < 8; n += 1, xmm_d += 1, xmm_s += 1)
+        REGS_Reg512 *zmm_s = &src->zmm0;
+        for(U32 n = 0; n < 16; n += 1, xmm_d += 1, zmm_s += 1)
         {
-          MemoryCopy(xmm_d, xmm_s, sizeof(*xmm_d));
+          MemoryCopy(xmm_d, zmm_s, sizeof(*xmm_d));
         }
       }
-      if(avx_available)
+      
+      // AVX
+      if(feature_mask & XSTATE_MASK_AVX)
       {
-        DWORD part0_length = 0;
-        M128A *part0 = (M128A*)LocateXStateFeature(ctx, XSTATE_LEGACY_SSE, &part0_length);
-        DWORD part1_length = 0;
-        M128A *part1 = (M128A*)LocateXStateFeature(ctx, XSTATE_AVX, &part1_length);
-        Assert(part0_length == part1_length);
-        DWORD count = part0_length/sizeof(part0[0]);
-        count = ClampTop(count, 16);
-        REGS_Reg256 *ymm_d = &src->ymm0;
-        for(DWORD i = 0; i < count; i += 1, part0 += 1, part1 += 1, ymm_d += 1)
+        DWORD avx_length = 0;
+        U8* avx_d = (U8*)LocateXStateFeature(ctx, XSTATE_AVX, &avx_length);
+        Assert(avx_length == 16 * sizeof(REGS_Reg128));
+        
+        REGS_Reg512 *zmm_s = &src->zmm0;
+        for(U32 n = 0; n < 16; n += 1, avx_d += sizeof(REGS_Reg128), zmm_s += 1)
         {
-          // TODO(allen): Are we writing these out in the right order? Seems weird right?
-          part0->Low  = ymm_d->u64[3];
-          part0->High = ymm_d->u64[2];
-          part1->Low  = ymm_d->u64[1];
-          part1->High = ymm_d->u64[0];
+          MemoryCopy(avx_d, &zmm_s->v[16], sizeof(REGS_Reg128));
+        }
+      }
+      
+      // AVX-512
+      if(feature_mask & XSTATE_MASK_AVX512)
+      {
+        DWORD kmask_length = 0;
+        U64* kmask_d = (U64*)LocateXStateFeature(ctx, XSTATE_AVX512_KMASK, &kmask_length);
+        Assert(kmask_length == 8 * sizeof(*kmask_d));
+        
+        REGS_Reg64 *kmask_s = &src->k0;
+        for(U32 n = 0; n < 8; n += 1, kmask_s += 1, kmask_d += 1)
+        {
+          MemoryCopy(kmask_d, kmask_s, sizeof(*kmask_d));
+        }
+        
+        DWORD avx512h_length = 0;
+        U8* avx512h_d = (U8*)LocateXStateFeature(ctx, XSTATE_AVX512_ZMM_H, &avx512h_length);
+        Assert(avx512h_length == 16 * sizeof(REGS_Reg256));
+        
+        REGS_Reg512 *zmmh_s = &src->zmm0;
+        for(U32 n = 0; n < 16; n += 1, avx512h_d += sizeof(REGS_Reg256), zmmh_s += 1)
+        {
+          MemoryCopy(avx512h_d, &zmmh_s->v[32], sizeof(REGS_Reg256));
+        }
+        
+        DWORD avx512_length = 0;
+        U8* avx512_d = (U8*)LocateXStateFeature(ctx, XSTATE_AVX512_ZMM, &avx512_length);
+        Assert(avx512_length == 16 * sizeof(REGS_Reg512));
+        
+        REGS_Reg512 *zmm_s = &src->zmm16;
+        for(U32 n = 0; n < 16; n += 1, avx512_d += sizeof(REGS_Reg512), zmm_s += 1)
+        {
+          MemoryCopy(avx512_d, zmm_s, sizeof(REGS_Reg512));
         }
       }
       
@@ -1083,7 +1141,7 @@ dmn_init(void)
   dmn_w32_shared->arena = arena;
   dmn_w32_shared->access_mutex = os_mutex_alloc();
   dmn_w32_shared->detach_arena = arena_alloc();
-  dmn_w32_shared->entities_arena = arena_alloc__sized(GB(8), KB(64));
+  dmn_w32_shared->entities_arena = arena_alloc(.reserve_size = GB(8), .commit_size = KB(64));
   dmn_w32_shared->entities_base = dmn_w32_entity_alloc(&dmn_w32_entity_nil, DMN_W32_EntityKind_Root, 0);
   dmn_w32_shared->entities_id_hash_slots_count = 4096;
   dmn_w32_shared->entities_id_hash_slots = push_array(arena, DMN_W32_EntityIDHashSlot, dmn_w32_shared->entities_id_hash_slots_count);
@@ -1147,7 +1205,7 @@ dmn_ctrl_exclusive_access_end(void)
 }
 
 internal U32
-dmn_ctrl_launch(DMN_CtrlCtx *ctx, OS_LaunchOptions *options)
+dmn_ctrl_launch(DMN_CtrlCtx *ctx, OS_ProcessLaunchParams *params)
 {
   Temp scratch = scratch_begin(0, 0);
   U32 result = 0;
@@ -1155,12 +1213,14 @@ dmn_ctrl_launch(DMN_CtrlCtx *ctx, OS_LaunchOptions *options)
   {
     //- rjf: produce exe / arguments string
     String8 cmd = {0};
-    if(options->cmd_line.first != 0)
+    if(params->cmd_line.first != 0)
     {
       String8List args = {0};
-      String8 exe_path = options->cmd_line.first->string;
+      String8 exe_path = params->cmd_line.first->string;
+      String8List exe_path_parts = str8_split_path(scratch.arena, exe_path);
+      exe_path = str8_list_join(scratch.arena, &exe_path_parts, &(StringJoin){.sep = str8_lit("\\")});
       str8_list_pushf(scratch.arena, &args, "\"%S\"", exe_path);
-      for(String8Node *n = options->cmd_line.first->next; n != 0; n = n->next)
+      for(String8Node *n = params->cmd_line.first->next; n != 0; n = n->next)
       {
         str8_list_push(scratch.arena, &args, n->string);
       }
@@ -1172,12 +1232,12 @@ dmn_ctrl_launch(DMN_CtrlCtx *ctx, OS_LaunchOptions *options)
     //- rjf: produce environment strings
     String8 env = {0};
     {
-      String8List all_opts = options->env;
-      if(options->inherit_env != 0)
+      String8List all_opts = params->env;
+      if(params->inherit_env != 0)
       {
         MemoryZeroStruct(&all_opts);
         str8_list_push(scratch.arena, &all_opts, str8_lit("_NO_DEBUG_HEAP=1"));
-        for(String8Node *n = options->env.first; n != 0; n = n->next)
+        for(String8Node *n = params->env.first; n != 0; n = n->next)
         {
           str8_list_push(scratch.arena, &all_opts, n->string);
         }
@@ -1194,15 +1254,45 @@ dmn_ctrl_launch(DMN_CtrlCtx *ctx, OS_LaunchOptions *options)
     
     //- rjf: produce utf-16 strings
     String16 cmd16 = str16_from_8(scratch.arena, cmd);
-    String16 dir16 = str16_from_8(scratch.arena, options->path);
+    String16 dir16 = str16_from_8(scratch.arena, params->path);
     String16 env16 = str16_from_8(scratch.arena, env);
     
     //- rjf: launch
-    DWORD access_flags = CREATE_UNICODE_ENVIRONMENT|DEBUG_PROCESS;
+    DWORD creation_flags = CREATE_UNICODE_ENVIRONMENT;
+    if(params->debug_subprocesses)
+    {
+      creation_flags |= DEBUG_PROCESS;
+    }
+    else
+    {
+      creation_flags |= DEBUG_ONLY_THIS_PROCESS;
+    }
+    BOOL inherit_handles = 0;
     STARTUPINFOW startup_info = {sizeof(startup_info)};
+    if(!os_handle_match(params->stdout_file, os_handle_zero()))
+    {
+      HANDLE stdout_handle = (HANDLE)params->stdout_file.u64[0];
+      startup_info.hStdOutput = stdout_handle;
+      startup_info.dwFlags |= STARTF_USESTDHANDLES;
+      inherit_handles = 1;
+    }
+    if(!os_handle_match(params->stderr_file, os_handle_zero()))
+    {
+      HANDLE stderr_handle = (HANDLE)params->stderr_file.u64[0];
+      startup_info.hStdError = stderr_handle;
+      startup_info.dwFlags |= STARTF_USESTDHANDLES;
+      inherit_handles = 1;
+    }
+    if(!os_handle_match(params->stdin_file, os_handle_zero()))
+    {
+      HANDLE stdin_handle = (HANDLE)params->stdin_file.u64[0];
+      startup_info.hStdInput = stdin_handle;
+      startup_info.dwFlags |= STARTF_USESTDHANDLES;
+      inherit_handles = 1;
+    }
     PROCESS_INFORMATION process_info = {0};
     AllocConsole();
-    if(CreateProcessW(0, (WCHAR*)cmd16.str, 0, 0, 1, access_flags, (WCHAR*)env16.str, (WCHAR*)dir16.str, &startup_info, &process_info))
+    if(CreateProcessW(0, (WCHAR*)cmd16.str, 0, 0, 1, creation_flags, (WCHAR*)env16.str, (WCHAR*)dir16.str, &startup_info, &process_info))
     {
       // check if we are 32-bit app, and just close it immediately
       BOOL is_wow = 0;
@@ -1392,11 +1482,11 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
       if(!dmn_handle_match(ctrls->single_step_thread, dmn_handle_zero()))
       {
         DMN_W32_Entity *thread = dmn_w32_entity_from_handle(ctrls->single_step_thread);
-        Architecture arch = thread->arch;
+        Arch arch = thread->arch;
         switch(arch)
         {
           default:{}break;
-          case Architecture_x64:
+          case Arch_x64:
           {
             U32 ctx_flags = DMN_W32_CTX_X64|DMN_W32_CTX_INTEL_CONTROL;
             DWORD size = 0;
@@ -1419,19 +1509,19 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
       if(!dmn_handle_match(ctrls->single_step_thread, dmn_handle_zero())) ProfScope("set single step bit")
       {
         DMN_W32_Entity *thread = dmn_w32_entity_from_handle(ctrls->single_step_thread);
-        Architecture arch = thread->arch;
+        Arch arch = thread->arch;
         switch(arch)
         {
           //- rjf: unimplemented win32/arch combos
-          case Architecture_Null:
-          case Architecture_COUNT:
+          case Arch_Null:
+          case Arch_COUNT:
           {}break;
-          case Architecture_arm64:
-          case Architecture_arm32:
+          case Arch_arm64:
+          case Arch_arm32:
           {NotImplemented;}break;
           
           //- rjf: x86
-          case Architecture_x86:
+          case Arch_x86:
           {
             REGS_RegBlockX86 regs = {0};
             dmn_thread_read_reg_block(ctrls->single_step_thread, &regs);
@@ -1440,7 +1530,7 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
           }break;
           
           //- rjf: x64
-          case Architecture_x64:
+          case Arch_x64:
           {
             if(!GetThreadContext(thread->handle, single_step_thread_ctx))
             {
@@ -2037,7 +2127,7 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
                   default:
                   {
                     Temp temp = temp_begin(scratch.arena);
-                    U64 regs_block_size = regs_block_size_from_architecture(thread->arch);
+                    U64 regs_block_size = regs_block_size_from_arch(thread->arch);
                     void *regs_block = push_array(scratch.arena, U8, regs_block_size);
                     if(dmn_w32_thread_read_reg_block(thread->arch, thread->handle, regs_block))
                     {
@@ -2048,7 +2138,7 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
                   }break;
                   
                   //- rjf: x64 (fastpath)
-                  case Architecture_x64:
+                  case Arch_x64:
                   {
                     CONTEXT *ctx = 0;
                     U32 ctx_flags = DMN_W32_CTX_X64|DMN_W32_CTX_INTEL_CONTROL;
@@ -2406,26 +2496,26 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
       if(!dmn_handle_match(ctrls->single_step_thread, dmn_handle_zero())) ProfScope("unset single step bit")
       {
         DMN_W32_Entity *thread = dmn_w32_entity_from_handle(ctrls->single_step_thread);
-        Architecture arch = thread->arch;
+        Arch arch = thread->arch;
         switch(arch)
         {
           //- rjf: unimplemented win32/arch combos
-          case Architecture_Null:
-          case Architecture_COUNT:
+          case Arch_Null:
+          case Arch_COUNT:
           {}break;
-          case Architecture_arm64:
-          case Architecture_arm32:
+          case Arch_arm64:
+          case Arch_arm32:
           {NotImplemented;}break;
           
           //- rjf: x86/64
-          case Architecture_x86:
+          case Arch_x86:
           {
             REGS_RegBlockX86 regs = {0};
             dmn_thread_read_reg_block(ctrls->single_step_thread, &regs);
             regs.eflags.u32 &= ~0x100;
             dmn_thread_write_reg_block(ctrls->single_step_thread, &regs);
           }break;
-          case Architecture_x64:
+          case Arch_x64:
           {
             if(!GetThreadContext(thread->handle, single_step_thread_ctx))
             {
@@ -2679,10 +2769,10 @@ dmn_process_write(DMN_Handle process, Rng1U64 range, void *src)
 
 //- rjf: threads
 
-internal Architecture
+internal Arch
 dmn_arch_from_thread(DMN_Handle handle)
 {
-  Architecture arch = Architecture_Null;
+  Arch arch = Arch_Null;
   DMN_AccessScope
   {
     DMN_W32_Entity *entity = dmn_w32_entity_from_handle(handle);
@@ -2704,18 +2794,18 @@ dmn_stack_base_vaddr_from_thread(DMN_Handle handle)
       U64 tlb = thread->thread.thread_local_base;
       switch(thread->arch)
       {
-        case Architecture_Null:
-        case Architecture_COUNT:
+        case Arch_Null:
+        case Arch_COUNT:
         {}break;
-        case Architecture_arm64:
-        case Architecture_arm32:
+        case Arch_arm64:
+        case Arch_arm32:
         {NotImplemented;}break;
-        case Architecture_x64:
+        case Arch_x64:
         {
           U64 stack_base_addr = tlb + 0x8;
           dmn_w32_process_read(process->handle, r1u64(stack_base_addr, stack_base_addr+8), &result);
         }break;
-        case Architecture_x86:
+        case Arch_x86:
         {
           U64 stack_base_addr = tlb + 0x4;
           dmn_w32_process_read(process->handle, r1u64(stack_base_addr, stack_base_addr+4), &result);
@@ -2738,17 +2828,17 @@ dmn_tls_root_vaddr_from_thread(DMN_Handle handle)
       result = entity->thread.thread_local_base;
       switch(entity->arch)
       {
-        case Architecture_Null:
-        case Architecture_COUNT:
+        case Arch_Null:
+        case Arch_COUNT:
         {}break;
-        case Architecture_arm64:
-        case Architecture_arm32:
+        case Arch_arm64:
+        case Arch_arm32:
         {NotImplemented;}break;
-        case Architecture_x64:
+        case Arch_x64:
         {
           result += 88;
         }break;
-        case Architecture_x86:
+        case Arch_x86:
         {
           result += 44;
         }break;

@@ -218,10 +218,6 @@ struct TXT_Shared
   OS_Handle u2p_ring_cv;
   OS_Handle u2p_ring_mutex;
   
-  // rjf: parse threads
-  U64 parse_thread_count;
-  OS_Handle *parse_threads;
-  
   // rjf: evictor thread
   OS_Handle evictor_thread;
 };
@@ -237,7 +233,7 @@ global TXT_Shared *txt_shared = 0;
 
 internal TXT_LangKind txt_lang_kind_from_extension(String8 extension);
 internal String8 txt_extension_from_lang_kind(TXT_LangKind kind);
-internal TXT_LangKind txt_lang_kind_from_architecture(Architecture arch);
+internal TXT_LangKind txt_lang_kind_from_arch(Arch arch);
 internal TXT_LangLexFunctionType *txt_lex_function_from_lang_kind(TXT_LangKind kind);
 
 ////////////////////////////////
@@ -266,12 +262,6 @@ internal void txt_init(void);
 //~ rjf: Thread Context Initialization
 
 internal void txt_tctx_ensure_inited(void);
-
-////////////////////////////////
-//~ rjf: User Clock
-
-internal void txt_user_clock_tick(void);
-internal U64 txt_user_clock_idx(void);
 
 ////////////////////////////////
 //~ rjf: Scoped Access
@@ -303,7 +293,7 @@ internal TXT_LineTokensSlice txt_line_tokens_slice_from_info_data_line_range(Are
 
 internal B32 txt_u2p_enqueue_req(U128 hash, TXT_LangKind lang, U64 endt_us);
 internal void txt_u2p_dequeue_req(U128 *hash_out, TXT_LangKind *lang_out);
-internal void txt_parse_thread__entry_point(void *p);
+ASYNC_WORK_DEF(txt_parse_work);
 
 ////////////////////////////////
 //~ rjf: Evictor Threads

@@ -17,7 +17,7 @@ with any information you can gather, like dump files (along with the build you
 used), instructions to reproduce, test executables, and so on.
 
 You can download pre-built binaries for the debugger
-[here](https://github.com/EpicGames/raddebugger/releases).
+[here](https://github.com/EpicGamesExt/raddebugger/releases).
 
 The RAD Debugger project aims to simplify the debugger by simplifying and
 unifying the underlying debug info format. In that pursuit we've built the RAD
@@ -90,13 +90,12 @@ You should see the following output:
 ```
 [debug mode]
 [msvc compile]
-[default mode, assuming `raddbg` build]
 metagen_main.c
-searching C:\devel\raddebugger/src... 299 files found
-parsing metadesk... 12 metadesk files parsed
-gathering tables... 37 tables found
+searching C:\devel\raddebugger/src... 309 files found
+parsing metadesk... 15 metadesk files parsed
+gathering tables... 96 tables found
 generating layer code...
-raddbg.cpp
+raddbg_main.c
 ```
 
 If everything worked correctly, there will be a `build` folder in the root
@@ -159,6 +158,45 @@ like remote debugging, porting to different architectures, further improving
 the debugger's features (like improving the visualization engine), and so on.
 But for now, we're mostly focused on those first two phases.
 
+---
+
+# The RAD Linker
+
+The RAD Linker is a new performance linker for generating x64 PE/COFF binaries. It is designed to be very fast when creating gigantic executables. It generates standard PDB files for debugging, but it can also optionally create RAD Debugger debug info too (useful for huge executables that otherwise create broken PDBs that overflow internal 32-bit tables).
+
+The RAD Linker is primarily optimized to handle huge linking projects - in our test cases (where debug info is multiple gigabytes), we see 50% faster link times. 
+
+The command line syntax is fully compatible with MSVC and you can get a full list of implemented switches from `/help`.
+
+Our current designed-for use case for the linker is to help with the compile-debug cycle of huge projects. We don't yet have support for dead-code-elimination or link-time-optimizations, but these features are on the road map.
+
+By default, the RAD linker spawns as many threads as there are cores, so if you plan to run multiple linkers in parallel, you can limit the number of thread workers via `/rad_workers`.
+
+We also have support for large memory pages, which, when enabled, reduce link time by
+another 25%. To link with large pages, you need to explicitly request them via `/rad_large_pages`. Large pages are off by default, since Windows support for large pages is a bit buggy - we recommend they only be used in Docker or VM images where the environment is reset after each link. In a standard Windows environment, using large pages otherwise will fragment memory quickly forcing a reboot. We are working on a Linux port of the linker that will be able to build with large pages robustly.
+
+## Short Term Roadmap
+- Porting linker to Linux (for Windows executables, just running on Linux).
+- Debug info features
+  - Get DWARF debug info converter up-and-running.
+  - Smooth out rough edges in RADDBGI builder.
+  - Improve build speed further (especially for tiny and mid sizes projects).
+- Other features to come
+  - Dead-code-elimination via `/opt:ref`.
+  - Link Time Optimizations with the help of clang (we won't support LTCG from MSVC compiler since it is undocumented).
+
+## To build the RAD Linker
+- Setup development environment, [see](#Development-Setup-Instructions)
+- Run `build radlink release` or if you have clang installed `build radlink release clang`. We favor latter option for better code generation.
+
+If build was successful linker executable is placed in `build` folder under `radlink.exe`.
+
+## Benchmarks
+
+![AMD Ryzen Threadripper PRO 3995WX 64-Cores, 256 GiB RAM (Windows x64)](https://github.com/user-attachments/assets/a95b382a-76b4-4a4c-b809-b61fe25e667a)
+
+---
+
 ## Top-Level Directory Descriptions
 
 - `data`: Small binary files which are used when building, either to embed
@@ -169,7 +207,8 @@ After setting up the codebase and building, the following directories will
 also exist:
 
 - `build`: All build artifacts. Not checked in to version control.
-- `local`: Local files, used for local build configuration input files.
+- `local`: Local files, used for local build configuration input files. Not
+  checked in to version control.
 
 ## Codebase Introduction
 
@@ -202,6 +241,8 @@ not depend on any other layers in the codebase. The folders which contain these
 layers are prefixed with `lib_`, like `lib_rdi_format`.
 
 A list of the layers in the codebase and their associated namespaces is below:
+- `async` (`ASYNC_`): Implements a system for asynchronous work to be queued
+  and executed on a thread pool.
 - `base` (no namespace): Universal, codebase-wide constructs. Strings, math,
   memory allocators, helper macros, command-line parsing, and so on. Depends
   on no other codebase layers.
@@ -213,55 +254,70 @@ A list of the layers in the codebase and their associated namespaces is below:
   processes. Runs in lockstep with attached processes. When it runs, attached
   processes are halted. When attached processes are running, it is halted.
   Driven by a debugger frontend on another thread.
-- `dasm` (`DASM_`): An asynchronous disassembly decoder and cache. Users ask for
-  disassembly for a particular virtual address range in a process, and threads
-  implemented in this layer decode and cache the disassembly for that range.
+- `dasm_cache` (`DASM_`): An asynchronous disassembly decoder and cache. Users
+  ask for disassembly for some data, with a particular architecture, and other
+  various parameters, and threads implemented in this layer decode and cache the
+  disassembly for that data with those parameters.
 - `dbgi` (`DI_`): An asynchronous debug info loader and cache. Loads debug info
   stored in the RDI format. Users ask for debug info for a particular path, and
   on separate threads, this layer loads the associated debug info file. If
   necessary, it will launch a separate conversion process to convert original
   debug info into the RDI format.
-- `demon` (`DEMON_`): An abstraction layer for local-machine, low-level process
+- `dbg_engine` (`D_`): Implements the core debugger system, without any
+  graphical components. This contains top-level logic for things like stepping,
+  launching, freezing threads, mid-run breakpoint addition, some caching layers,
+  and so on.
+- `demon` (`DMN_`): An abstraction layer for local-machine, low-level process
   control. The abstraction is used to provide a common interface for process
   control on target platforms. Used to implement part of `ctrl`.
-- `df/core` (`DF_`): The debugger's non-graphical frontend. Implements a
-  debugger "entity cache" (where "entities" include processes, threads, modules,
-  breakpoints, source files, targets, and so on). Implements a command loop
-  for driving process control, which is used to implement stepping commands and
-  user breakpoints. Implements extractors and caches for various entity-related
-  data, like full thread unwinds and local variable maps. Also implements core
-  building blocks for evaluation and evaluation visualization.
-- `df/gfx` (`DF_`): The debugger's graphical frontend. Builds on top of
-  `df/core` to provide all graphical features, including windows, panels, all
-  of the various debugger interfaces, and evaluation visualization.
-- `draw` (`D_`): Implements a high-level graphics drawing API for the debugger's
-  purposes, using the underlying `render` abstraction layer. Provides high-level
-  APIs for various draw commands, but takes care of batching them, and so on.
-- `eval` (`EVAL_`): Implements a compiler for an expression language built for
-  evaluation of variables, registers, and so on from debugger-attached processes
-  and/or debug info. Broken into several phases mostly corresponding to
-  traditional compiler phases - lexer, parser, type-checker, IR generation, and
-  IR evaluation.
-- `font_cache` (`F_`): Implements a cache of rasterized font data, both in CPU-
-  side data for text shaping, and in GPU texture atlases for rasterized glyphs.
-  All cache information is sourced from the `font_provider` abstraction layer.
+- `draw` (`DR_`): Implements a high-level graphics drawing API for the
+  debugger's purposes, using the underlying `render` abstraction layer. Provides
+  high-level APIs for various draw commands, but takes care of batching them,
+  and so on.
+- `eval` (`E_`): Implements a compiler for an expression language built for
+  evaluation of variables, registers, types, and more, from debugger-attached
+  processes, debug info, debugger state, and files. Broken into several phases
+  mostly corresponding to traditional compiler phases - lexer, parser,
+  type-checker, IR generation, and IR evaluation.
+- `eval_visualization` (`EV_`): Implements the core non-graphical evaluation
+  visualization engine, which can be used to visualize evaluations (provided by
+  the `eval` layer) in a number of ways. Implements core data structures and
+  transforms for the `Watch` view.
+- `file_stream` (`FS_`): Provides asynchronous file loading, storing the
+  artifacts inside of the cache implemented by the `hash_store` layer, and
+  hot-reloading the contents of files when they change. Allows callers to map
+  file paths to data hashes, which can then be used to obtain the file's data.
+- `font_cache` (`FNT_`): Implements a cache of rasterized font data, both in
+  CPU-side data for text shaping, and in GPU texture atlases for rasterized
+  glyphs. All cache information is sourced from the `font_provider` abstraction
+  layer.
 - `font_provider` (`FP_`): An abstraction layer for various font file decoding
   and font rasterization backends.
+- `fuzzy_search` (`FZY_`): Provides a fuzzy searching engine for doing
+  large, asynchronous fuzzy searches. Used by the debugger for implementing
+  things like the symbol lister or the `Procedures` view, which search across
+  all loaded debug info records, using fuzzy matching rules.
 - `geo_cache` (`GEO_`): Implements an asynchronously-filled cache for GPU
   geometry data, filled by data sourced in the `hash_store` layer's cache. Used
-  for asynchronously preparing data for memory visualization in the debugger.
+  for asynchronously preparing data for visualization.
 - `hash_store` (`HS_`): Implements a cache for general data blobs, keyed by a
-  128-bit hash of the data. Used as a general data store by other layers.
+  128-bit hash of the data. Also implements a 128-bit key cache on top, where
+  the keys refer to a unique identity, associated with a 128-bit hash, where the
+  hash may change across time. Used as a general data store by other layers.
 - `lib_raddbg_markup` (`RADDBG_`): Standalone library for marking up user
-  programs to work with various features in the `raddbg` debugger. Does not
-  depend on `base`, and can be independently relocated to other codebases.
-- `lib_rdi_make` (`RDIM_`): Standalone library for constructing RDI debug info
-  data. Does not depend on `base`, and can be independently relocated
-  to other codebases.
+  programs to work with various features in the debugger. Does not depend on
+  `base`, and can be independently relocated to other codebases.
 - `lib_rdi_format` (`RDI_`): Standalone library which defines the core RDI types
   and helper functions for reading and writing the RDI debug info file format.
   Does not depend on `base`, and can be independently relocated to other
   codebases.
+- `lib_rdi_make` (`RDIM_`): Standalone library for constructing RDI debug info
+  data. Does not depend on `base`, and can be independently relocated
+  to other codebases.
+- `mdesk` (`MD_`): Code for parsing Metadesk files (stored as `.mdesk`), which
+  is the JSON-like (technically a JSON superset) text format used for the
+  debugger's user and project configuration files, view rules, and metacode,
+  which is parsed and used to generate code with the `metagen` layer.
 - `metagen` (`MG_`): A metaprogram which is used to generate primarily code and
   data tables. Consumes Metadesk files, stored with the extension `.mdesk`, and
   generates C code which is then included by hand-written C code. Currently, it
@@ -279,6 +335,9 @@ A list of the layers in the codebase and their associated namespaces is below:
 - `msf` (`MSF_`): Code for parsing and/or writing the MSF file format.
 - `mule` (no namespace): Test executables for battle testing debugger
   functionality.
+- `mutable_text` (`MTX_`): Implements an asynchronously-filled-and-mutated
+  cache for text buffers which are mutated across time. In the debugger, this is
+  used to implement the `Output` view.
 - `natvis` (no namespace): NatVis files for type visualization of the codebase's
   types in other debuggers.
 - `os/core` (`OS_`): An abstraction layer providing core, non-graphical
@@ -287,20 +346,28 @@ A list of the layers in the codebase and their associated namespaces is below:
 - `os/gfx` (`OS_`): An abstraction layer, building on `os/core`, providing
   graphical operating system features under an abstract API, which is
   implemented per-target-operating-system.
-- `os/socket` (`OS_`): An abstraction layer, building on `os/core`, providing
-  networking operating system features under an abstract API, which is
-  implemented per-target-operating-system.
+- `path` (`PATH_`): Small helpers for manipulating file path strings.
 - `pdb` (`PDB_`): Code for parsing and/or writing the PDB file format.
 - `pe` (`PE_`): Code for parsing and/or writing the PE (Portable Executable)
   file format.
-- `raddbg` (no namespace): The layer which ties everything together for the main
-  graphical debugger. Not much "meat", just drives `df`, implements command line
-  options, and so on.
-- `rdi_from_pdb` (`P2R_`): Our implementation of PDB-to-RDI conversion.
-- `rdi_from_dwarf` (`D2R_`): Our in-progress implementation of DWARF-to-RDI
-  conversion.
+- `raddbg` (`RD_`): The layer which ties everything together for the main
+  graphical debugger. Implements the debugger's graphical frontend, all of the
+  debugger-specific UI, the debugger executable's command line interface, and
+  all of the built-in visualizers.
+- `rdi_breakpad_from_pdb` (`P2B_`): Our implementation, using the codebase's RDI
+  technology, for extracting information from PDBs and generating Breakpad text
+  dumps.
 - `rdi_dump` (no namespace): A dumper utility program for dumping
   textualizations of RDI debug info files.
+- `rdi_format` (no namespace): A layer which includes the `lib_rdi_format` layer
+  and bundles it with codebase-specific helpers, to easily include the library
+  in codebase programs, and have it be integrated with codebase constructs.
+- `rdi_from_dwarf` (`D2R_`): Our in-progress implementation of DWARF-to-RDI
+  conversion.
+- `rdi_from_pdb` (`P2R_`): Our implementation of PDB-to-RDI conversion.
+- `rdi_make` (no namespace): A layer which includes the `lib_rdi_make` layer and
+  bundles it with codebase-specific helpers, to easily include the library in
+  codebase programs, and have it be integrated with codebase constructs.
 - `regs` (`REGS_`): Types, helper functions, and metadata for registers on
   supported architectures. Used in reading/writing registers in `demon`, or in
   looking up register metadata.
@@ -309,19 +376,17 @@ A list of the layers in the codebase and their associated namespaces is below:
   level drawing API - this layer is strictly for minimally abstracting on an
   as-needed basis. Higher level drawing features are implemented in the `draw`
   layer.
-- `scratch` (no namespace): Scratch space for small and transient test or sample
-  programs.
+- `scratch` (no namespace): Scratch space for small and transient test programs.
 - `texture_cache` (`TEX_`): Implements an asynchronously-filled cache for GPU
   texture data, filled by data sourced in the `hash_store` layer's cache. Used
-  for asynchronously preparing data for memory visualization in the debugger.
-- `txti` (`TXTI_`): Machinery for asynchronously-loaded, asynchronously hot-
-  reloaded, asynchronously parsed, and asynchronously mutated source code files.
-  Used by the debugger to visualize source code files. Users ask for text lines,
-  tokens, and metadata, and it is prepared on background threads.
-- `type_graph` (`TG_`): Code for analyzing and navigating type structures from
-  RDI debug info files, with the additional capability of constructing
-  synthetic types *not* found in debug info. Used in `eval` and for various
-  visualization features.
+  for asynchronously preparing data for visualization.
+- `text_cache` (`TXT_`): Implements an asynchronously-filled cache for textual
+  analysis data (tokens, line ranges, and so on), filled by data sourced in the
+  `hash_store` layer's cache. Used for asynchronously preparing data for
+  visualization (like for the source code viewer).
+- `third_party` (no namespace): External code from other projects, which some
+  layers in the codebase depend on. All external code is included and built
+  directly within the codebase.
 - `ui` (`UI_`): Machinery for building graphical user interfaces. Provides a
   core immediate mode hierarchical user interface data structure building
   API, and has helper layers for building some higher-level widgets.

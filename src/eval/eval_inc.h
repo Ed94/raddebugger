@@ -5,8 +5,10 @@
 #define EVAL_INC_H
 
 #include "eval/eval_core.h"
-#include "eval/eval_compiler.h"
-#include "eval/eval_machine.h"
-#include "eval/eval_parser.h"
+#include "eval/eval_types.h"
+#include "eval/eval_parse.h"
+#include "eval/eval_ir.h"
+#include "eval/eval_interpret.h"
+#include "eval/eval_bundles.h"
 
 #endif // EVAL_INC_H

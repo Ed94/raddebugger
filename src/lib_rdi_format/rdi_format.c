@@ -92,12 +92,12 @@ RDI_U8 rdi_section_is_required_table[37] =
 0,
 };
 
-RDI_U8 rdi_eval_op_ctrlbits_table[45] =
+RDI_U16 rdi_eval_op_ctrlbits_table[49] =
 {
 RDI_EVAL_CTRLBITS(0, 0, 0),
 RDI_EVAL_CTRLBITS(0, 0, 0),
 RDI_EVAL_CTRLBITS(1, 1, 0),
-RDI_EVAL_CTRLBITS(1, 0, 0),
+RDI_EVAL_CTRLBITS(2, 0, 0),
 RDI_EVAL_CTRLBITS(1, 1, 1),
 RDI_EVAL_CTRLBITS(4, 0, 1),
 RDI_EVAL_CTRLBITS(0, 1, 1),
@@ -110,6 +110,8 @@ RDI_EVAL_CTRLBITS(1, 0, 1),
 RDI_EVAL_CTRLBITS(2, 0, 1),
 RDI_EVAL_CTRLBITS(4, 0, 1),
 RDI_EVAL_CTRLBITS(8, 0, 1),
+RDI_EVAL_CTRLBITS(16, 0, 1),
+RDI_EVAL_CTRLBITS(1, 0, 1),
 RDI_EVAL_CTRLBITS(1, 1, 1),
 RDI_EVAL_CTRLBITS(1, 1, 1),
 RDI_EVAL_CTRLBITS(1, 2, 1),
@@ -138,6 +140,8 @@ RDI_EVAL_CTRLBITS(2, 1, 1),
 RDI_EVAL_CTRLBITS(1, 0, 1),
 RDI_EVAL_CTRLBITS(0, 1, 0),
 RDI_EVAL_CTRLBITS(1, 0, 0),
+RDI_EVAL_CTRLBITS(1, 2, 1),
+RDI_EVAL_CTRLBITS(1, 1, 1),
 RDI_EVAL_CTRLBITS(0, 0, 0),
 };
 
@@ -181,6 +185,7 @@ switch(kind)
 {
 default:{}break;
 case RDI_TypeKind_Handle:{result = 0xFFFFFFFF;}break;
+case RDI_TypeKind_HResult:{result = 4;}break;
 case RDI_TypeKind_Char8:{result = 1;}break;
 case RDI_TypeKind_Char16:{result = 2;}break;
 case RDI_TypeKind_Char32:{result = 4;}break;

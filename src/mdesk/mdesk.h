@@ -129,7 +129,7 @@ typedef enum MD_NodeKind
 }
 MD_NodeKind;
 
-typedef U64 MD_NodeFlags;
+typedef U32 MD_NodeFlags;
 enum
 {
   MD_NodeFlag_MaskSetDelimiters          = (0x3F<<0),
@@ -182,6 +182,16 @@ struct MD_Node
   
   // rjf: source code info
   U64 src_offset;
+  
+  // rjf: user-controlled generation number
+  //
+  // (unused by mdesk layer, but can be used by usage code to use MD_Node trees
+  // in a "retained mode" way, where stable generational handles can be formed
+  // to nodes)
+  U64 user_gen;
+  
+  // rjf: extra padding to 128 bytes
+  U64 _unused_[2];
 };
 
 typedef struct MD_NodeRec MD_NodeRec;
@@ -253,15 +263,18 @@ internal MD_NodeFlags md_node_flags_from_token_flags(MD_TokenFlags flags);
 internal B32 md_node_is_nil(MD_Node *node);
 
 //- rjf: iteration
-#define MD_EachNode(it, first) MD_Node *it = first; !md_node_is_nil(it); it = it->next
+#define MD_EachNode(it, first) (MD_Node *it = first; !md_node_is_nil(it); it = it->next)
 internal MD_NodeRec md_node_rec_depth_first(MD_Node *node, MD_Node *subtree_root, U64 child_off, U64 sib_off);
 #define md_node_rec_depth_first_pre(node, subtree_root) md_node_rec_depth_first((node), (subtree_root), OffsetOf(MD_Node, first), OffsetOf(MD_Node, next))
 #define md_node_rec_depth_first_pre_rev(node, subtree_root) md_node_rec_depth_first((node), (subtree_root), OffsetOf(MD_Node, last), OffsetOf(MD_Node, prev))
 
 //- rjf: tree building
 internal MD_Node *md_push_node(Arena *arena, MD_NodeKind kind, MD_NodeFlags flags, String8 string, String8 raw_string, U64 src_offset);
+internal void md_node_insert_child(MD_Node *parent, MD_Node *prev_child, MD_Node *node);
+internal void md_node_insert_tag(MD_Node *parent, MD_Node *prev_child, MD_Node *node);
 internal void md_node_push_child(MD_Node *parent, MD_Node *node);
 internal void md_node_push_tag(MD_Node *parent, MD_Node *node);
+internal void md_unhook(MD_Node *node);
 
 //- rjf: tree introspection
 internal MD_Node *  md_node_from_chain_string(MD_Node *first, MD_Node *opl, String8 string, StringMatchFlags flags);
@@ -279,10 +292,14 @@ internal B32        md_node_has_child(MD_Node *node, String8 string, StringMatch
 internal B32        md_node_has_tag(MD_Node *node, String8 string, StringMatchFlags flags);
 internal U64        md_child_count_from_node(MD_Node *node);
 internal U64        md_tag_count_from_node(MD_Node *node);
+internal String8    md_string_from_children(Arena *arena, MD_Node *root);
 
 //- rjf: tree comparison
-internal B32 md_node_deep_match(MD_Node *a, MD_Node *b, StringMatchFlags flags);
+internal B32 md_tree_match(MD_Node *a, MD_Node *b, StringMatchFlags flags);
 internal B32 md_node_match(MD_Node *a, MD_Node *b, StringMatchFlags flags);
+
+//- rjf: tree duplication
+internal MD_Node *md_tree_copy(Arena *arena, MD_Node *src_root);
 
 ////////////////////////////////
 //~ rjf: Text -> Tokens Functions
@@ -293,6 +310,12 @@ internal MD_TokenizeResult md_tokenize_from_text(Arena *arena, String8 text);
 //~ rjf: Tokens -> Tree Functions
 
 internal MD_ParseResult md_parse_from_text_tokens(Arena *arena, String8 filename, String8 text, MD_TokenArray tokens);
+
+////////////////////////////////
+//~ rjf: Bundled Text -> Tree Functions
+
+internal MD_ParseResult md_parse_from_text(Arena *arena, String8 filename, String8 text);
+#define md_tree_from_string(arena, string) (md_parse_from_text((arena), str8_zero(), (string)).root)
 
 ////////////////////////////////
 //~ rjf: Tree -> Text Functions

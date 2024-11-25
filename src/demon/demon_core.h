@@ -68,7 +68,7 @@ struct DMN_Event
   DMN_Handle process;
   DMN_Handle thread;
   DMN_Handle module;
-  Architecture arch;
+  Arch arch;
   U64 address;
   U64 size;
   String8 string;
@@ -192,7 +192,7 @@ internal DMN_CtrlCtx *dmn_ctrl_begin(void);
 internal void dmn_ctrl_exclusive_access_begin(void);
 internal void dmn_ctrl_exclusive_access_end(void);
 #define DMN_CtrlExclusiveAccessScope DeferLoop(dmn_ctrl_exclusive_access_begin(), dmn_ctrl_exclusive_access_end())
-internal U32 dmn_ctrl_launch(DMN_CtrlCtx *ctx, OS_LaunchOptions *options);
+internal U32 dmn_ctrl_launch(DMN_CtrlCtx *ctx, OS_ProcessLaunchParams *params);
 internal B32 dmn_ctrl_attach(DMN_CtrlCtx *ctx, U32 pid);
 internal B32 dmn_ctrl_kill(DMN_CtrlCtx *ctx, DMN_Handle process, U32 exit_code);
 internal B32 dmn_ctrl_detach(DMN_CtrlCtx *ctx, DMN_Handle process);
@@ -226,9 +226,10 @@ internal U64 dmn_process_read(DMN_Handle process, Rng1U64 range, void *dst);
 internal B32 dmn_process_write(DMN_Handle process, Rng1U64 range, void *src);
 #define dmn_process_read_struct(process, vaddr, ptr) dmn_process_read((process), r1u64((vaddr), (vaddr)+(sizeof(*ptr))), ptr)
 #define dmn_process_write_struct(process, vaddr, ptr) dmn_process_write((process), r1u64((vaddr), (vaddr)+(sizeof(*ptr))), ptr)
+internal String8 dmn_process_read_cstring(Arena *arena, DMN_Handle process, U64 addr);
 
 //- rjf: threads
-internal Architecture dmn_arch_from_thread(DMN_Handle handle);
+internal Arch dmn_arch_from_thread(DMN_Handle handle);
 internal U64 dmn_stack_base_vaddr_from_thread(DMN_Handle handle);
 internal U64 dmn_tls_root_vaddr_from_thread(DMN_Handle handle);
 internal B32 dmn_thread_read_reg_block(DMN_Handle handle, void *reg_block);

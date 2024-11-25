@@ -72,9 +72,6 @@ struct GEO_Shared
 {
   Arena *arena;
   
-  // rjf: user clock
-  U64 user_clock_idx;
-  
   // rjf: cache
   U64 slots_count;
   U64 stripes_count;
@@ -89,10 +86,6 @@ struct GEO_Shared
   U64 u2x_ring_read_pos;
   OS_Handle u2x_ring_cv;
   OS_Handle u2x_ring_mutex;
-  
-  // rjf: transfer threads
-  U64 xfer_thread_count;
-  OS_Handle *xfer_threads;
   
   // rjf: evictor thread
   OS_Handle evictor_thread;
@@ -115,12 +108,6 @@ internal void geo_init(void);
 internal void geo_tctx_ensure_inited(void);
 
 ////////////////////////////////
-//~ rjf: User Clock
-
-internal void geo_user_clock_tick(void);
-internal U64 geo_user_clock_idx(void);
-
-////////////////////////////////
 //~ rjf: Scoped Access
 
 internal GEO_Scope *geo_scope_open(void);
@@ -138,7 +125,7 @@ internal R_Handle geo_buffer_from_key(GEO_Scope *scope, U128 key);
 
 internal B32 geo_u2x_enqueue_req(U128 hash, U64 endt_us);
 internal void geo_u2x_dequeue_req(U128 *hash_out);
-internal void geo_xfer_thread__entry_point(void *p);
+ASYNC_WORK_DEF(geo_xfer_work);
 
 ////////////////////////////////
 //~ rjf: Evictor Threads

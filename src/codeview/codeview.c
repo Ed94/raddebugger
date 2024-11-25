@@ -80,6 +80,13 @@ cv_numeric_from_data_range(U8 *first, U8 *opl)
   return result;
 }
 
+internal U64
+cv_read_numeric(String8 data, U64 offset, CV_NumericParsed *out)
+{
+  *out = cv_numeric_from_data_range(data.str + offset, data.str + data.size);
+  return out->encoded_size;
+}
+
 internal B32
 cv_numeric_fits_in_u64(CV_NumericParsed *num)
 {
@@ -186,7 +193,7 @@ cv_decode_inline_annot_u32(String8 data, U64 offset, U32 *out_value)
     }
     
     // 2 bytes
-    else if((header & 0xC0) == 0x80 && cursor+2 <= data.size)
+    else if((header & 0xC0) == 0x80 && cursor+1 <= data.size)
     {
       U8 second_byte;
       cursor += str8_deserial_read_struct(data, cursor, &second_byte);
@@ -268,8 +275,7 @@ cv_rec_range_stream_from_data(Arena *arena, String8 sym_data, U64 sym_align)
   for(;cursor + sizeof(CV_RecHeader) <= cap;)
   {
     // setup a new chunk
-    arena_push_align(arena, 64);
-    CV_RecRangeChunk *cur_chunk = push_array_no_zero(arena, CV_RecRangeChunk, 1);
+    CV_RecRangeChunk *cur_chunk = push_array_aligned(arena, CV_RecRangeChunk, 1, 64);
     SLLQueuePush(result->first_chunk, result->last_chunk, cur_chunk);
     U64 partial_count = 0;
     for(;partial_count < CV_REC_RANGE_CHUNK_SIZE && cursor + sizeof(CV_RecHeader) <= cap; partial_count += 1)
@@ -296,7 +302,7 @@ internal CV_RecRangeArray
 cv_rec_range_array_from_stream(Arena *arena, CV_RecRangeStream *stream)
 {
   U64 total_count = stream->total_count;
-  CV_RecRange *ranges = push_array_no_zero(arena, CV_RecRange, total_count);
+  CV_RecRange *ranges = push_array_no_zero_aligned(arena, CV_RecRange, total_count, 8);
   U64 idx = 0;
   for(CV_RecRangeChunk *chunk = stream->first_chunk; chunk != 0; chunk = chunk->next)
   {
@@ -412,7 +418,7 @@ cv_leaf_from_data(Arena *arena, String8 leaf_data, CV_TypeId itype_first)
 //~ CodeView C13 Parser Functions
 
 internal CV_C13Parsed *
-cv_c13_parsed_from_data(Arena *arena, String8 c13_data, PDB_Strtbl *strtbl, PDB_CoffSectionArray *sections)
+cv_c13_parsed_from_data(Arena *arena, String8 c13_data, String8 strtbl, COFF_SectionHeaderArray sections)
 {
   ProfBeginFunction();
   
@@ -484,18 +490,20 @@ cv_c13_parsed_from_data(Arena *arena, String8 c13_data, PDB_Strtbl *strtbl, PDB_
         CV_C13SubSecLinesHeader *hdr = (CV_C13SubSecLinesHeader*)(first + read_off);
         read_off += sizeof(*hdr);
         
-        // extract top level info
+        // rjf: extract section index
         U32 sec_idx = hdr->sec;
-        B32 has_cols = !!(hdr->flags & CV_C13SubSecLinesFlag_HasColumns);
-        U64 secrel_off = hdr->sec_off;
-        U64 secrel_opl = secrel_off + hdr->len;
-        U64 sec_base_off = sections->sections[sec_idx - 1].voff;
         
         // rjf: bad section index -> skip
-        if(sec_idx < 1 || sections->count < sec_idx)
+        if(sec_idx < 1 || sections.count < sec_idx)
         {
           continue;
         }
+        
+        // extract top level info
+        B32 has_cols = !!(hdr->flags & CV_C13SubSecLinesFlag_HasColumns);
+        U64 secrel_off = hdr->sec_off;
+        U64 secrel_opl = secrel_off + hdr->len;
+        U64 sec_base_off = sections.v[sec_idx - 1].voff;
         
         // read files
         for(;read_off+sizeof(CV_C13File) <= read_off_opl;)
@@ -512,7 +520,8 @@ cv_c13_parsed_from_data(Arena *arena, String8 c13_data, PDB_Strtbl *strtbl, PDB_
           {
             CV_C13Checksum *checksum = (CV_C13Checksum*)(c13_data.str + file_chksms->off + file_off);
             U32 name_off = checksum->name_off;
-            file_name = pdb_strtbl_string_from_off(strtbl, name_off);
+            file_name =  str8_cstring_capped((char*)(strtbl.str + name_off),
+                                             (char*)(strtbl.str + strtbl.size));
           }
           
           // array layouts
@@ -588,7 +597,8 @@ cv_c13_parsed_from_data(Arena *arena, String8 c13_data, PDB_Strtbl *strtbl, PDB_
           {
             CV_C13Checksum *checksum = (CV_C13Checksum*)(c13_data.str + file_chksms->off + hdr->file_off);
             U32 name_off = checksum->name_off;
-            file_name = pdb_strtbl_string_from_off(strtbl, name_off);
+            file_name =  str8_cstring_capped((char*)(strtbl.str + name_off),
+                                             (char*)(strtbl.str + strtbl.size));
           }
           
           // rjf: parse extra files
@@ -609,6 +619,7 @@ cv_c13_parsed_from_data(Arena *arena, String8 c13_data, PDB_Strtbl *strtbl, PDB_
           SLLQueuePush(node->inlinee_lines_first, node->inlinee_lines_last, n);
           n->v.inlinee          = hdr->inlinee;
           n->v.file_name        = file_name;
+          n->v.file_off         = hdr->file_off;
           n->v.first_source_ln  = hdr->first_source_ln;
           n->v.extra_file_count = extra_file_count;
           n->v.extra_files      = extra_files;

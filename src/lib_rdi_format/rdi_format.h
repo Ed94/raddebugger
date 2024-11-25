@@ -52,7 +52,7 @@ typedef int64_t  RDI_S64;
 
 // \"raddbg\0\0\"
 #define RDI_MAGIC_CONSTANT   0x0000676264646172
-#define RDI_ENCODING_VERSION 7
+#define RDI_ENCODING_VERSION 10
 
 ////////////////////////////////////////////////////////////////
 //~ Format Types & Functions
@@ -238,34 +238,58 @@ RDI_RegCodeX64_fpr4       = 45,
 RDI_RegCodeX64_fpr5       = 46,
 RDI_RegCodeX64_fpr6       = 47,
 RDI_RegCodeX64_fpr7       = 48,
-RDI_RegCodeX64_ymm0       = 49,
-RDI_RegCodeX64_ymm1       = 50,
-RDI_RegCodeX64_ymm2       = 51,
-RDI_RegCodeX64_ymm3       = 52,
-RDI_RegCodeX64_ymm4       = 53,
-RDI_RegCodeX64_ymm5       = 54,
-RDI_RegCodeX64_ymm6       = 55,
-RDI_RegCodeX64_ymm7       = 56,
-RDI_RegCodeX64_ymm8       = 57,
-RDI_RegCodeX64_ymm9       = 58,
-RDI_RegCodeX64_ymm10      = 59,
-RDI_RegCodeX64_ymm11      = 60,
-RDI_RegCodeX64_ymm12      = 61,
-RDI_RegCodeX64_ymm13      = 62,
-RDI_RegCodeX64_ymm14      = 63,
-RDI_RegCodeX64_ymm15      = 64,
-RDI_RegCodeX64_mxcsr      = 65,
-RDI_RegCodeX64_fsbase     = 66,
-RDI_RegCodeX64_gsbase     = 67,
-RDI_RegCodeX64_fcw        = 68,
-RDI_RegCodeX64_fsw        = 69,
-RDI_RegCodeX64_ftw        = 70,
-RDI_RegCodeX64_fop        = 71,
-RDI_RegCodeX64_fcs        = 72,
-RDI_RegCodeX64_fds        = 73,
-RDI_RegCodeX64_fip        = 74,
-RDI_RegCodeX64_fdp        = 75,
-RDI_RegCodeX64_mxcsr_mask = 76,
+RDI_RegCodeX64_zmm0       = 49,
+RDI_RegCodeX64_zmm1       = 50,
+RDI_RegCodeX64_zmm2       = 51,
+RDI_RegCodeX64_zmm3       = 52,
+RDI_RegCodeX64_zmm4       = 53,
+RDI_RegCodeX64_zmm5       = 54,
+RDI_RegCodeX64_zmm6       = 55,
+RDI_RegCodeX64_zmm7       = 56,
+RDI_RegCodeX64_zmm8       = 57,
+RDI_RegCodeX64_zmm9       = 58,
+RDI_RegCodeX64_zmm10      = 59,
+RDI_RegCodeX64_zmm11      = 60,
+RDI_RegCodeX64_zmm12      = 61,
+RDI_RegCodeX64_zmm13      = 62,
+RDI_RegCodeX64_zmm14      = 63,
+RDI_RegCodeX64_zmm15      = 64,
+RDI_RegCodeX64_zmm16      = 65,
+RDI_RegCodeX64_zmm17      = 66,
+RDI_RegCodeX64_zmm18      = 67,
+RDI_RegCodeX64_zmm19      = 68,
+RDI_RegCodeX64_zmm20      = 69,
+RDI_RegCodeX64_zmm21      = 70,
+RDI_RegCodeX64_zmm22      = 71,
+RDI_RegCodeX64_zmm23      = 72,
+RDI_RegCodeX64_zmm24      = 73,
+RDI_RegCodeX64_zmm25      = 74,
+RDI_RegCodeX64_zmm26      = 75,
+RDI_RegCodeX64_zmm27      = 76,
+RDI_RegCodeX64_zmm28      = 77,
+RDI_RegCodeX64_zmm29      = 78,
+RDI_RegCodeX64_zmm30      = 79,
+RDI_RegCodeX64_zmm31      = 80,
+RDI_RegCodeX64_k0         = 81,
+RDI_RegCodeX64_k1         = 82,
+RDI_RegCodeX64_k2         = 83,
+RDI_RegCodeX64_k3         = 84,
+RDI_RegCodeX64_k4         = 85,
+RDI_RegCodeX64_k5         = 86,
+RDI_RegCodeX64_k6         = 87,
+RDI_RegCodeX64_k7         = 88,
+RDI_RegCodeX64_mxcsr      = 89,
+RDI_RegCodeX64_fsbase     = 90,
+RDI_RegCodeX64_gsbase     = 91,
+RDI_RegCodeX64_fcw        = 92,
+RDI_RegCodeX64_fsw        = 93,
+RDI_RegCodeX64_ftw        = 94,
+RDI_RegCodeX64_fop        = 95,
+RDI_RegCodeX64_fcs        = 96,
+RDI_RegCodeX64_fds        = 97,
+RDI_RegCodeX64_fip        = 98,
+RDI_RegCodeX64_fdp        = 99,
+RDI_RegCodeX64_mxcsr_mask = 100,
 } RDI_RegCodeX64Enum;
 
 typedef RDI_U32 RDI_BinarySectionFlags;
@@ -282,7 +306,8 @@ typedef enum RDI_LanguageEnum
 RDI_Language_NULL       = 0,
 RDI_Language_C          = 1,
 RDI_Language_CPlusPlus  = 2,
-RDI_Language_COUNT      = 3,
+RDI_Language_Masm       = 3,
+RDI_Language_COUNT      = 4,
 } RDI_LanguageEnum;
 
 typedef RDI_U16 RDI_TypeKind;
@@ -291,38 +316,39 @@ typedef enum RDI_TypeKindEnum
 RDI_TypeKind_NULL                 = 0x0000,
 RDI_TypeKind_Void                 = 0x0001,
 RDI_TypeKind_Handle               = 0x0002,
-RDI_TypeKind_Char8                = 0x0003,
-RDI_TypeKind_Char16               = 0x0004,
-RDI_TypeKind_Char32               = 0x0005,
-RDI_TypeKind_UChar8               = 0x0006,
-RDI_TypeKind_UChar16              = 0x0007,
-RDI_TypeKind_UChar32              = 0x0008,
-RDI_TypeKind_U8                   = 0x0009,
-RDI_TypeKind_U16                  = 0x000A,
-RDI_TypeKind_U32                  = 0x000B,
-RDI_TypeKind_U64                  = 0x000C,
-RDI_TypeKind_U128                 = 0x000D,
-RDI_TypeKind_U256                 = 0x000E,
-RDI_TypeKind_U512                 = 0x000F,
-RDI_TypeKind_S8                   = 0x0010,
-RDI_TypeKind_S16                  = 0x0011,
-RDI_TypeKind_S32                  = 0x0012,
-RDI_TypeKind_S64                  = 0x0013,
-RDI_TypeKind_S128                 = 0x0014,
-RDI_TypeKind_S256                 = 0x0015,
-RDI_TypeKind_S512                 = 0x0016,
-RDI_TypeKind_Bool                 = 0x0017,
-RDI_TypeKind_F16                  = 0x0018,
-RDI_TypeKind_F32                  = 0x0019,
-RDI_TypeKind_F32PP                = 0x001A,
-RDI_TypeKind_F48                  = 0x001B,
-RDI_TypeKind_F64                  = 0x001C,
-RDI_TypeKind_F80                  = 0x001D,
-RDI_TypeKind_F128                 = 0x001E,
-RDI_TypeKind_ComplexF32           = 0x001F,
-RDI_TypeKind_ComplexF64           = 0x0020,
-RDI_TypeKind_ComplexF80           = 0x0021,
-RDI_TypeKind_ComplexF128          = 0x0022,
+RDI_TypeKind_HResult              = 0x0003,
+RDI_TypeKind_Char8                = 0x0004,
+RDI_TypeKind_Char16               = 0x0005,
+RDI_TypeKind_Char32               = 0x0006,
+RDI_TypeKind_UChar8               = 0x0007,
+RDI_TypeKind_UChar16              = 0x0008,
+RDI_TypeKind_UChar32              = 0x0009,
+RDI_TypeKind_U8                   = 0x000A,
+RDI_TypeKind_U16                  = 0x000B,
+RDI_TypeKind_U32                  = 0x000C,
+RDI_TypeKind_U64                  = 0x000D,
+RDI_TypeKind_U128                 = 0x000E,
+RDI_TypeKind_U256                 = 0x000F,
+RDI_TypeKind_U512                 = 0x0010,
+RDI_TypeKind_S8                   = 0x0011,
+RDI_TypeKind_S16                  = 0x0012,
+RDI_TypeKind_S32                  = 0x0013,
+RDI_TypeKind_S64                  = 0x0014,
+RDI_TypeKind_S128                 = 0x0015,
+RDI_TypeKind_S256                 = 0x0016,
+RDI_TypeKind_S512                 = 0x0017,
+RDI_TypeKind_Bool                 = 0x0018,
+RDI_TypeKind_F16                  = 0x0019,
+RDI_TypeKind_F32                  = 0x001A,
+RDI_TypeKind_F32PP                = 0x001B,
+RDI_TypeKind_F48                  = 0x001C,
+RDI_TypeKind_F64                  = 0x001D,
+RDI_TypeKind_F80                  = 0x001E,
+RDI_TypeKind_F128                 = 0x001F,
+RDI_TypeKind_ComplexF32           = 0x0020,
+RDI_TypeKind_ComplexF64           = 0x0021,
+RDI_TypeKind_ComplexF80           = 0x0022,
+RDI_TypeKind_ComplexF128          = 0x0023,
 RDI_TypeKind_Modifier             = 0x1000,
 RDI_TypeKind_Ptr                  = 0x1001,
 RDI_TypeKind_LRef                 = 0x1002,
@@ -342,6 +368,7 @@ RDI_TypeKind_IncompleteClass      = 0x2007,
 RDI_TypeKind_IncompleteEnum       = 0x2008,
 RDI_TypeKind_Bitfield             = 0xF000,
 RDI_TypeKind_Variadic             = 0xF001,
+RDI_TypeKind_Count                = 0xF002,
 RDI_TypeKind_FirstBuiltIn         = RDI_TypeKind_Void,
 RDI_TypeKind_LastBuiltIn          = RDI_TypeKind_ComplexF128,
 RDI_TypeKind_FirstConstructed     = RDI_TypeKind_Modifier,
@@ -428,35 +455,39 @@ RDI_EvalOp_ConstU8              = 12,
 RDI_EvalOp_ConstU16             = 13,
 RDI_EvalOp_ConstU32             = 14,
 RDI_EvalOp_ConstU64             = 15,
-RDI_EvalOp_Abs                  = 16,
-RDI_EvalOp_Neg                  = 17,
-RDI_EvalOp_Add                  = 18,
-RDI_EvalOp_Sub                  = 19,
-RDI_EvalOp_Mul                  = 20,
-RDI_EvalOp_Div                  = 21,
-RDI_EvalOp_Mod                  = 22,
-RDI_EvalOp_LShift               = 23,
-RDI_EvalOp_RShift               = 24,
-RDI_EvalOp_BitAnd               = 25,
-RDI_EvalOp_BitOr                = 26,
-RDI_EvalOp_BitXor               = 27,
-RDI_EvalOp_BitNot               = 28,
-RDI_EvalOp_LogAnd               = 29,
-RDI_EvalOp_LogOr                = 30,
-RDI_EvalOp_LogNot               = 31,
-RDI_EvalOp_EqEq                 = 32,
-RDI_EvalOp_NtEq                 = 33,
-RDI_EvalOp_LsEq                 = 34,
-RDI_EvalOp_GrEq                 = 35,
-RDI_EvalOp_Less                 = 36,
-RDI_EvalOp_Grtr                 = 37,
-RDI_EvalOp_Trunc                = 38,
-RDI_EvalOp_TruncSigned          = 39,
-RDI_EvalOp_Convert              = 40,
-RDI_EvalOp_Pick                 = 41,
-RDI_EvalOp_Pop                  = 42,
-RDI_EvalOp_Insert               = 43,
-RDI_EvalOp_COUNT                = 44,
+RDI_EvalOp_ConstU128            = 16,
+RDI_EvalOp_ConstString          = 17,
+RDI_EvalOp_Abs                  = 18,
+RDI_EvalOp_Neg                  = 19,
+RDI_EvalOp_Add                  = 20,
+RDI_EvalOp_Sub                  = 21,
+RDI_EvalOp_Mul                  = 22,
+RDI_EvalOp_Div                  = 23,
+RDI_EvalOp_Mod                  = 24,
+RDI_EvalOp_LShift               = 25,
+RDI_EvalOp_RShift               = 26,
+RDI_EvalOp_BitAnd               = 27,
+RDI_EvalOp_BitOr                = 28,
+RDI_EvalOp_BitXor               = 29,
+RDI_EvalOp_BitNot               = 30,
+RDI_EvalOp_LogAnd               = 31,
+RDI_EvalOp_LogOr                = 32,
+RDI_EvalOp_LogNot               = 33,
+RDI_EvalOp_EqEq                 = 34,
+RDI_EvalOp_NtEq                 = 35,
+RDI_EvalOp_LsEq                 = 36,
+RDI_EvalOp_GrEq                 = 37,
+RDI_EvalOp_Less                 = 38,
+RDI_EvalOp_Grtr                 = 39,
+RDI_EvalOp_Trunc                = 40,
+RDI_EvalOp_TruncSigned          = 41,
+RDI_EvalOp_Convert              = 42,
+RDI_EvalOp_Pick                 = 43,
+RDI_EvalOp_Pop                  = 44,
+RDI_EvalOp_Insert               = 45,
+RDI_EvalOp_ValueRead            = 46,
+RDI_EvalOp_ByteSwap             = 47,
+RDI_EvalOp_COUNT                = 48,
 } RDI_EvalOpEnum;
 
 typedef RDI_U8 RDI_EvalTypeGroup;
@@ -558,6 +589,172 @@ X(NULL)\
 X(X86)\
 X(X64)\
 
+#define RDI_RegCodeX86_XList \
+X(nil, 0)\
+X(eax, 1)\
+X(ecx, 2)\
+X(edx, 3)\
+X(ebx, 4)\
+X(esp, 5)\
+X(ebp, 6)\
+X(esi, 7)\
+X(edi, 8)\
+X(fsbase, 9)\
+X(gsbase, 10)\
+X(eflags, 11)\
+X(eip, 12)\
+X(dr0, 13)\
+X(dr1, 14)\
+X(dr2, 15)\
+X(dr3, 16)\
+X(dr4, 17)\
+X(dr5, 18)\
+X(dr6, 19)\
+X(dr7, 20)\
+X(fpr0, 21)\
+X(fpr1, 22)\
+X(fpr2, 23)\
+X(fpr3, 24)\
+X(fpr4, 25)\
+X(fpr5, 26)\
+X(fpr6, 27)\
+X(fpr7, 28)\
+X(st0, 29)\
+X(st1, 30)\
+X(st2, 31)\
+X(st3, 32)\
+X(st4, 33)\
+X(st5, 34)\
+X(st6, 35)\
+X(st7, 36)\
+X(fcw, 37)\
+X(fsw, 38)\
+X(ftw, 39)\
+X(fop, 40)\
+X(fcs, 41)\
+X(fds, 42)\
+X(fip, 43)\
+X(fdp, 44)\
+X(mxcsr, 45)\
+X(mxcsr_mask, 46)\
+X(ss, 47)\
+X(cs, 48)\
+X(ds, 49)\
+X(es, 50)\
+X(fs, 51)\
+X(gs, 52)\
+X(ymm0, 53)\
+X(ymm1, 54)\
+X(ymm2, 55)\
+X(ymm3, 56)\
+X(ymm4, 57)\
+X(ymm5, 58)\
+X(ymm6, 59)\
+X(ymm7, 60)\
+
+#define RDI_RegCodeX64_XList \
+X(nil, 0)\
+X(rax, 1)\
+X(rcx, 2)\
+X(rdx, 3)\
+X(rbx, 4)\
+X(rsp, 5)\
+X(rbp, 6)\
+X(rsi, 7)\
+X(rdi, 8)\
+X(r8, 9)\
+X(r9, 10)\
+X(r10, 11)\
+X(r11, 12)\
+X(r12, 13)\
+X(r13, 14)\
+X(r14, 15)\
+X(r15, 16)\
+X(es, 17)\
+X(cs, 18)\
+X(ss, 19)\
+X(ds, 20)\
+X(fs, 21)\
+X(gs, 22)\
+X(rip, 23)\
+X(rflags, 24)\
+X(dr0, 25)\
+X(dr1, 26)\
+X(dr2, 27)\
+X(dr3, 28)\
+X(dr4, 29)\
+X(dr5, 30)\
+X(dr6, 31)\
+X(dr7, 32)\
+X(st0, 33)\
+X(st1, 34)\
+X(st2, 35)\
+X(st3, 36)\
+X(st4, 37)\
+X(st5, 38)\
+X(st6, 39)\
+X(st7, 40)\
+X(fpr0, 41)\
+X(fpr1, 42)\
+X(fpr2, 43)\
+X(fpr3, 44)\
+X(fpr4, 45)\
+X(fpr5, 46)\
+X(fpr6, 47)\
+X(fpr7, 48)\
+X(zmm0, 49)\
+X(zmm1, 50)\
+X(zmm2, 51)\
+X(zmm3, 52)\
+X(zmm4, 53)\
+X(zmm5, 54)\
+X(zmm6, 55)\
+X(zmm7, 56)\
+X(zmm8, 57)\
+X(zmm9, 58)\
+X(zmm10, 59)\
+X(zmm11, 60)\
+X(zmm12, 61)\
+X(zmm13, 62)\
+X(zmm14, 63)\
+X(zmm15, 64)\
+X(zmm16, 65)\
+X(zmm17, 66)\
+X(zmm18, 67)\
+X(zmm19, 68)\
+X(zmm20, 69)\
+X(zmm21, 70)\
+X(zmm22, 71)\
+X(zmm23, 72)\
+X(zmm24, 73)\
+X(zmm25, 74)\
+X(zmm26, 75)\
+X(zmm27, 76)\
+X(zmm28, 77)\
+X(zmm29, 78)\
+X(zmm30, 79)\
+X(zmm31, 80)\
+X(k0, 81)\
+X(k1, 82)\
+X(k2, 83)\
+X(k3, 84)\
+X(k4, 85)\
+X(k5, 86)\
+X(k6, 87)\
+X(k7, 88)\
+X(mxcsr, 89)\
+X(fsbase, 90)\
+X(gsbase, 91)\
+X(fcw, 92)\
+X(fsw, 93)\
+X(ftw, 94)\
+X(fop, 95)\
+X(fcs, 96)\
+X(fds, 97)\
+X(fip, 98)\
+X(fdp, 99)\
+X(mxcsr_mask, 100)\
+
 #define RDI_TopLevelInfo_XList \
 X(RDI_Arch, arch)\
 X(RDI_U32, exe_name_string_idx)\
@@ -626,12 +823,14 @@ X(RDI_U32, line_map_voff_base_idx)\
 X(NULL)\
 X(C)\
 X(CPlusPlus)\
+X(Masm)\
 X(COUNT)\
 
 #define RDI_TypeKind_XList \
 X(NULL)\
 X(Void)\
 X(Handle)\
+X(HResult)\
 X(Char8)\
 X(Char16)\
 X(Char32)\
@@ -683,6 +882,7 @@ X(IncompleteClass)\
 X(IncompleteEnum)\
 X(Bitfield)\
 X(Variadic)\
+X(Count)\
 
 #define RDI_TypeModifierFlags_XList \
 X(Const)\
@@ -755,11 +955,11 @@ X(RDI_U32, type_idx)\
 X(RDI_U32, container_idx)\
 
 #define RDI_ThreadVariable_XList \
-X(RDI_U32, name_string_idx)\
-X(RDI_LinkFlags, link_flags)\
-X(RDI_U32, tls_off)\
-X(RDI_U32, type_idx)\
-X(RDI_U32, container_idx)\
+X(type, name_string_idx)\
+X(type, link_flags)\
+X(type, tls_off)\
+X(type, type_idx)\
+X(type, container_idx)\
 
 #define RDI_Procedure_XList \
 X(RDI_U32, name_string_idx)\
@@ -830,6 +1030,8 @@ X(ConstU8)\
 X(ConstU16)\
 X(ConstU32)\
 X(ConstU64)\
+X(ConstU128)\
+X(ConstString)\
 X(Abs)\
 X(Neg)\
 X(Add)\
@@ -858,7 +1060,8 @@ X(Convert)\
 X(Pick)\
 X(Pop)\
 X(Insert)\
-X(COUNT)\
+X(ValueRead)\
+X(ByteSwap)\
 
 #define RDI_EvalTypeGroup_XList \
 X(Other)\
@@ -866,7 +1069,6 @@ X(U)\
 X(S)\
 X(F32)\
 X(F64)\
-X(COUNT)\
 
 #define RDI_EvalConversionKind_XList \
 X(Noop)\
@@ -874,7 +1076,6 @@ X(Legal)\
 X(OtherToOther)\
 X(ToOther)\
 X(FromOther)\
-X(COUNT)\
 
 #define RDI_NameMapKind_XList \
 X(NULL)\
@@ -884,7 +1085,6 @@ X(Procedures)\
 X(Types)\
 X(LinkNameProcedures)\
 X(NormalSourcePaths)\
-X(COUNT)\
 
 #define RDI_NameMap_XList \
 X(RDI_U32, bucket_base_idx)\
@@ -967,10 +1167,10 @@ typedef RDI_U32_Table RDI_U32_NameMapBuckets;
 typedef RDI_U32_Table RDI_U32_NameMapNodes;
 #endif
 
-#define RDI_EVAL_CTRLBITS(decodeN,popN,pushN) ((decodeN) | ((popN) << 4) | ((pushN) << 6))
-#define RDI_DECODEN_FROM_CTRLBITS(ctrlbits)   ((ctrlbits) & 0xf)
-#define RDI_POPN_FROM_CTRLBITS(ctrlbits)      (((ctrlbits) >> 4) & 0x3)
-#define RDI_PUSHN_FROM_CTRLBITS(ctrlbits)     (((ctrlbits) >> 6) & 0x3)
+#define RDI_EVAL_CTRLBITS(decodeN,popN,pushN) (((decodeN) << 8) | ((popN) << 4) | ((pushN) << 0))
+#define RDI_DECODEN_FROM_CTRLBITS(ctrlbits)   (((ctrlbits) >> 8) & 0xff)
+#define RDI_POPN_FROM_CTRLBITS(ctrlbits)      (((ctrlbits) >> 4) & 0xf)
+#define RDI_PUSHN_FROM_CTRLBITS(ctrlbits)     (((ctrlbits) >> 0) & 0xf)
 #define RDI_EncodeRegReadParam(reg,bytesize,bytepos) ((reg)|((bytesize)<<8)|((bytepos)<<16))
 
 typedef struct RDI_Header RDI_Header;
@@ -1331,6 +1531,6 @@ RDI_PROC RDI_U8 *rdi_explanation_string_from_eval_conversion_kind(RDI_EvalConver
 
 extern RDI_U16 rdi_section_element_size_table[37];
 extern RDI_U8 rdi_section_is_required_table[37];
-extern RDI_U8 rdi_eval_op_ctrlbits_table[45];
+extern RDI_U16 rdi_eval_op_ctrlbits_table[49];
 
 #endif // RDI_FORMAT_H

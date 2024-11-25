@@ -357,6 +357,7 @@ struct PE_IntelPdata
 
 #define PE_CODEVIEW_PDB20_MAGIC 0x3031424e
 #define PE_CODEVIEW_PDB70_MAGIC 0x53445352
+#define PE_CODEVIEW_RDI_MAGIC   '0IDR' 
 
 typedef struct PE_CvHeaderPDB20 PE_CvHeaderPDB20;
 struct PE_CvHeaderPDB20
@@ -371,9 +372,17 @@ struct PE_CvHeaderPDB20
 typedef struct PE_CvHeaderPDB70 PE_CvHeaderPDB70;
 struct PE_CvHeaderPDB70
 {
-  U32 magic;
-  OS_Guid guid;
-  U32 age;
+  U32  magic;
+  Guid guid;
+  U32  age;
+  // file name packed after struct
+};
+
+typedef struct PE_CvHeaderRDI PE_CvHeaderRDI;
+struct PE_CvHeaderRDI
+{
+  U32  magic;
+  Guid guid;
   // file name packed after struct
 };
 
@@ -390,7 +399,7 @@ struct PE_ImportEntry
 typedef struct PE_DelayedImportEntry PE_DelayedImportEntry;
 struct PE_DelayedImportEntry
 {
-  // According to PE/COFF spec this field is unused and should be set zero,
+  // According to COFF/PE spec this field is unused and should be set zero,
   // but when I compile mule with MSVC 2019 this is set to 1.
   U32 attributes;
   U32 name_voff;                       // Name of the DLL
@@ -442,8 +451,6 @@ struct PE_TLSHeader64
   U32 zero_fill_size;    // Amount of memory to fill with zeroes in TLS.
   U32 characteristics;   // COFF_SectionFlags but only align flags are used.
 };
-
-#define PE_RES_ALIGN 4u
 
 global read_only U8 PE_RES_MAGIC[] =
 {
@@ -725,10 +732,10 @@ struct PE_BinInfo
   U64 string_table_off;
   U64 dbg_path_off;
   U64 dbg_path_size;
-  OS_Guid dbg_guid;
+  Guid dbg_guid;
   U32 dbg_age;
   U32 dbg_time;
-  Architecture arch;
+  Arch arch;
   Rng1U64 *data_dir_franges;
   U32 data_dir_count;
   PE_TLSHeader64 tls_header;
@@ -737,8 +744,9 @@ struct PE_BinInfo
 ////////////////////////////////
 //~ rjf: Basic Enum Functions
 
-internal U32 pe_slot_count_from_unwind_op_code(PE_UnwindOpCode opcode);
-internal String8 pe_string_from_windows_subsystem(PE_WindowsSubsystem subsystem);
+internal U32                 pe_slot_count_from_unwind_op_code(PE_UnwindOpCode opcode);
+internal String8             pe_string_from_subsystem(PE_WindowsSubsystem subsystem);
+internal PE_WindowsSubsystem pe_subsystem_from_string(String8 string);
 
 ////////////////////////////////
 //~ rjf: Parser Functions
@@ -748,13 +756,14 @@ internal PE_BinInfo pe_bin_info_from_data(Arena *arena, String8 data);
 ////////////////////////////////
 //~ rjf: Helpers
 
-internal U64 pe_intel_pdata_off_from_voff__binary_search(String8 data, PE_BinInfo *bin, U64 voff);
-internal void *pe_ptr_from_voff(String8 data, PE_BinInfo *bin, U64 voff);
-internal U64 pe_section_num_from_voff(String8 data, PE_BinInfo *bin, U64 voff);
-internal void *pe_ptr_from_section_num(String8 data, PE_BinInfo *bin, U64 n);
-internal U64 pe_foff_from_voff(String8 data, PE_BinInfo *bin, U64 voff);
+internal U64                   pe_intel_pdata_off_from_voff__binary_search(String8 data, PE_BinInfo *bin, U64 voff);
+internal void *                pe_ptr_from_voff(String8 data, PE_BinInfo *bin, U64 voff);
+internal U64                   pe_section_num_from_voff(String8 data, PE_BinInfo *bin, U64 voff);
+internal void *                pe_ptr_from_section_num(String8 data, PE_BinInfo *bin, U64 n);
+internal U64                   pe_foff_from_voff(String8 data, PE_BinInfo *bin, U64 voff);
 internal PE_BaseRelocBlockList pe_base_reloc_block_list_from_bin(Arena *arena, String8 data, PE_BinInfo *bin);
-internal Rng1U64 pe_tls_rng_from_bin_base_vaddr(String8 data, PE_BinInfo *bin, U64 base_vaddr);
+internal Rng1U64               pe_tls_rng_from_bin_base_vaddr(String8 data, PE_BinInfo *bin, U64 base_vaddr);
+internal String8Array          pe_get_entry_point_names(COFF_MachineType machine, PE_WindowsSubsystem subsystem, PE_ImageFileCharacteristics file_characteristics);
 
 ////////////////////////////////
 //~ Resource Helpers
@@ -769,5 +778,18 @@ internal PE_ResourceNode * pe_resource_dir_search_node(PE_ResourceDir *dir, COFF
 internal PE_Resource *     pe_resource_dir_search(PE_ResourceDir *dir, COFF_ResourceID id);
 internal PE_ResourceArray  pe_resource_list_to_array(Arena *arena, PE_ResourceList *list);
 internal PE_ResourceDir *  pe_resource_table_from_directory_data(Arena *arena, String8 data);
+
+internal String8 pe_make_manifest_resource(Arena *arena, U32 resource_id, String8 manifest_data);
+
+////////////////////////////////
+//~ Debug Directory
+
+internal String8 pe_make_debug_header_pdb70(Arena *arena, Guid guid, U32 age, String8 pdb_path);
+internal String8 pe_make_debug_header_rdi(Arena *arena, Guid guid, String8 rdi_path);
+
+////////////////////////////////
+//~ Image Checksum
+
+internal U32 pe_compute_checksum(U8 *buffer, U64 buffer_size);
 
 #endif // PE_H
