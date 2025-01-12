@@ -172,7 +172,7 @@ rd_cmd_list_push_new(Arena *arena, RD_CmdList *cmds, String8 name, RD_Regs *regs
 internal B32
 rd_entity_is_nil(RD_Entity *entity)
 {
-  return (entity == 0 || entity == &d_nil_entity);
+  return (entity == 0 || entity == &rd_nil_entity);
 }
 
 //- rjf: handle <-> entity conversions
@@ -201,19 +201,7 @@ rd_entity_from_handle(RD_Handle handle)
   RD_Entity *result = rd_state->entities_base + handle.u64[0];
   if(handle.u64[0] >= rd_state->entities_count || result->gen != handle.u64[1])
   {
-    result = &d_nil_entity;
-  }
-  return result;
-}
-
-internal RD_HandleList
-rd_handle_list_from_entity_list(Arena *arena, RD_EntityList entities)
-{
-  RD_HandleList result = {0};
-  for(RD_EntityNode *n = entities.first; n != 0; n = n->next)
-  {
-    RD_Handle handle = rd_handle_from_entity(n->entity);
-    rd_handle_list_push(arena, &result, handle);
+    result = &rd_nil_entity;
   }
   return result;
 }
@@ -246,54 +234,10 @@ rd_entity_rec_depth_first(RD_Entity *entity, RD_Entity *subtree_root, U64 sib_of
 internal RD_Entity *
 rd_entity_child_from_kind(RD_Entity *entity, RD_EntityKind kind)
 {
-  RD_Entity *result = &d_nil_entity;
+  RD_Entity *result = &rd_nil_entity;
   for(RD_Entity *child = entity->first; !rd_entity_is_nil(child); child = child->next)
   {
     if(!(child->flags & RD_EntityFlag_MarkedForDeletion) && child->kind == kind)
-    {
-      result = child;
-      break;
-    }
-  }
-  return result;
-}
-
-internal RD_Entity *
-rd_entity_ancestor_from_kind(RD_Entity *entity, RD_EntityKind kind)
-{
-  RD_Entity *result = &d_nil_entity;
-  for(RD_Entity *p = entity->parent; !rd_entity_is_nil(p); p = p->parent)
-  {
-    if(p->kind == kind)
-    {
-      result = p;
-      break;
-    }
-  }
-  return result;
-}
-
-internal RD_EntityList
-rd_push_entity_child_list_with_kind(Arena *arena, RD_Entity *entity, RD_EntityKind kind)
-{
-  RD_EntityList result = {0};
-  for(RD_Entity *child = entity->first; !rd_entity_is_nil(child); child = child->next)
-  {
-    if(child->kind == kind)
-    {
-      rd_entity_list_push(arena, &result, child);
-    }
-  }
-  return result;
-}
-
-internal RD_Entity *
-rd_entity_child_from_string_and_kind(RD_Entity *parent, String8 string, RD_EntityKind kind)
-{
-  RD_Entity *result = &d_nil_entity;
-  for(RD_Entity *child = parent->first; !rd_entity_is_nil(child); child = child->next)
-  {
-    if(str8_match(child->string, string, 0) && child->kind == kind)
     {
       result = child;
       break;
@@ -323,72 +267,6 @@ rd_entity_array_from_list(Arena *arena, RD_EntityList *list)
   for(RD_EntityNode *n = list->first; n != 0; n = n->next, idx += 1)
   {
     result.v[idx] = n->entity;
-  }
-  return result;
-}
-
-//- rjf: display string entities, for referencing entities in ui
-
-internal String8
-rd_display_string_from_entity(Arena *arena, RD_Entity *entity)
-{
-  String8 result = {0};
-  switch(entity->kind)
-  {
-    default:
-    {
-      if(entity->string.size != 0)
-      {
-        result = push_str8_copy(arena, entity->string);
-      }
-      else
-      {
-        String8 kind_string = d_entity_kind_display_string_table[entity->kind];
-        result = push_str8f(arena, "%S $%I64u", kind_string, entity->id);
-      }
-    }break;
-    
-    case RD_EntityKind_Target:
-    {
-      if(entity->string.size != 0)
-      {
-        result = push_str8_copy(arena, entity->string);
-      }
-      else
-      {
-        RD_Entity *exe = rd_entity_child_from_kind(entity, RD_EntityKind_Executable);
-        result = push_str8_copy(arena, exe->string);
-      }
-    }break;
-    
-    case RD_EntityKind_Breakpoint:
-    {
-      if(entity->string.size != 0)
-      {
-        result = push_str8_copy(arena, entity->string);
-      }
-      else
-      {
-        RD_Entity *loc = rd_entity_child_from_kind(entity, RD_EntityKind_Location);
-        if(loc->flags & RD_EntityFlag_HasTextPoint)
-        {
-          result = push_str8f(arena, "%S:%I64d:%I64d", str8_skip_last_slash(loc->string), loc->text_point.line, loc->text_point.column);
-        }
-        else if(loc->flags & RD_EntityFlag_HasVAddr)
-        {
-          result = str8_from_u64(arena, loc->vaddr, 16, 16, 0);
-        }
-        else if(loc->string.size != 0)
-        {
-          result = push_str8_copy(arena, loc->string);
-        }
-      }
-    }break;
-    
-    case RD_EntityKind_RecentProject:
-    {
-      result = push_str8_copy(arena, str8_skip_last_slash(entity->string));
-    }break;
   }
   return result;
 }
@@ -442,35 +320,6 @@ rd_parent_ev_key_from_entity(RD_Entity *entity)
 {
   EV_Key parent_key = ev_key_make(5381, (U64)entity);
   return parent_key;
-}
-
-//- rjf: entity -> evaluation
-
-internal RD_EntityEval *
-rd_eval_from_entity(Arena *arena, RD_Entity *entity)
-{
-  RD_EntityEval *eval = push_array(arena, RD_EntityEval, 1);
-  {
-    RD_Entity *loc = rd_entity_child_from_kind(entity, RD_EntityKind_Location);
-    RD_Entity *cnd = rd_entity_child_from_kind(entity, RD_EntityKind_Condition);
-    String8 label_string = push_str8_copy(arena, entity->string);
-    String8 loc_string = {0};
-    if(loc->flags & RD_EntityFlag_HasTextPoint)
-    {
-      loc_string = push_str8f(arena, "%S:%I64u:%I64u", loc->string, loc->text_point.line, loc->text_point.column);
-    }
-    else if(loc->flags & RD_EntityFlag_HasVAddr)
-    {
-      loc_string = push_str8f(arena, "0x%I64x", loc->vaddr);
-    }
-    String8 cnd_string = push_str8_copy(arena, cnd->string);
-    eval->enabled      = !entity->disabled;
-    eval->hit_count    = entity->u64;
-    eval->label_off    = (U64)((U8 *)label_string.str - (U8 *)eval);
-    eval->location_off = (U64)((U8 *)loc_string.str - (U8 *)eval);
-    eval->condition_off= (U64)((U8 *)cnd_string.str - (U8 *)eval);
-  }
-  return eval;
 }
 
 ////////////////////////////////
@@ -1217,7 +1066,7 @@ rd_entity_alloc(RD_Entity *parent, RD_EntityKind kind)
   }
   
   // rjf: set up alloc'd entity links
-  entity->first = entity->last = entity->next = entity->prev = entity->parent = &d_nil_entity;
+  entity->first = entity->last = entity->next = entity->prev = entity->parent = &rd_nil_entity;
   entity->parent = parent;
   
   // rjf: stitch up parent links
@@ -1227,7 +1076,7 @@ rd_entity_alloc(RD_Entity *parent, RD_EntityKind kind)
   }
   else
   {
-    DLLPushBack_NPZ(&d_nil_entity, parent->first, parent->last, entity, next, prev);
+    DLLPushBack_NPZ(&rd_nil_entity, parent->first, parent->last, entity, next, prev);
   }
   
   // rjf: fill out metadata
@@ -1236,7 +1085,6 @@ rd_entity_alloc(RD_Entity *parent, RD_EntityKind kind)
   entity->id = rd_state->entities_id_gen;
   entity->gen += 1;
   entity->alloc_time_us = os_now_microseconds();
-  entity->params_root = &md_nil_node;
   
   // rjf: initialize to deleted, record history, then "undelete" if this allocation can be undone
   if(user_defined_lifetime)
@@ -1295,10 +1143,8 @@ rd_entity_release(RD_Entity *entity)
     }
     LogInfoNamedBlockF("end_entity")
     {
-      String8 name = rd_display_string_from_entity(scratch.arena, task->e);
       log_infof("kind: \"%S\"\n", d_entity_kind_display_string_table[task->e->kind]);
       log_infof("id: $0x%I64x\n", task->e->id);
-      log_infof("display_string: \"%S\"\n", name);
     }
     SLLStackPush(rd_state->entities_free[free_list_idx], task->e);
     rd_state->entities_free_count += 1;
@@ -1307,10 +1153,6 @@ rd_entity_release(RD_Entity *entity)
     if(task->e->string.size != 0)
     {
       rd_name_release(task->e->string);
-    }
-    if(task->e->params_arena != 0)
-    {
-      arena_release(task->e->params_arena);
     }
     rd_state->kind_alloc_gens[task->e->kind] += 1;
   }
@@ -1328,11 +1170,11 @@ rd_entity_change_parent(RD_Entity *entity, RD_Entity *old_parent, RD_Entity *new
     // rjf: fix up links
     if(!rd_entity_is_nil(old_parent))
     {
-      DLLRemove_NPZ(&d_nil_entity, old_parent->first, old_parent->last, entity, next, prev);
+      DLLRemove_NPZ(&rd_nil_entity, old_parent->first, old_parent->last, entity, next, prev);
     }
     if(!rd_entity_is_nil(new_parent))
     {
-      DLLInsert_NPZ(&d_nil_entity, new_parent->first, new_parent->last, prev_child, entity, next, prev);
+      DLLInsert_NPZ(&rd_nil_entity, new_parent->first, new_parent->last, prev_child, entity, next, prev);
     }
     entity->parent = new_parent;
     
@@ -1360,14 +1202,6 @@ rd_entity_equip_txt_pt(RD_Entity *entity, TxtPt point)
   rd_require_entity_nonnil(entity, return);
   entity->text_point = point;
   entity->flags |= RD_EntityFlag_HasTextPoint;
-}
-
-internal void
-rd_entity_equip_entity_handle(RD_Entity *entity, RD_Handle handle)
-{
-  rd_require_entity_nonnil(entity, return);
-  entity->entity_handle = handle;
-  entity->flags |= RD_EntityFlag_HasEntityHandle;
 }
 
 internal void
@@ -1418,46 +1252,6 @@ rd_entity_equip_timestamp(RD_Entity *entity, U64 timestamp)
 }
 
 //- rjf: control layer correllation equipment
-
-internal void
-rd_entity_equip_ctrl_handle(RD_Entity *entity, CTRL_Handle handle)
-{
-  rd_require_entity_nonnil(entity, return);
-  entity->ctrl_handle = handle;
-  entity->flags |= RD_EntityFlag_HasCtrlHandle;
-}
-
-internal void
-rd_entity_equip_arch(RD_Entity *entity, Arch arch)
-{
-  rd_require_entity_nonnil(entity, return);
-  entity->arch = arch;
-  entity->flags |= RD_EntityFlag_HasArch;
-}
-
-internal void
-rd_entity_equip_ctrl_id(RD_Entity *entity, U32 id)
-{
-  rd_require_entity_nonnil(entity, return);
-  entity->ctrl_id = id;
-  entity->flags |= RD_EntityFlag_HasCtrlID;
-}
-
-internal void
-rd_entity_equip_stack_base(RD_Entity *entity, U64 stack_base)
-{
-  rd_require_entity_nonnil(entity, return);
-  entity->stack_base = stack_base;
-  entity->flags |= RD_EntityFlag_HasStackBase;
-}
-
-internal void
-rd_entity_equip_vaddr_rng(RD_Entity *entity, Rng1U64 range)
-{
-  rd_require_entity_nonnil(entity, return);
-  entity->vaddr_rng = range;
-  entity->flags |= RD_EntityFlag_HasVAddrRng;
-}
 
 internal void
 rd_entity_equip_vaddr(RD_Entity *entity, U64 vaddr)
@@ -1636,7 +1430,7 @@ rd_push_entity_list_with_kind(Arena *arena, RD_EntityKind kind)
   RD_EntityList result = {0};
   for(RD_Entity *entity = rd_state->entities_root;
       !rd_entity_is_nil(entity);
-      entity = rd_entity_rec_depth_first_pre(entity, &d_nil_entity).next)
+      entity = rd_entity_rec_depth_first_pre(entity, &rd_nil_entity).next)
   {
     if(entity->kind == kind && !(entity->flags & RD_EntityFlag_MarkedForDeletion))
     {
@@ -1650,10 +1444,10 @@ rd_push_entity_list_with_kind(Arena *arena, RD_EntityKind kind)
 internal RD_Entity *
 rd_entity_from_id(RD_EntityID id)
 {
-  RD_Entity *result = &d_nil_entity;
+  RD_Entity *result = &rd_nil_entity;
   for(RD_Entity *e = rd_entity_root();
       !rd_entity_is_nil(e);
-      e = rd_entity_rec_depth_first_pre(e, &d_nil_entity).next)
+      e = rd_entity_rec_depth_first_pre(e, &rd_nil_entity).next)
   {
     if(e->id == id)
     {
@@ -1667,7 +1461,7 @@ rd_entity_from_id(RD_EntityID id)
 internal RD_Entity *
 rd_entity_from_name_and_kind(String8 string, RD_EntityKind kind)
 {
-  RD_Entity *result = &d_nil_entity;
+  RD_Entity *result = &rd_nil_entity;
   RD_EntityList all_of_this_kind = rd_query_cached_entity_list_with_kind(kind);
   for(RD_EntityNode *n = all_of_this_kind.first; n != 0; n = n->next)
   {
@@ -2046,7 +1840,7 @@ rd_title_fstrs_from_ctrl_entity(Arena *arena, CTRL_Entity *entity, Vec4F32 secon
 internal RD_Entity *
 rd_entity_from_eval_space(E_Space space)
 {
-  RD_Entity *entity = &d_nil_entity;
+  RD_Entity *entity = &rd_nil_entity;
   if(space.kind == RD_EvalSpaceKind_MetaEntity)
   {
     RD_Handle handle = {space.u64s[0], space.u64s[1]};
@@ -5682,8 +5476,9 @@ rd_window_frame(RD_Window *ws)
                   ui_labelf("Launch all active targets:");
                   for(RD_EntityNode *n = targets.first; n != 0; n = n->next)
                   {
-                    String8 target_display_name = rd_display_string_from_entity(scratch.arena, n->entity);
-                    ui_label(target_display_name);
+                    DR_FancyStringList title_fstrs = rd_title_fstrs_from_entity(ui_build_arena(), n->entity, ui_top_palette()->text_weak, ui_top_font_size());
+                    UI_Box *box = ui_build_box_from_key(UI_BoxFlag_DrawText, ui_key_zero());
+                    ui_box_equip_display_fancy_strings(box, &title_fstrs);
                   }
                 }
               }
@@ -6971,34 +6766,33 @@ rd_window_frame(RD_Window *ws)
     ////////////////////////////
     //- rjf: animate panels
     //
-    // TODO(rjf): @hack investigate why we were ever animating to a busted
-    // rectangle when minimized...
-    //
-    if(!os_window_is_minimized(ws->os))
     {
       F32 rate = rd_setting_val_from_code(RD_SettingCode_MenuAnimations).s32 ? 1 - pow_f32(2, (-50.f * rd_state->frame_dt)) : 1.f;
       Vec2F32 content_rect_dim = dim_2f32(content_rect);
-      for(RD_Panel *panel = ws->root_panel; !rd_panel_is_nil(panel); panel = rd_panel_rec_depth_first_pre(panel).next)
+      if(content_rect_dim.x > 0 && content_rect_dim.y > 0)
       {
-        Rng2F32 target_rect_px = rd_target_rect_from_panel(content_rect, ws->root_panel, panel);
-        Rng2F32 target_rect_pct = r2f32p(target_rect_px.x0/content_rect_dim.x,
-                                         target_rect_px.y0/content_rect_dim.y,
-                                         target_rect_px.x1/content_rect_dim.x,
-                                         target_rect_px.y1/content_rect_dim.y);
-        if(abs_f32(target_rect_pct.x0 - panel->animated_rect_pct.x0) > 0.005f ||
-           abs_f32(target_rect_pct.y0 - panel->animated_rect_pct.y0) > 0.005f ||
-           abs_f32(target_rect_pct.x1 - panel->animated_rect_pct.x1) > 0.005f ||
-           abs_f32(target_rect_pct.y1 - panel->animated_rect_pct.y1) > 0.005f)
+        for(RD_Panel *panel = ws->root_panel; !rd_panel_is_nil(panel); panel = rd_panel_rec_depth_first_pre(panel).next)
         {
-          rd_request_frame();
-        }
-        panel->animated_rect_pct.x0 += rate * (target_rect_pct.x0 - panel->animated_rect_pct.x0);
-        panel->animated_rect_pct.y0 += rate * (target_rect_pct.y0 - panel->animated_rect_pct.y0);
-        panel->animated_rect_pct.x1 += rate * (target_rect_pct.x1 - panel->animated_rect_pct.x1);
-        panel->animated_rect_pct.y1 += rate * (target_rect_pct.y1 - panel->animated_rect_pct.y1);
-        if(ws->frames_alive < 5 || is_changing_panel_boundaries)
-        {
-          panel->animated_rect_pct = target_rect_pct;
+          Rng2F32 target_rect_px = rd_target_rect_from_panel(content_rect, ws->root_panel, panel);
+          Rng2F32 target_rect_pct = r2f32p(target_rect_px.x0/content_rect_dim.x,
+                                           target_rect_px.y0/content_rect_dim.y,
+                                           target_rect_px.x1/content_rect_dim.x,
+                                           target_rect_px.y1/content_rect_dim.y);
+          if(abs_f32(target_rect_pct.x0 - panel->animated_rect_pct.x0) > 0.005f ||
+             abs_f32(target_rect_pct.y0 - panel->animated_rect_pct.y0) > 0.005f ||
+             abs_f32(target_rect_pct.x1 - panel->animated_rect_pct.x1) > 0.005f ||
+             abs_f32(target_rect_pct.y1 - panel->animated_rect_pct.y1) > 0.005f)
+          {
+            rd_request_frame();
+          }
+          panel->animated_rect_pct.x0 += rate * (target_rect_pct.x0 - panel->animated_rect_pct.x0);
+          panel->animated_rect_pct.y0 += rate * (target_rect_pct.y0 - panel->animated_rect_pct.y0);
+          panel->animated_rect_pct.x1 += rate * (target_rect_pct.x1 - panel->animated_rect_pct.x1);
+          panel->animated_rect_pct.y1 += rate * (target_rect_pct.y1 - panel->animated_rect_pct.y1);
+          if(ws->frames_alive < 5 || is_changing_panel_boundaries)
+          {
+            panel->animated_rect_pct = target_rect_pct;
+          }
         }
       }
     }
@@ -8892,7 +8686,7 @@ rd_ev_view_rule_expr_expand_range_info__meta_entities(Arena *arena, EV_View *vie
     for EachIndex(row_expr_idx, result.row_exprs_count)
     {
       U64 child_idx = idx_range.min + row_expr_idx;
-      RD_Entity *entity = &d_nil_entity;
+      RD_Entity *entity = &rd_nil_entity;
       if(entities_base_idx <= child_idx && child_idx < entities_base_idx+accel->entities.count)
       {
         entity = accel->entities.v[child_idx-entities_base_idx];
@@ -10933,6 +10727,7 @@ rd_stop_explanation_fstrs_from_ctrl_event(Arena *arena, CTRL_Event *event)
       if(thread != &ctrl_entity_nil)
       {
         dr_fancy_string_list_push_new(arena, &fstrs, rd_font_from_slot(RD_FontSlot_Icons), ui_top_font_size(), ui_top_palette()->text, rd_icon_kind_text_table[RD_IconKind_CircleFilled]);
+        dr_fancy_string_list_push_new(arena, &fstrs, ui_top_font(), ui_top_font_size(), ui_top_palette()->text, str8_lit("  "));
         dr_fancy_string_list_concat_in_place(&fstrs, &thread_fstrs);
         dr_fancy_string_list_push_new(arena, &fstrs, ui_top_font(), ui_top_font_size(), ui_top_palette()->text, str8_lit(" hit a breakpoint"));
       }
@@ -10948,6 +10743,7 @@ rd_stop_explanation_fstrs_from_ctrl_event(Arena *arena, CTRL_Event *event)
         {
           default:
           {
+            dr_fancy_string_list_push_new(arena, &fstrs, ui_top_font(), ui_top_font_size(), ui_top_palette()->text, str8_lit("  "));
             dr_fancy_string_list_concat_in_place(&fstrs, &thread_fstrs);
             dr_fancy_string_list_push_new(arena, &fstrs, ui_top_font(), ui_top_font_size(), ui_top_palette()->text, str8_lit(" hit an exception - "));
             String8 exception_code_string = str8_from_u64(arena, event->exception_code, 16, 0, 0);
@@ -10961,6 +10757,7 @@ rd_stop_explanation_fstrs_from_ctrl_event(Arena *arena, CTRL_Event *event)
           }break;
           case CTRL_ExceptionKind_CppThrow:
           {
+            dr_fancy_string_list_push_new(arena, &fstrs, ui_top_font(), ui_top_font_size(), ui_top_palette()->text, str8_lit("  "));
             dr_fancy_string_list_concat_in_place(&fstrs, &thread_fstrs);
             dr_fancy_string_list_push_new(arena, &fstrs, ui_top_font(), ui_top_font_size(), ui_top_palette()->text, str8_lit(" hit a C++ exception - "));
             String8 exception_code_string = str8_from_u64(arena, event->exception_code, 16, 0, 0);
@@ -10968,6 +10765,7 @@ rd_stop_explanation_fstrs_from_ctrl_event(Arena *arena, CTRL_Event *event)
           }break;
           case CTRL_ExceptionKind_MemoryRead:
           {
+            dr_fancy_string_list_push_new(arena, &fstrs, ui_top_font(), ui_top_font_size(), ui_top_palette()->text, str8_lit("  "));
             dr_fancy_string_list_concat_in_place(&fstrs, &thread_fstrs);
             dr_fancy_string_list_push_new(arena, &fstrs, ui_top_font(), ui_top_font_size(), ui_top_palette()->text, str8_lit(" hit an exception - "));
             String8 exception_code_string = str8_from_u64(arena, event->exception_code, 16, 0, 0);
@@ -10976,6 +10774,7 @@ rd_stop_explanation_fstrs_from_ctrl_event(Arena *arena, CTRL_Event *event)
           }break;
           case CTRL_ExceptionKind_MemoryWrite:
           {
+            dr_fancy_string_list_push_new(arena, &fstrs, ui_top_font(), ui_top_font_size(), ui_top_palette()->text, str8_lit("  "));
             dr_fancy_string_list_concat_in_place(&fstrs, &thread_fstrs);
             dr_fancy_string_list_push_new(arena, &fstrs, ui_top_font(), ui_top_font_size(), ui_top_palette()->text, str8_lit(" hit an exception - "));
             String8 exception_code_string = str8_from_u64(arena, event->exception_code, 16, 0, 0);
@@ -10984,6 +10783,7 @@ rd_stop_explanation_fstrs_from_ctrl_event(Arena *arena, CTRL_Event *event)
           }break;
           case CTRL_ExceptionKind_MemoryExecute:
           {
+            dr_fancy_string_list_push_new(arena, &fstrs, ui_top_font(), ui_top_font_size(), ui_top_palette()->text, str8_lit("  "));
             dr_fancy_string_list_concat_in_place(&fstrs, &thread_fstrs);
             dr_fancy_string_list_push_new(arena, &fstrs, ui_top_font(), ui_top_font_size(), ui_top_palette()->text, str8_lit(" hit an exception - "));
             String8 exception_code_string = str8_from_u64(arena, event->exception_code, 16, 0, 0);
@@ -11011,6 +10811,7 @@ rd_stop_explanation_fstrs_from_ctrl_event(Arena *arena, CTRL_Event *event)
     case CTRL_EventCause_InterruptedByTrap:
     {
       dr_fancy_string_list_push_new(arena, &fstrs, rd_font_from_slot(RD_FontSlot_Icons), ui_top_font_size(), ui_top_palette()->text, rd_icon_kind_text_table[RD_IconKind_WarningBig]);
+      dr_fancy_string_list_push_new(arena, &fstrs, ui_top_font(), ui_top_font_size(), ui_top_palette()->text, str8_lit("  "));
       dr_fancy_string_list_concat_in_place(&fstrs, &thread_fstrs);
       dr_fancy_string_list_push_new(arena, &fstrs, ui_top_font(), ui_top_font_size(), ui_top_palette()->text, str8_lit(" hit a trap"));
     }break;
@@ -11097,7 +10898,7 @@ rd_push_active_target_list(Arena *arena)
 internal RD_Entity *
 rd_entity_from_ev_key_and_kind(EV_Key key, RD_EntityKind kind)
 {
-  RD_Entity *result = &d_nil_entity;
+  RD_Entity *result = &rd_nil_entity;
   RD_EntityList list = rd_query_cached_entity_list_with_kind(kind);
   for(RD_EntityNode *n = list.first; n != 0; n = n->next)
   {
@@ -11349,10 +11150,10 @@ rd_init(CmdLine *cmdln)
     rd_state->cmds_arenas[idx] = arena_alloc();
   }
   rd_state->entities_arena = arena_alloc(.reserve_size = GB(64), .commit_size = KB(64));
-  rd_state->entities_root = &d_nil_entity;
+  rd_state->entities_root = &rd_nil_entity;
   rd_state->entities_base = push_array(rd_state->entities_arena, RD_Entity, 0);
   rd_state->entities_count = 0;
-  rd_state->entities_root = rd_entity_alloc(&d_nil_entity, RD_EntityKind_Root);
+  rd_state->entities_root = rd_entity_alloc(&rd_nil_entity, RD_EntityKind_Root);
   rd_state->key_map_arena = arena_alloc();
   rd_state->popup_arena = arena_alloc();
   rd_state->ctx_menu_key = ui_key_from_string(ui_key_zero(), str8_lit("top_level_ctx_menu"));
@@ -12520,7 +12321,7 @@ rd_frame(void)
             if(src == RD_CfgSrc_Project)
             {
               RD_EntityList recent_projects = rd_query_cached_entity_list_with_kind(RD_EntityKind_RecentProject);
-              RD_Entity *recent_project = &d_nil_entity;
+              RD_Entity *recent_project = &rd_nil_entity;
               for(RD_EntityNode *n = recent_projects.first; n != 0; n = n->next)
               {
                 if(path_match_normalized(cfg_path, n->entity->string))
@@ -14084,7 +13885,7 @@ rd_frame(void)
             {
               rd_entity_mark_for_deletion(recent_files.first->entity);
             }
-            RD_Entity *existing_recent_file = &d_nil_entity;
+            RD_Entity *existing_recent_file = &rd_nil_entity;
             for(RD_EntityNode *n = recent_files.first; n != 0; n = n->next)
             {
               if(str8_match(n->entity->string, path, StringMatchFlag_CaseInsensitive))
@@ -15225,10 +15026,9 @@ rd_frame(void)
                 if(src_n->flags & RD_EntityFlag_HasTextPoint)    {rd_entity_equip_txt_pt(dst_n, src_n->text_point);}
                 if(src_n->flags & RD_EntityFlag_HasU64)          {rd_entity_equip_u64(dst_n, src_n->u64);}
                 if(src_n->flags & RD_EntityFlag_HasColor)        {rd_entity_equip_color_hsva(dst_n, rd_hsva_from_entity(src_n));}
-                if(src_n->flags & RD_EntityFlag_HasVAddrRng)     {rd_entity_equip_vaddr_rng(dst_n, src_n->vaddr_rng);}
                 if(src_n->flags & RD_EntityFlag_HasVAddr)        {rd_entity_equip_vaddr(dst_n, src_n->vaddr);}
-                if(src_n->disabled)                             {rd_entity_equip_disabled(dst_n, 1);}
-                if(src_n->string.size != 0)                     {rd_entity_equip_name(dst_n, src_n->string);}
+                if(src_n->disabled)                              {rd_entity_equip_disabled(dst_n, 1);}
+                if(src_n->string.size != 0)                      {rd_entity_equip_name(dst_n, src_n->string);}
                 dst_n->cfg_src = src_n->cfg_src;
                 for(RD_Entity *src_child = task->src_n->first; !rd_entity_is_nil(src_child); src_child = src_child->next)
                 {
@@ -15374,7 +15174,7 @@ rd_frame(void)
             RD_Entity *existing_watch = rd_entity_from_name_and_kind(rd_regs()->string, RD_EntityKind_Watch);
             if(rd_entity_is_nil(existing_watch))
             {
-              RD_Entity *watch = &d_nil_entity;
+              RD_Entity *watch = &rd_nil_entity;
               watch = rd_entity_alloc(rd_entity_root(), RD_EntityKind_Watch);
               rd_entity_equip_cfg_src(watch, RD_CfgSrc_Project);
               rd_entity_equip_name(watch, rd_regs()->string);
@@ -15452,7 +15252,7 @@ rd_frame(void)
           case RD_CmdKind_AddTarget:
           {
             // rjf: build target
-            RD_Entity *entity = &d_nil_entity;
+            RD_Entity *entity = &rd_nil_entity;
             entity = rd_entity_alloc(rd_entity_root(), RD_EntityKind_Target);
             rd_entity_equip_disabled(entity, 1);
             rd_entity_equip_cfg_src(entity, RD_CfgSrc_Project);
@@ -16638,22 +16438,22 @@ rd_frame(void)
   {
     for(RD_Entity *entity = rd_entity_root(), *next = 0; !rd_entity_is_nil(entity); entity = next)
     {
-      next = rd_entity_rec_depth_first_pre(entity, &d_nil_entity).next;
+      next = rd_entity_rec_depth_first_pre(entity, &rd_nil_entity).next;
       if(entity->flags & RD_EntityFlag_MarkedForDeletion)
       {
         B32 undoable = (rd_entity_kind_flags_table[entity->kind] & RD_EntityKindFlag_UserDefinedLifetime);
         
         // rjf: fixup next entity to iterate to
-        next = rd_entity_rec_depth_first(entity, &d_nil_entity, OffsetOf(RD_Entity, next), OffsetOf(RD_Entity, next)).next;
+        next = rd_entity_rec_depth_first(entity, &rd_nil_entity, OffsetOf(RD_Entity, next), OffsetOf(RD_Entity, next)).next;
         
         // rjf: eliminate root entity if we're freeing it
         if(entity == rd_state->entities_root)
         {
-          rd_state->entities_root = &d_nil_entity;
+          rd_state->entities_root = &rd_nil_entity;
         }
         
         // rjf: unhook & release this entity tree
-        rd_entity_change_parent(entity, entity->parent, &d_nil_entity, &d_nil_entity);
+        rd_entity_change_parent(entity, entity->parent, &rd_nil_entity, &rd_nil_entity);
         rd_entity_release(entity);
       }
     }

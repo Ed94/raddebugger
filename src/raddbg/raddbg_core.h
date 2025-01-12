@@ -78,20 +78,7 @@ enum
   RD_EntityFlag_HasEntityHandle   = (1<<2),
   RD_EntityFlag_HasU64            = (1<<4),
   RD_EntityFlag_HasColor          = (1<<6),
-  RD_EntityFlag_DiesOnRunStop     = (1<<8),
-  
-  //- rjf: ctrl entity equipment
-  RD_EntityFlag_HasCtrlHandle     = (1<<9),
-  RD_EntityFlag_HasArch           = (1<<10),
-  RD_EntityFlag_HasCtrlID         = (1<<11),
-  RD_EntityFlag_HasStackBase      = (1<<12),
-  RD_EntityFlag_HasTLSRoot        = (1<<13),
-  RD_EntityFlag_HasVAddrRng       = (1<<14),
   RD_EntityFlag_HasVAddr          = (1<<15),
-  
-  //- rjf: file properties
-  RD_EntityFlag_IsFolder          = (1<<16),
-  RD_EntityFlag_IsMissing         = (1<<17),
   
   //- rjf: deletion
   RD_EntityFlag_MarkedForDeletion = (1<<31),
@@ -413,28 +400,16 @@ struct RD_Entity
   
   // rjf: basic equipment
   TxtPt text_point;
-  RD_Handle entity_handle;
   B32 disabled;
   B32 debug_subprocesses;
   U64 u64;
+  U64 vaddr;
   Vec4F32 color_hsva;
   RD_CfgSrc cfg_src;
   U64 timestamp;
   
-  // rjf: ctrl equipment
-  CTRL_Handle ctrl_handle;
-  Arch arch;
-  U32 ctrl_id;
-  U64 stack_base;
-  Rng1U64 vaddr_rng;
-  U64 vaddr;
-  
   // rjf: string equipment
   String8 string;
-  
-  // rjf: parameter tree
-  Arena *params_arena;
-  MD_Node *params_root;
 };
 
 typedef struct RD_EntityNode RD_EntityNode;
@@ -465,36 +440,6 @@ struct RD_EntityRec
   RD_Entity *next;
   S32 push_count;
   S32 pop_count;
-};
-
-////////////////////////////////
-//~ rjf: Entity Evaluation Types
-
-typedef struct RD_EntityEval RD_EntityEval;
-struct RD_EntityEval
-{
-  B64 enabled;
-  U64 hit_count;
-  U64 label_off;
-  U64 location_off;
-  U64 condition_off;
-};
-
-////////////////////////////////
-//~ rjf: Entity Fuzzy Listing Types
-
-typedef struct RD_EntityFuzzyItem RD_EntityFuzzyItem;
-struct RD_EntityFuzzyItem
-{
-  RD_Entity *entity;
-  FuzzyMatchRangeList matches;
-};
-
-typedef struct RD_EntityFuzzyItemArray RD_EntityFuzzyItemArray;
-struct RD_EntityFuzzyItemArray
-{
-  RD_EntityFuzzyItem *v;
-  U64 count;
 };
 
 ////////////////////////////////
@@ -969,13 +914,13 @@ struct RD_State
 read_only global RD_CfgTree d_nil_cfg_tree = {&d_nil_cfg_tree, RD_CfgSrc_User, &md_nil_node};
 read_only global RD_CfgVal d_nil_cfg_val = {&d_nil_cfg_val, &d_nil_cfg_val, &d_nil_cfg_tree, &d_nil_cfg_tree};
 
-read_only global RD_Entity d_nil_entity =
+read_only global RD_Entity rd_nil_entity =
 {
-  &d_nil_entity,
-  &d_nil_entity,
-  &d_nil_entity,
-  &d_nil_entity,
-  &d_nil_entity,
+  &rd_nil_entity,
+  &rd_nil_entity,
+  &rd_nil_entity,
+  &rd_nil_entity,
+  &rd_nil_entity,
 };
 
 read_only global RD_CmdKindInfo rd_nil_cmd_kind_info = {0};
@@ -1053,7 +998,6 @@ internal B32 rd_entity_is_nil(RD_Entity *entity);
 internal U64 rd_index_from_entity(RD_Entity *entity);
 internal RD_Handle rd_handle_from_entity(RD_Entity *entity);
 internal RD_Entity *rd_entity_from_handle(RD_Handle handle);
-internal RD_HandleList rd_handle_list_from_entity_list(Arena *arena, RD_EntityList entities);
 
 //- rjf: entity recursion iterators
 internal RD_EntityRec rd_entity_rec_depth_first(RD_Entity *entity, RD_Entity *subtree_root, U64 sib_off, U64 child_off);
@@ -1062,17 +1006,11 @@ internal RD_EntityRec rd_entity_rec_depth_first(RD_Entity *entity, RD_Entity *su
 
 //- rjf: ancestor/child introspection
 internal RD_Entity *rd_entity_child_from_kind(RD_Entity *entity, RD_EntityKind kind);
-internal RD_Entity *rd_entity_ancestor_from_kind(RD_Entity *entity, RD_EntityKind kind);
-internal RD_EntityList rd_push_entity_child_list_with_kind(Arena *arena, RD_Entity *entity, RD_EntityKind kind);
-internal RD_Entity *rd_entity_child_from_string_and_kind(RD_Entity *parent, String8 string, RD_EntityKind kind);
 
 //- rjf: entity list building
 internal void rd_entity_list_push(Arena *arena, RD_EntityList *list, RD_Entity *entity);
 internal RD_EntityArray rd_entity_array_from_list(Arena *arena, RD_EntityList *list);
-#define rd_first_entity_from_list(list) ((list)->first != 0 ? (list)->first->entity : &d_nil_entity)
-
-//- rjf: display string entities, for referencing entities in ui
-internal String8 rd_display_string_from_entity(Arena *arena, RD_Entity *entity);
+#define rd_first_entity_from_list(list) ((list)->first != 0 ? (list)->first->entity : &rd_nil_entity)
 
 //- rjf: entity -> color operations
 internal Vec4F32 rd_hsva_from_entity(RD_Entity *entity);
@@ -1081,9 +1019,6 @@ internal Vec4F32 rd_rgba_from_entity(RD_Entity *entity);
 //- rjf: entity -> expansion tree keys
 internal EV_Key rd_ev_key_from_entity(RD_Entity *entity);
 internal EV_Key rd_parent_ev_key_from_entity(RD_Entity *entity);
-
-//- rjf: entity -> evaluation
-internal RD_EntityEval *rd_eval_from_entity(Arena *arena, RD_Entity *entity);
 
 ////////////////////////////////
 //~ rjf: View Type Functions
@@ -1174,7 +1109,6 @@ internal RD_Entity *rd_entity_child_from_kind_or_alloc(RD_Entity *entity, RD_Ent
 
 //- rjf: entity simple equipment
 internal void rd_entity_equip_txt_pt(RD_Entity *entity, TxtPt point);
-internal void rd_entity_equip_entity_handle(RD_Entity *entity, RD_Handle handle);
 internal void rd_entity_equip_disabled(RD_Entity *entity, B32 b32);
 internal void rd_entity_equip_u64(RD_Entity *entity, U64 u64);
 internal void rd_entity_equip_color_rgba(RD_Entity *entity, Vec4F32 rgba);
@@ -1183,11 +1117,6 @@ internal void rd_entity_equip_cfg_src(RD_Entity *entity, RD_CfgSrc cfg_src);
 internal void rd_entity_equip_timestamp(RD_Entity *entity, U64 timestamp);
 
 //- rjf: control layer correllation equipment
-internal void rd_entity_equip_ctrl_handle(RD_Entity *entity, CTRL_Handle handle);
-internal void rd_entity_equip_arch(RD_Entity *entity, Arch arch);
-internal void rd_entity_equip_ctrl_id(RD_Entity *entity, U32 id);
-internal void rd_entity_equip_stack_base(RD_Entity *entity, U64 stack_base);
-internal void rd_entity_equip_vaddr_rng(RD_Entity *entity, Rng1U64 range);
 internal void rd_entity_equip_vaddr(RD_Entity *entity, U64 vaddr);
 
 //- rjf: name equipment

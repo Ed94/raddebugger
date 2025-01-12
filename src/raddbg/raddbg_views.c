@@ -22,8 +22,6 @@ rd_code_view_build(Arena *arena, RD_CodeViewState *cv, RD_CodeViewBuildFlags fla
 {
   ProfBeginFunction();
   Temp scratch = scratch_begin(&arena, 1);
-  HS_Scope *hs_scope = hs_scope_open();
-  TXT_Scope *txt_scope = txt_scope_open();
   
   //////////////////////////////
   //- rjf: unpack state
@@ -784,8 +782,6 @@ rd_code_view_build(Arena *arena, RD_CodeViewState *cv, RD_CodeViewBuildFlags fla
   //
   rd_store_view_scroll_pos(scroll_pos);
   
-  txt_scope_close(txt_scope);
-  hs_scope_close(hs_scope);
   scratch_end(scratch);
   ProfEnd();
   return result;
@@ -876,7 +872,7 @@ rd_watch_view_row_info_from_row(EV_Row *row)
     }
     
     // rjf: extract frontend entity, if any
-    RD_Entity *entity = &d_nil_entity;
+    RD_Entity *entity = &rd_nil_entity;
     if(collection_entity_kind != RD_EntityKind_Nil)
     {
       entity = rd_entity_from_id(key.child_id);
@@ -2110,8 +2106,8 @@ rd_watch_view_build(RD_WatchViewState *ewv, RD_WatchViewFlags flags, String8 roo
           }
           
           // rjf: map selection endpoints to entities
-          RD_Entity *first_entity = &d_nil_entity;
-          RD_Entity *last_entity = &d_nil_entity;
+          RD_Entity *first_entity = &rd_nil_entity;
+          RD_Entity *last_entity = &rd_nil_entity;
           if(collection_entity_kind != RD_EntityKind_Nil)
           {
             first_entity = rd_entity_from_id(selection_keys_in_block[0].child_id);
@@ -2121,8 +2117,8 @@ rd_watch_view_build(RD_WatchViewState *ewv, RD_WatchViewFlags flags, String8 roo
           // rjf: reorder
           if(!rd_entity_is_nil(first_entity) && !rd_entity_is_nil(last_entity))
           {
-            RD_Entity *first_entity_prev = &d_nil_entity;
-            RD_Entity *last_entity_next  = &d_nil_entity;
+            RD_Entity *first_entity_prev = &rd_nil_entity;
+            RD_Entity *last_entity_next  = &rd_nil_entity;
             for(RD_Entity *prev = first_entity->prev; !rd_entity_is_nil(prev); prev = prev->prev)
             {
               if(prev->kind == collection_entity_kind)
@@ -4899,7 +4895,6 @@ RD_VIEW_RULE_UI_FUNCTION_DEF(entity_lister)
   RD_Window *window = rd_window_from_handle(rd_regs()->window);
   RD_CmdKindInfo *cmd_kind_info = rd_cmd_kind_info_from_string(window->query_cmd_name);
   RD_EntityKind entity_kind = cmd_kind_info->query.entity_kind;
-  RD_EntityFlags entity_flags_omit = RD_EntityFlag_IsFolder;
   F32 row_height_px = floor_f32(ui_top_font_size()*2.5f);
   F32 scroll_bar_dim = floor_f32(ui_top_font_size()*1.5f);
   
@@ -4915,7 +4910,7 @@ RD_VIEW_RULE_UI_FUNCTION_DEF(entity_lister)
   RD_Entity *selected_entity = rd_entity_from_handle(selected_entity_handle);
   
   //- rjf: build filtered array of entities
-  RD_EntityListerItemList ent_list = rd_entity_lister_item_list_from_needle(scratch.arena, entity_kind, entity_flags_omit, string);
+  RD_EntityListerItemList ent_list = rd_entity_lister_item_list_from_needle(scratch.arena, entity_kind, 0, string);
   RD_EntityListerItemArray ent_arr = rd_entity_lister_item_array_from_list(scratch.arena, ent_list);
   rd_entity_lister_item_array_sort_by_strength__in_place(ent_arr);
   

@@ -1581,10 +1581,10 @@ d_next_cmd(D_Cmd **cmd)
 ////////////////////////////////
 //~ rjf: Main Layer Top-Level Calls
 
-#if !defined(BLAKE2_H)
-#define HAVE_SSE2
-#include "third_party/blake2/blake2.h"
-#include "third_party/blake2/blake2b.c"
+#if !defined(XXH_IMPLEMENTATION)
+# define XXH_IMPLEMENTATION
+# define XXH_STATIC_LINKING_ONLY
+# include "third_party/xxHash/xxhash.h"
 #endif
 
 internal void
@@ -1687,23 +1687,6 @@ d_tick(Arena *arena, D_TargetArray *targets, D_BreakpointArray *breakpoints, D_P
              event->cause == CTRL_EventCause_InterruptedByTrap)
           {
             log_user_error(str8_zero());
-          }
-          
-          // rjf: kill all entities which are marked to die on stop
-          {
-            RD_Entity *request = rd_entity_from_id(event->msg_id);
-            if(rd_entity_is_nil(request))
-            {
-              for(RD_Entity *entity = rd_entity_root();
-                  !rd_entity_is_nil(entity);
-                  entity = rd_entity_rec_depth_first_pre(entity, rd_entity_root()).next)
-              {
-                if(entity->flags & RD_EntityFlag_DiesOnRunStop)
-                {
-                  rd_entity_mark_for_deletion(entity);
-                }
-              }
-            }
           }
           
           // rjf: gather stop info
@@ -1856,7 +1839,8 @@ d_tick(Arena *arena, D_TargetArray *targets, D_BreakpointArray *breakpoints, D_P
     
     // rjf: join & hash to produce result
     String8 string = str8_list_join(scratch.arena, &strings, 0);
-    blake2b((U8 *)&ctrl_param_state_hash.u64[0], sizeof(ctrl_param_state_hash), string.str, string.size, 0, 0);
+    XXH128_hash_t hash = XXH3_128bits(string.str, string.size);
+    MemoryCopy(&ctrl_param_state_hash, &hash, sizeof(ctrl_param_state_hash));
   }
   
   //////////////////////////////
