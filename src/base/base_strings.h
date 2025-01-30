@@ -206,10 +206,13 @@ internal String8 backslashed_from_str8(Arena *arena, String8 string);
 ////////////////////////////////
 //~ rjf: String Matching
 
+#define str8_match_lit(a_lit, b, flags)   str8_match(str8_lit(a_lit), (b), (flags))
+#define str8_match_cstr(a_cstr, b, flags) str8_match(str8_cstring(a_cstr), (b), (flags))
 internal B32 str8_match(String8 a, String8 b, StringMatchFlags flags);
 internal U64 str8_find_needle(String8 string, U64 start_pos, String8 needle, StringMatchFlags flags);
 internal U64 str8_find_needle_reverse(String8 string, U64 start_pos, String8 needle, StringMatchFlags flags);
 internal B32 str8_ends_with(String8 string, String8 end, StringMatchFlags flags);
+#define str8_ends_with_lit(string, end_lit, flags) str8_ends_with((string), str8_lit(end_lit), (flags))
 
 ////////////////////////////////
 //~ rjf: String Slicing
@@ -404,6 +407,8 @@ internal void * str8_deserial_get_raw_ptr(String8 string, U64 off, U64 size);
 internal U64    str8_deserial_read_cstr(String8 string, U64 off, String8 *cstr_out);
 internal U64    str8_deserial_read_windows_utf16_string16(String8 string, U64 off, String16 *str_out);
 internal U64    str8_deserial_read_block(String8 string, U64 off, U64 size, String8 *block_out);
+internal U64    str8_deserial_read_uleb128(String8 string, U64 off, U64 *value_out);
+internal U64    str8_deserial_read_sleb128(String8 string, U64 off, S64 *value_out);
 #define str8_deserial_read_array(string, off, ptr, count) str8_deserial_read((string), (off), (ptr), sizeof(*(ptr))*(count), sizeof(*(ptr)))
 #define str8_deserial_read_struct(string, off, ptr)       str8_deserial_read_array(string, off, ptr, 1)
 

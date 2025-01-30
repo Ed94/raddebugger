@@ -2,6 +2,31 @@
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 ////////////////////////////////
+//~ rjf: feature cleanup, code dedup, code elimination pass:
+//
+// [ ] frontend config entities, serialization/deserialization, remove hacks,
+//     etc. - the entity structure should be dramatically simplified & made
+//     to reflect a more flexible string-tree data structure which can be
+//     more trivially derived from config, and more flexibly rearranged.
+//     drag/drop watch rows -> tabs, tabs -> watch rows, etc.
+// [ ] frontend entities need to be the "upstream state" for windows, panels,
+//     tabs, etc. - entities can be mapped to caches of window/panel/view state
+//     in purely immediate-mode fashion, so the only *state* part of the
+//     equation only has to do with the string tree.
+// [ ] config hot-reloading using the wins from the previous points
+// [ ] undo/redo, using the wins from the previous points
+// [ ] watch table UI - hidden table boundaries, special-cased control hacks
+// [ ] hash store -> need to somehow hold on to hash blobs which are still
+//     depended upon by usage layers, e.g. extra dependency refcount, e.g.
+//     text cache can explicitly correllate nodes in its cache to hashes,
+//     bump their refcount - this would keep the hash correllated to its key
+//     and it would prevent it from being evicted (output debug string perf)
+// [ ] autocompletion lister, file lister, function lister, command lister,
+//     etc., all need to be merged, and optionally contextualized/filtered.
+//     right-clicking a tab should be equivalent to spawning a command lister,
+//     but only with commands that are directly
+
+////////////////////////////////
 //~ rjf: post-0.9.12 TODO notes
 //
 // [ ] breakpoints in optimized code? maybe early-terminating bp resolution loop? @bpmiss
@@ -315,9 +340,10 @@
 #include "mutable_text/mutable_text.h"
 #include "path/path.h"
 #include "coff/coff.h"
+#include "coff/coff_parse.h"
 #include "pe/pe.h"
 #include "codeview/codeview.h"
-#include "codeview/codeview_stringize.h"
+#include "codeview/codeview_parse.h"
 #include "msf/msf.h"
 #include "msf/msf_parse.h"
 #include "pdb/pdb.h"
@@ -356,9 +382,10 @@
 #include "mutable_text/mutable_text.c"
 #include "path/path.c"
 #include "coff/coff.c"
+#include "coff/coff_parse.c"
 #include "pe/pe.c"
 #include "codeview/codeview.c"
-#include "codeview/codeview_stringize.c"
+#include "codeview/codeview_parse.c"
 #include "msf/msf.c"
 #include "msf/msf_parse.c"
 #include "pdb/pdb.c"
@@ -574,6 +601,63 @@ entry_point(CmdLine *cmd_line)
         String8List args = cmd_line->inputs;
         if(args.node_count > 0 && args.first->string.size != 0)
         {
+          //- TODO(rjf): @cfg setup initial target from command line arguments
+          {
+            Temp scratch = scratch_begin(0, 0);
+            
+            //- rjf: unpack command line inputs
+            String8 executable_name_string = {0};
+            String8 arguments_string = {0};
+            String8 working_directory_string = {0};
+            {
+              // rjf: unpack full executable path
+              if(args.first->string.size != 0)
+              {
+                String8 current_path = os_get_current_path(scratch.arena);
+                String8 exe_name = args.first->string;
+                PathStyle style = path_style_from_str8(exe_name);
+                if(style == PathStyle_Relative)
+                {
+                  exe_name = push_str8f(scratch.arena, "%S/%S", current_path, exe_name);
+                  exe_name = path_normalized_from_string(scratch.arena, exe_name);
+                }
+                executable_name_string = exe_name;
+              }
+              
+              // rjf: unpack working directory
+              if(args.first->string.size != 0)
+              {
+                String8 path_part_of_arg = str8_chop_last_slash(args.first->string);
+                if(path_part_of_arg.size != 0)
+                {
+                  String8 path = push_str8f(scratch.arena, "%S/", path_part_of_arg);
+                  working_directory_string = path;
+                }
+              }
+              
+              // rjf: unpack arguments
+              String8List passthrough_args_list = {0};
+              for(String8Node *n = args.first->next; n != 0; n = n->next)
+              {
+                str8_list_push(scratch.arena, &passthrough_args_list, n->string);
+              }
+              StringJoin join = {str8_lit(""), str8_lit(" "), str8_lit("")};
+              arguments_string = str8_list_join(scratch.arena, &passthrough_args_list, &join);
+            }
+            
+            //- rjf: build config tree
+            RD_Cfg *command_line_root = rd_cfg_child_from_string(rd_state->root_cfg, str8_lit("command_line"));
+            RD_Cfg *target = rd_cfg_new(command_line_root, str8_lit("target"));
+            RD_Cfg *exe    = rd_cfg_new(target, str8_lit("executable"));
+            RD_Cfg *args   = rd_cfg_new(target, str8_lit("arguments"));
+            RD_Cfg *wdir   = rd_cfg_new(target, str8_lit("working_directory"));
+            rd_cfg_new(exe, executable_name_string);
+            rd_cfg_new(args, arguments_string);
+            rd_cfg_new(wdir, working_directory_string);
+            
+            scratch_end(scratch);
+          }
+          
           Temp scratch = scratch_begin(0, 0);
           RD_Entity *target = rd_entity_alloc(rd_entity_root(), RD_EntityKind_Target);
           rd_entity_equip_cfg_src(target, RD_CfgSrc_CommandLine);

@@ -305,8 +305,8 @@ THREAD_POOL_TASK_FUNC(lnk_get_external_leaves_task)
   LNK_GetExternalLeavesTask *task      = raw_task;
   MSF_Parsed                *msf_parse = task->msf_parse_arr[ts_idx];
 
-  task->external_ti_ranges[ts_idx] = push_array_no_zero(arena, Rng1U64, CV_TypeIndexSource_COUNT);
-  task->external_leaves[ts_idx]    = push_array_no_zero(arena, CV_DebugT, CV_TypeIndexSource_COUNT);
+  task->external_ti_ranges[ts_idx] = push_array(arena, Rng1U64,   CV_TypeIndexSource_COUNT);
+  task->external_leaves[ts_idx]    = push_array(arena, CV_DebugT, CV_TypeIndexSource_COUNT);
   task->is_corrupted[ts_idx]       = 1;
 
   if (msf_parse) {
@@ -2505,7 +2505,7 @@ THREAD_POOL_TASK_FUNC(lnk_replace_type_names_with_hashes_lenient_task)
     map       = &task->maps[task_id];
   }
 
-  U64 hash_max_chars = hash_length;
+  U64 hash_max_chars = hash_length*2;
   U8  temp[128];
 
   for (U64 leaf_idx = range.min; leaf_idx < range.max; ++leaf_idx) {
@@ -2513,7 +2513,9 @@ THREAD_POOL_TASK_FUNC(lnk_replace_type_names_with_hashes_lenient_task)
     if (leaf.kind == CV_LeafKind_STRUCTURE || leaf.kind == CV_LeafKind_CLASS) {
       CV_UDTInfo udt_info = cv_get_udt_info(leaf.kind, leaf.data);
 
-      if (udt_info.props & CV_TypeProp_HasUniqueName && udt_info.unique_name.size > hash_max_chars) {
+      if ((udt_info.props & CV_TypeProp_HasUniqueName) &&
+           udt_info.unique_name.size > hash_max_chars &&
+           udt_info.name.size > hash_max_chars) {
         // hash unique name
         U128 name_hash;
         blake3_hasher hasher; blake3_hasher_init(&hasher);
@@ -2523,27 +2525,33 @@ THREAD_POOL_TASK_FUNC(lnk_replace_type_names_with_hashes_lenient_task)
         // emit hash -> unique name map
         if (make_map) {
           lnk_format_u128(temp, sizeof(temp), hash_length, name_hash);
-          str8_list_pushf(map_arena, map, "%s %.*s\n", temp, str8_varg(udt_info.unique_name));
+          str8_list_pushf(map_arena, map, "%s %S\n", temp, str8_varg(udt_info.unique_name));
         }
 
         // parse leaf size
         CV_NumericParsed dummy;
         U64 numeric_size = cv_read_numeric(leaf.data, sizeof(CV_LeafStruct), &dummy);
 
-        U64 colon_pos = str8_find_needle_reverse(udt_info.name, 0, str8_lit("<lambda_"), 0);
-        B32 is_lambda = colon_pos != 0;
+        String8 lambda_prefix = str8_lit("<lambda_");
+        U64     colon_pos     = str8_find_needle_reverse(udt_info.name, 0, lambda_prefix, 0);
+        B32     is_lambda     = colon_pos != 0;
 
         if (is_lambda) {
-          // replace display type string with unique type name hash
-          udt_info.name.size = lnk_format_u128(udt_info.name.str, udt_info.name.size, hash_length, name_hash);
+          U64 size = lnk_format_u128(temp, sizeof(temp), hash_length, name_hash);
+          Assert(size < udt_info.name.size);
+          Assert(size < udt_info.unique_name.size);
+          MemoryCopy(udt_info.name.str, temp, size+1);
+          MemoryCopy(udt_info.name.str+size+1, temp, size+1);
+          udt_info.name.size        = size;
+          udt_info.unique_name.size = size;
 
           // update leaf header
           CV_LeafHeader *header = cv_debug_t_get_leaf_header(debug_t, leaf_idx);
-          header->size          = sizeof(CV_LeafKind) + sizeof(CV_LeafStruct) + numeric_size + udt_info.name.size + 1;
-
-          // discard unique name
-          CV_LeafStruct *lf = (CV_LeafStruct *)(header + 1);
-          lf->props &= ~CV_TypeProp_HasUniqueName;
+          header->size          = sizeof(CV_LeafKind) +
+                                  sizeof(CV_LeafStruct) +
+                                  numeric_size +
+                                  udt_info.name.size + 1 +
+                                  udt_info.unique_name.size + 1;
         } else {
           // replace uniuqe type name with hash
           udt_info.unique_name.str  = udt_info.name.str + udt_info.name.size + 1;
@@ -3017,7 +3025,7 @@ THREAD_POOL_TASK_FUNC(lnk_push_dbi_sec_contrib_task)
   // Mod1::fUpdateSecContrib
   if (sc_count > 0) {
     for (U64 sc_idx = 0; sc_idx < sc_count; ++sc_idx) {
-      if (sc_arr[sc_idx].data.base.flags & COFF_SectionFlag_CNT_CODE) {
+      if (sc_arr[sc_idx].data.base.flags & COFF_SectionFlag_CntCode) {
         mod->first_sc = sc_arr[sc_idx].data;
         break;
       }
@@ -3699,9 +3707,9 @@ THREAD_POOL_TASK_FUNC(lnk_convert_types_to_rdi_task)
     } break;
     case CV_LeafKind_POINTER: {
       CV_LeafPointer *ptr      = (CV_LeafPointer *) src.data.str;
-      CV_PointerKind  ptr_kind = CV_PointerAttribs_ExtractKind(ptr->attribs);
-      CV_PointerMode  ptr_mode = CV_PointerAttribs_ExtractMode(ptr->attribs);
-      U32             ptr_size = CV_PointerAttribs_ExtractSize(ptr->attribs);
+      CV_PointerKind  ptr_kind = CV_PointerAttribs_Extract_Kind(ptr->attribs);
+      CV_PointerMode  ptr_mode = CV_PointerAttribs_Extract_Mode(ptr->attribs);
+      U32             ptr_size = CV_PointerAttribs_Extract_Size(ptr->attribs);
       (void)ptr_kind;
 
       // parse ahead type chain and squash modifiers
@@ -4010,7 +4018,7 @@ THREAD_POOL_TASK_FUNC(lnk_convert_types_to_rdi_task)
               for (U64 cursor = 0; cursor + sizeof(CV_LeafMethodListMember) <= method_list_leaf.data.size; ) {
                 // parse CodeView method overload info
                 CV_LeafMethodListMember *list_member = (CV_LeafMethodListMember *) (method_list_leaf.data.str + cursor);
-                CV_MethodProp            prop        = CV_FieldAttribs_ExtractMethodProp(list_member->attribs);
+                CV_MethodProp            prop        = CV_FieldAttribs_Extract_MethodProp(list_member->attribs);
                 cursor += sizeof(CV_LeafMethodListMember);
                 U32 vftable_offset = 0;
                 if (prop == CV_MethodProp_Intro || prop == CV_MethodProp_PureIntro) {
@@ -4037,7 +4045,7 @@ THREAD_POOL_TASK_FUNC(lnk_convert_types_to_rdi_task)
         case CV_LeafKind_ONEMETHOD: {
           // parse CodeView method
           CV_LeafOneMethod *one_method = (CV_LeafOneMethod *) (src.data.str + cursor);
-          CV_MethodProp     prop       = CV_FieldAttribs_ExtractMethodProp(one_method->attribs);
+          CV_MethodProp     prop       = CV_FieldAttribs_Extract_MethodProp(one_method->attribs);
           cursor += sizeof(CV_LeafOneMethod);
           U32 vftable_offset = 0;
           if (prop == CV_MethodProp_Intro || prop == CV_MethodProp_PureIntro) {
@@ -4493,21 +4501,21 @@ THREAD_POOL_TASK_FUNC(lnk_find_obj_compiler_info_task)
         AssertAlways(sizeof(CV_SymCompile) <= symbol.data.size);
         CV_SymCompile *compile = (CV_SymCompile *)symbol.data.str;
         comp_info->arch          = compile->machine;
-        comp_info->language      = CV_CompileFlags_ExtractLanguage(compile->flags);
+        comp_info->language      = CV_CompileFlags_Extract_Language(compile->flags);
         comp_info->compiler_name = str8_cstring_capped(compile + 1, symbol.data.str + symbol.data.size);
         goto exit;
       } else if (symbol.kind == CV_SymKind_COMPILE2) {
         AssertAlways(sizeof(CV_SymCompile2) <= symbol.data.size);
         CV_SymCompile2 *compile2 = (CV_SymCompile2 *)symbol.data.str;
         comp_info->arch          = compile2->machine;
-        comp_info->language      = CV_Compile2Flags_ExtractLanguage(compile2->flags);
+        comp_info->language      = CV_Compile2Flags_Extract_Language(compile2->flags);
         comp_info->compiler_name = str8_cstring_capped(compile2 + 1, symbol.data.str + symbol.data.size);
         goto exit;
       } else if (symbol.kind == CV_SymKind_COMPILE3) {
         AssertAlways(sizeof(CV_SymCompile3) <= symbol.data.size);
         CV_SymCompile3 *compile3 = (CV_SymCompile3 *)symbol.data.str;
         comp_info->arch          = compile3->machine;
-        comp_info->language      = CV_Compile3Flags_ExtractLanguage(compile3->flags);
+        comp_info->language      = CV_Compile3Flags_Extract_Language(compile3->flags);
         comp_info->compiler_name = str8_cstring_capped(compile3 + 1, symbol.data.str + symbol.data.size);
         goto exit;
       }
@@ -5104,7 +5112,7 @@ THREAD_POOL_TASK_FUNC(lnk_convert_symbols_to_rdi_task)
       CV_LvarAddrGap                 *gaps                       = (CV_LvarAddrGap *) (defrange_subfield_register + 1);
       U64                             gap_count                  = (symbol.data.size - sizeof(*defrange_subfield_register)) / sizeof(gaps[0]);
       RDI_RegCode                     reg_rdi                    = rdi_reg_code_from_cv(comp_info.arch, defrange_subfield_register->reg);
-      U32                             value_pos                  = CV_DefrangeSubfieldRegister_ExtractParentOffset(defrange_subfield_register->field_offset);
+      U32                             value_pos                  = CV_DefrangeSubfieldRegister_Extract_ParentOffset(defrange_subfield_register->field_offset);
       U32                             value_size                 = cv_size_from_reg(comp_info.arch, defrange_subfield_register->reg) - value_pos;
       Rng1U64                         defrange                   = lnk_virt_range_from_sect_off_size(defrange_subfield_register->range.sec, defrange_subfield_register->range.off, defrange_subfield_register->range.len, task->image_sects, obj, symbol.kind, symbol.offset);
       Rng1U64List                     ranges                     = cv_make_defined_range_list_from_gaps(arena, defrange, gaps, gap_count);
