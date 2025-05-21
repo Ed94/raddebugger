@@ -1,6 +1,9 @@
 // Copyright (c) 2024 Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
+#undef LAYER_COLOR
+#define LAYER_COLOR 0x7c4ce3ff
+
 ////////////////////////////////
 //~ rjf: Basic Helpers
 
@@ -262,22 +265,26 @@ di_scope_open(void)
     scope = push_array_no_zero(di_tctx->arena, DI_Scope, 1);
   }
   MemoryZeroStruct(scope);
+  DLLPushBack(di_tctx->first_scope, di_tctx->last_scope, scope);
   return scope;
 }
 
 internal void
 di_scope_close(DI_Scope *scope)
 {
+  DLLRemove(di_tctx->first_scope, di_tctx->last_scope, scope);
   for(DI_Touch *t = scope->first_touch, *next = 0; t != 0; t = next)
   {
     next = t->next;
     if(t->node != 0)
     {
       ins_atomic_u64_dec_eval(&t->node->touch_count);
+      os_condition_variable_broadcast(t->stripe->cv);
     }
     if(t->search_node != 0)
     {
       ins_atomic_u64_dec_eval(&t->search_node->scope_refcount);
+      os_condition_variable_broadcast(t->search_stripe->cv);
     }
     SLLStackPush(di_tctx->free_touch, t);
   }
@@ -285,7 +292,7 @@ di_scope_close(DI_Scope *scope)
 }
 
 internal void
-di_scope_touch_node__stripe_mutex_r_guarded(DI_Scope *scope, DI_Node *node)
+di_scope_touch_node__stripe_mutex_r_guarded(DI_Scope *scope, DI_Stripe *stripe, DI_Node *node)
 {
   if(node != 0)
   {
@@ -303,10 +310,11 @@ di_scope_touch_node__stripe_mutex_r_guarded(DI_Scope *scope, DI_Node *node)
   MemoryZeroStruct(touch);
   SLLQueuePush(scope->first_touch, scope->last_touch, touch);
   touch->node = node;
+  touch->stripe = stripe;
 }
 
 internal void
-di_scope_touch_search_node__stripe_mutex_r_guarded(DI_Scope *scope, DI_SearchNode *node)
+di_scope_touch_search_node__stripe_mutex_r_guarded(DI_Scope *scope, DI_SearchStripe *stripe, DI_SearchNode *node)
 {
   if(node != 0)
   {
@@ -324,6 +332,7 @@ di_scope_touch_search_node__stripe_mutex_r_guarded(DI_Scope *scope, DI_SearchNod
   MemoryZeroStruct(touch);
   SLLQueuePush(scope->first_touch, scope->last_touch, touch);
   touch->search_node = node;
+  touch->search_stripe = stripe;
 }
 
 ////////////////////////////////
@@ -522,6 +531,7 @@ di_close(DI_Key *key)
     DI_Slot *slot = &di_shared->slots[slot_idx];
     DI_Stripe *stripe = &di_shared->stripes[stripe_idx];
     log_infof("close_debug_info: {\"%S\", 0x%I64x}\n", key_normalized.path, key_normalized.min_timestamp);
+    B32 closed = 0;
     OS_MutexScopeW(stripe->rw_mutex)
     {
       //- rjf: find existing node
@@ -533,16 +543,8 @@ di_close(DI_Key *key)
         node->ref_count -= 1;
         if(node->ref_count == 0) for(;;)
         {
-          //- rjf: wait for touch count to go to 0
-          if(ins_atomic_u64_eval(&node->touch_count) != 0)
-          {
-            os_rw_mutex_drop_w(stripe->rw_mutex);
-            for(U64 start_t = os_now_microseconds(); os_now_microseconds() <= start_t + 250;);
-            os_rw_mutex_take_w(stripe->rw_mutex);
-          }
-          
           //- rjf: release
-          if(node->ref_count == 0 && ins_atomic_u64_eval(&node->touch_count) == 0)
+          if(ins_atomic_u64_eval(&node->touch_count) == 0)
           {
             di_string_release__stripe_mutex_w_guarded(stripe, node->key.path);
             if(node->file_base != 0)
@@ -565,6 +567,9 @@ di_close(DI_Key *key)
             SLLStackPush(stripe->free_node, node);
             break;
           }
+          
+          //- rjf: wait for touch count to go to 0
+          os_condition_variable_wait_rw_w(stripe->cv, stripe->rw_mutex, max_U64);
         }
       }
     }
@@ -580,7 +585,7 @@ internal RDI_Parsed *
 di_rdi_from_key(DI_Scope *scope, DI_Key *key, U64 endt_us)
 {
   ProfBeginFunction();
-  RDI_Parsed *result = &di_rdi_parsed_nil;
+  RDI_Parsed *result = &rdi_parsed_nil;
   if(key->path.size != 0)
   {
     Temp scratch = scratch_begin(0, 0);
@@ -610,7 +615,7 @@ di_rdi_from_key(DI_Scope *scope, DI_Key *key, U64 endt_us)
       //- rjf: parse done -> touch, grab result
       if(node != 0 && node->parse_done)
       {
-        di_scope_touch_node__stripe_mutex_r_guarded(scope, node);
+        di_scope_touch_node__stripe_mutex_r_guarded(scope, stripe, node);
         result = &node->rdi;
         break;
       }
@@ -702,12 +707,11 @@ di_search_items_from_key_params_query(DI_Scope *scope, U128 key, DI_SearchParams
       B32 params_stale = 1;
       B32 query_stale = 1;
       B32 results_stale = 1;
-      if(params_hash == node->buckets[node->bucket_read_gen%ArrayCount(node->buckets)].params_hash &&
-         node->bucket_read_gen != 0)
+      if(node->bucket_read_gen != 0)
       {
-        di_scope_touch_search_node__stripe_mutex_r_guarded(scope, node);
+        di_scope_touch_search_node__stripe_mutex_r_guarded(scope, stripe, node);
         items = node->items;
-        params_stale = 0;
+        params_stale = (params_hash != node->buckets[node->bucket_read_gen%ArrayCount(node->buckets)].params_hash);
         query_stale = !str8_match(query, node->buckets[node->bucket_read_gen%ArrayCount(node->buckets)].query, 0);
         results_stale = (node->bucket_read_gen < node->bucket_write_gen);
       }
@@ -716,8 +720,8 @@ di_search_items_from_key_params_query(DI_Scope *scope, U128 key, DI_SearchParams
         *stale_out = (params_stale || query_stale || results_stale);
       }
       
-      // rjf: if query stale -> request again
-      if(query_stale && node->bucket_read_gen <= node->bucket_write_gen && node->bucket_write_gen < node->bucket_read_gen + ArrayCount(node->buckets)-1)
+      // rjf: if query or params stale -> request again
+      if((query_stale || params_stale) && node->bucket_read_gen <= node->bucket_write_gen && node->bucket_write_gen < node->bucket_read_gen + ArrayCount(node->buckets)-1)
       {
         node->bucket_write_gen += 1;
         if(node->bucket_write_gen >= node->bucket_items_gen + ArrayCount(node->buckets))
@@ -1084,7 +1088,7 @@ ASYNC_WORK_DEF(di_parse_work)
   ////////////////////////////
   //- rjf: do initial parse of rdi
   //
-  RDI_Parsed rdi_parsed_maybe_compressed = di_rdi_parsed_nil;
+  RDI_Parsed rdi_parsed_maybe_compressed = rdi_parsed_nil;
   {
     RDI_ParseStatus parse_status = rdi_parse((U8 *)file_base, file_props.size, &rdi_parsed_maybe_compressed);
     (void)parse_status;
@@ -1349,7 +1353,6 @@ di_search_thread__entry_point(void *p)
   for(;;)
   {
     Temp scratch = scratch_begin(0, 0);
-    DI_Scope *di_scope = di_scope_open();
     
     //- rjf: get next key, unpack
     U128 key = di_u2s_dequeue_req(thread_idx);
@@ -1379,6 +1382,9 @@ di_search_thread__entry_point(void *p)
         }
       }
     }
+    
+    //- rjf: begin debug info scope
+    DI_Scope *di_scope = di_scope_open();
     
     //- rjf: get all rdis
     U64 rdis_count = params.dbgi_keys.count;
@@ -1428,6 +1434,9 @@ di_search_thread__entry_point(void *p)
       cancelled = (cancelled || out->cancelled);
     }
     
+    //- rjf: end debug info scope
+    di_scope_close(di_scope);
+    
     //- rjf: list -> array
     DI_SearchItemArray items = {0};
     if(arena != 0 && !cancelled)
@@ -1464,13 +1473,14 @@ di_search_thread__entry_point(void *p)
       quick_sort(items.v, items.count, sizeof(DI_SearchItem), di_qsort_compare_search_items);
     }
     
-    //- rjf: commit to cache - busyloop on scope touches
+    //- rjf: commit to cache - wait on scope touches
     if(arena != 0)
     {
-      for(B32 done = 0; !done;)
+      OS_MutexScopeW(stripe->rw_mutex) for(;;)
       {
         B32 found = 0;
-        OS_MutexScopeW(stripe->rw_mutex) for(DI_SearchNode *n = slot->first; n != 0; n = n->next)
+        B32 done = 0;
+        for(DI_SearchNode *n = slot->first; n != 0; n = n->next)
         {
           if(u128_match(n->key, key))
           {
@@ -1489,14 +1499,17 @@ di_search_thread__entry_point(void *p)
             break;
           }
         }
-        if(!found)
+        if((found && done) || !found)
         {
           break;
+        }
+        if(found && !done)
+        {
+          os_condition_variable_wait_rw_w(stripe->cv, stripe->rw_mutex, os_now_microseconds()+1000);
         }
       }
     }
     
-    di_scope_close(di_scope);
     scratch_end(scratch);
   }
 }

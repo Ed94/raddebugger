@@ -132,6 +132,7 @@ global read_only struct
   { LNK_CmdSwitch_Rad_Age,                        "RAD_AGE",                            ":#",        "Age embeded in EXE and PDB, used to validate incremental build. Default is 1." },
   { LNK_CmdSwitch_Rad_BuildInfo,                  "RAD_BUILD_INFO",                     "",          "Print build info and exit."                                                    },
   { LNK_CmdSwitch_Rad_CheckUnusedDelayLoadDll,    "RAD_CHECK_UNUSED_DELAY_LOAD_DLL",    "[:NO]",     ""                                                                              },
+  { LNK_CmdSwitch_Rad_ChunkMap,                   "RAD_CHUNK_MAP",                      ":FILENAME", "Emit file with the output image's layout description."                         },
   { LNK_CmdSwitch_Rad_Debug,                      "RAD_DEBUG",                          "[:NO]",     "Emit RAD debug info file."                                                     },
   { LNK_CmdSwitch_Rad_DebugAltPath,               "RAD_DEBUGALTPATH",                   "", ""                                                                                       },
   { LNK_CmdSwitch_Rad_DebugName,                  "RAD_DEBUG_NAME",                     ":FILENAME", "Sets file name for RAD debug info file."                                       },
@@ -152,17 +153,17 @@ global read_only struct
   { LNK_CmdSwitch_Rad_PdbHashTypeNames,           "RAD_PDB_HASH_TYPE_NAMES",            ":{NONE|LENIENT|FULL}", "Replace type names in LF_STRUCTURE and LF_CLASS with hashes."       },
   { LNK_CmdSwitch_Rad_SectVirtOff,                "RAD_SECT_VIRT_OFF",                  ":#",        "Set RVA where section data is placed in memory. For internal use only."        },
   { LNK_CmdSwitch_Rad_SharedThreadPool,           "RAD_SHARED_THREAD_POOL",             "[:STRING]", "Default value \"" LNK_DEFAULT_THREAD_POOL_NAME "\""                            },
-  { LNK_CmdSwitch_Rad_SharedThreadPoolMaxWorkers, "RAD_SHARED_THREAD_POOL_MAX_WORKERS", ":#",      "Sets maximum number of workers in a thread pool."                              },
+  { LNK_CmdSwitch_Rad_SharedThreadPoolMaxWorkers, "RAD_SHARED_THREAD_POOL_MAX_WORKERS", ":#",        "Sets maximum number of workers in a thread pool."                              },
   { LNK_CmdSwitch_Rad_SuppressError,              "RAD_SUPPRESS_ERROR",                 ":#",        ""                                                                              },
   { LNK_CmdSwitch_Rad_SymbolTableCapDefined,      "RAD_SYMBOL_TABLE_CAP_DEFINED",       ":#",        "Number of buckets allocated in the symbol table for defined symbols."          },
   { LNK_CmdSwitch_Rad_SymbolTableCapInternal,     "RAD_SYMBOL_TABLE_CAP_INTERNAL",      ":#",        "Number of buckets allocated in the symbol table for internal symbols."         },
   { LNK_CmdSwitch_Rad_SymbolTableCapLib,          "RAD_SYMBOL_TABLE_CAP_LIB",           ":#",        "Number of buckets allocated in the symbol table for library symbols."          },
   { LNK_CmdSwitch_Rad_SymbolTableCapWeak,         "RAD_SYMBOL_TABLE_CAP_WEAK",          ":#",        "Number of buckets allocated in the symbol table for weak symbols."             },
   { LNK_CmdSwitch_Rad_TargetOs,                   "RAD_TARGET_OS",                      ":{WINDOWS,LINUX,MAC}"                                                                       },
+  { LNK_CmdSwitch_Rad_WriteTempFiles,             "RAD_WRITE_TEMP_FILES",               "[:NO]",     "When speicifed linker writes image and debug info to temporary files and renames after link is done." },
   { LNK_CmdSwitch_Rad_TimeStamp,                  "RAD_TIME_STAMP",                     ":#",        "Time stamp embeded in EXE and PDB."                                            },
   { LNK_CmdSwitch_Rad_Version,                    "RAD_VERSION",                        "",          "Print version and exit."                                                       },
   { LNK_CmdSwitch_Rad_Workers,                    "RAD_WORKERS",                        ":#",        "Sets number of workers created in the pool. Number is capped at 1024. When /RAD_SHARED_THREAD_POOL is specified this number cant exceed /RAD_SHARED_THREAD_POOL_MAX_WORKERS." },
-
   { LNK_CmdSwitch_Help, "HELP", "", "" },
   { LNK_CmdSwitch_Help, "?",    "", "" },
 };
@@ -355,11 +356,11 @@ lnk_get_default_function_pad_min(COFF_MachineType machine)
 {
   U64 function_pad_min = 0;
   switch (machine) {
-    case COFF_Machine_Unknown: break;
-    case COFF_Machine_X86: {
+    case COFF_MachineType_Unknown: break;
+    case COFF_MachineType_X86: {
       function_pad_min = 5;
     } break;
-    case COFF_Machine_X64: {
+    case COFF_MachineType_X64: {
       function_pad_min = 6;
     } break;
     default: {
@@ -399,12 +400,12 @@ lnk_get_default_subsystem_version(PE_WindowsSubsystem subsystem, COFF_MachineTyp
 
   case PE_WindowsSubsystem_WINDOWS_CUI: {
     switch (machine) {
-    case COFF_Machine_X64: 
-    case COFF_Machine_X86: ver = make_version(6,0); break;
+    case COFF_MachineType_X64: 
+    case COFF_MachineType_X86: ver = make_version(6,0); break;
 
-    case COFF_Machine_ArmNt:
-    case COFF_Machine_Arm64:
-    case COFF_Machine_Arm: ver = make_version(6,2); break;
+    case COFF_MachineType_ArmNt:
+    case COFF_MachineType_Arm64:
+    case COFF_MachineType_Arm: ver = make_version(6,2); break;
 
     default: lnk_not_implemented("define subsystem(%S) version for %S", pe_string_from_subsystem(subsystem), coff_string_from_machine_type(machine)); break;
     }
@@ -412,12 +413,12 @@ lnk_get_default_subsystem_version(PE_WindowsSubsystem subsystem, COFF_MachineTyp
 
   case PE_WindowsSubsystem_WINDOWS_GUI: {
     switch (machine) {
-    case COFF_Machine_X64:
-    case COFF_Machine_X86: ver = make_version(6,0); break;
+    case COFF_MachineType_X64:
+    case COFF_MachineType_X86: ver = make_version(6,0); break;
 
-    case COFF_Machine_ArmNt:
-    case COFF_Machine_Arm64:
-    case COFF_Machine_Arm: ver = make_version(6,2); break;
+    case COFF_MachineType_ArmNt:
+    case COFF_MachineType_Arm64:
+    case COFF_MachineType_Arm: ver = make_version(6,2); break;
 
     default: lnk_not_implemented("define subsystem(%S) version for %S", pe_string_from_subsystem(subsystem), coff_string_from_machine_type(machine)); break;
     }
@@ -447,13 +448,13 @@ lnk_get_min_subsystem_version(PE_WindowsSubsystem subsystem, COFF_MachineType ma
 
   case PE_WindowsSubsystem_WINDOWS_CUI: {
     switch (machine) {
-    case COFF_Machine_X86: ver = make_version(5,1); break;
+    case COFF_MachineType_X86: ver = make_version(5,1); break;
 
-    case COFF_Machine_X64: ver = make_version(5,2); break;
+    case COFF_MachineType_X64: ver = make_version(5,2); break;
 
-    case COFF_Machine_ArmNt:
-    case COFF_Machine_Arm64:
-    case COFF_Machine_Arm: ver = make_version(6,2); break;
+    case COFF_MachineType_ArmNt:
+    case COFF_MachineType_Arm64:
+    case COFF_MachineType_Arm: ver = make_version(6,2); break;
 
     default: lnk_not_implemented("define min subsystem(%S) version for %S", pe_string_from_subsystem(subsystem), coff_string_from_machine_type(machine)); break;
     }
@@ -461,13 +462,13 @@ lnk_get_min_subsystem_version(PE_WindowsSubsystem subsystem, COFF_MachineType ma
 
   case PE_WindowsSubsystem_WINDOWS_GUI: {
     switch (machine) {
-    case COFF_Machine_X86: ver = make_version(5,1); break;
+    case COFF_MachineType_X86: ver = make_version(5,1); break;
 
-    case COFF_Machine_X64: ver = make_version(5,2); break;
+    case COFF_MachineType_X64: ver = make_version(5,2); break;
 
-    case COFF_Machine_ArmNt:
-    case COFF_Machine_Arm64:
-    case COFF_Machine_Arm: ver = make_version(6,2); break;
+    case COFF_MachineType_ArmNt:
+    case COFF_MachineType_Arm64:
+    case COFF_MachineType_Arm: ver = make_version(6,2); break;
 
     default: lnk_not_implemented("define min subsystem(%S) version for %S", pe_string_from_subsystem(subsystem), coff_string_from_machine_type(machine)); break;
     }
@@ -882,7 +883,7 @@ lnk_print_help(void)
   fprintf(stdout, "--- Help -------------------------------------------------------\n");
   fprintf(stdout, "  %s\n", BUILD_TITLE_STRING_LITERAL);
   fprintf(stdout, "\n");
-  fprintf(stdout, "  Usage: rad-link.exe [Options] [Files] [@rsp]\n");
+  fprintf(stdout, "  Usage: radlink.exe [Options] [Files] [@rsp]\n");
   fprintf(stdout, "\n");
 
   fprintf(stdout, "  Options:\n");
@@ -953,8 +954,6 @@ lnk_expand_env_vars_windows(Arena *arena, HashTable *env_vars, String8 string)
 internal void
 lnk_apply_cmd_option_to_config(Arena *arena, LNK_Config *config, String8 cmd_name, String8List value_strings, String8 obj_path, String8 lib_path)
 {
-  Assert(cmd_name.size); // switch must have a defined name in the table
-
   Temp scratch = scratch_begin(&arena,1);
 
   LNK_CmdSwitchType cmd_switch = lnk_cmd_switch_type_from_string(cmd_name);
@@ -1213,7 +1212,7 @@ lnk_apply_cmd_option_to_config(Arena *arena, LNK_Config *config, String8 cmd_nam
   case LNK_CmdSwitch_Machine: {
     if (value_strings.node_count == 1) {
       COFF_MachineType machine = coff_machine_from_string(value_strings.first->string);
-      if (machine != COFF_Machine_Unknown) {
+      if (machine != COFF_MachineType_Unknown) {
         config->machine = machine;
       } else {
         lnk_error_cmd_switch(LNK_Error_Cmdl, obj_path, lib_path, cmd_switch, "unknown parameter \"%S\"", value_strings.first->string);
@@ -1522,6 +1521,11 @@ lnk_apply_cmd_option_to_config(Arena *arena, LNK_Config *config, String8 cmd_nam
     lnk_cmd_switch_set_flag_64(obj_path, lib_path, cmd_switch, value_strings, &config->flags, LNK_ConfigFlag_CheckUnusedDelayLoadDll);
   } break;
 
+  case LNK_CmdSwitch_Rad_ChunkMap: {
+    lnk_cmd_switch_parse_string_copy(arena, obj_path, lib_path, cmd_switch, value_strings, &config->rad_chunk_map_name);
+    config->rad_chunk_map = LNK_SwitchState_Yes;
+  } break;
+
   case LNK_CmdSwitch_Rad_Debug: {
     lnk_cmd_switch_parse_flag(obj_path, lib_path, cmd_switch, value_strings, &config->rad_debug);
   } break;
@@ -1754,6 +1758,10 @@ lnk_apply_cmd_option_to_config(Arena *arena, LNK_Config *config, String8 cmd_nam
     }
   } break;
 
+  case LNK_CmdSwitch_Rad_WriteTempFiles: {
+    lnk_cmd_switch_parse_flag(obj_path, lib_path, cmd_switch, value_strings, &config->write_temp_files);
+  } break;
+
   case LNK_CmdSwitch_Rad_TimeStamp: {
     lnk_cmd_switch_parse_u32(obj_path, lib_path, cmd_switch, value_strings, &config->time_stamp, 0);
   } break;
@@ -1972,22 +1980,22 @@ lnk_config_from_cmd_line(Arena *arena, String8List raw_cmd_line)
   if (!lnk_cmd_line_has_switch(cmd_line, LNK_CmdSwitch_Out)) {
     String8 name      = str8_list_first(&config->input_list[LNK_Input_Obj]);
     String8 ext       = (config->file_characteristics & PE_ImageFileCharacteristic_FILE_DLL) ? str8_lit("dll") : str8_lit("exe");
-    config->image_name = make_file_name_with_ext(scratch.arena, name, ext);
+    config->image_name = path_replace_file_extension(scratch.arena, name, ext);
   }
 
   // handle empty /PDB
   if (!lnk_cmd_line_has_switch(cmd_line, LNK_CmdSwitch_Pdb)) {
-    config->pdb_name = make_file_name_with_ext(scratch.arena, config->image_name, str8_lit("pdb"));
+    config->pdb_name = path_replace_file_extension(scratch.arena, config->image_name, str8_lit("pdb"));
   }
 
   // handle empty /RAD_DEBUG_NAME
   if (!lnk_cmd_line_has_switch(cmd_line, LNK_CmdSwitch_Rad_DebugName)) {
-    config->rad_debug_name = make_file_name_with_ext(scratch.arena, config->image_name, str8_lit("rdi"));
+    config->rad_debug_name = path_replace_file_extension(scratch.arena, config->image_name, str8_lit("rdi"));
   }
 
   // handle empty /IMPLIB
   if (!lnk_cmd_line_has_switch(cmd_line, LNK_CmdSwitch_ImpLib)) {
-    config->imp_lib_name = make_file_name_with_ext(scratch.arena, config->image_name, str8_lit("lib"));
+    config->imp_lib_name = path_replace_file_extension(scratch.arena, config->image_name, str8_lit("lib"));
   }
 
   // handle empty /MANIFESTFILE
@@ -2053,6 +2061,14 @@ lnk_config_from_cmd_line(Arena *arena, String8List raw_cmd_line)
 
   // :Rad_DebugAltPath
   config->rad_debug_alt_path = lnk_expand_env_vars_windows(arena, env_vars, config->rad_debug_alt_path);
+
+  // create temporary files names
+  if (config->write_temp_files == LNK_SwitchState_Yes) {
+    config->temp_rad_chunk_map_name = push_str8f(arena, "%S.tmp%x", config->rad_chunk_map_name, config->time_stamp);
+    config->temp_image_name         = push_str8f(arena, "%S.tmp%x", config->image_name,         config->time_stamp);
+    config->temp_pdb_name           = push_str8f(arena, "%S.tmp%x", config->pdb_name,           config->time_stamp);
+    config->temp_rad_debug_name     = push_str8f(arena, "%S.tmp%x", config->rad_debug_name,     config->time_stamp);
+  }
 
   if (lnk_get_log_status(LNK_Log_Debug)) {
     String8 full_cmd_line = str8_list_join(scratch.arena, &raw_cmd_line, &(StringJoin){ .sep = str8_lit_comp(" ") });

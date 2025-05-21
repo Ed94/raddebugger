@@ -1,6 +1,9 @@
 // Copyright (c) 2024 Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
+#undef LAYER_COLOR
+#define LAYER_COLOR 0xe34cd4ff
+
 ////////////////////////////////
 //~ rjf: Main Layer Initialization
 
@@ -178,7 +181,7 @@ geo_buffer_from_hash(GEO_Scope *scope, U128 hash)
 }
 
 internal R_Handle
-geo_buffer_from_key(GEO_Scope *scope, U128 key)
+geo_buffer_from_key(GEO_Scope *scope, HS_Key key)
 {
   R_Handle handle = {0};
   for(U64 rewind_idx = 0; rewind_idx < HS_KEY_HASH_HISTORY_COUNT; rewind_idx += 1)

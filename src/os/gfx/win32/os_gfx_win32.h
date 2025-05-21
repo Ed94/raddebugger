@@ -15,6 +15,7 @@
 #pragma comment(lib, "UxTheme")
 #pragma comment(lib, "ole32")
 #pragma comment(lib, "user32")
+#pragma comment(lib, "comdlg32")
 #ifndef WM_NCUAHDRAWCAPTION
 #define WM_NCUAHDRAWCAPTION (0x00AE)
 #endif
@@ -38,6 +39,7 @@ struct OS_W32_Window
   OS_W32_Window *next;
   OS_W32_Window *prev;
   HWND hwnd;
+  HDC hdc;
   WINDOWPLACEMENT last_window_placement;
   F32 dpi;
   B32 first_paint_done;

@@ -5,7 +5,13 @@
 
 ////////////////////////////////
 
-#define LNK_DEBUG_CHUNKS 0
+#define LNK_DEBUG_CHUNKS 1
+
+#if LNK_DEBUG_CHUNKS
+# define lnk_chunk_set_debugf(a, c, f, ...) do { (c)->debug = push_str8f((a), f, __VA_ARGS__); } while(0)
+#else
+# define lnk_chunk_set_debugf(a, c, f, ...) (void)(c)
+#endif
 
 ////////////////////////////////
 
@@ -40,6 +46,7 @@ typedef struct LNK_Chunk
     struct LNK_ChunkList  *list;
     struct LNK_ChunkArray *arr;
   } u;
+  struct LNK_Obj *obj;
 #if LNK_DEBUG_CHUNKS
   String8 debug;
 #endif
@@ -115,7 +122,7 @@ typedef struct LNK_ChunkPadArrayNode
 } LNK_ChunkPadArrayNode;
 typedef struct LNK_ChunkPadArrayList
 {
-  U64                      count;
+  U64                    count;
   LNK_ChunkPadArrayNode *first;
   LNK_ChunkPadArrayNode *last;
 } LNK_ChunkPadArrayList;
@@ -199,9 +206,5 @@ internal LNK_ChunkNode * lnk_chunk_ptr_list_reserve(Arena *arena, LNK_ChunkList 
 internal String8Array    lnk_data_arr_from_chunk_ptr_list(Arena *arena, LNK_ChunkList list);
 internal String8Array *  lnk_data_arr_from_chunk_ptr_list_arr(Arena *arena, LNK_ChunkList *list_arr, U64 count);
 
-#if LNK_DEBUG_CHUNKS
-#define lnk_chunk_set_debugf(a, c, f, ...) do { (c)->debug = push_str8f((a), f, __VA_ARGS__); } while(0)
-#else
-#define lnk_chunk_set_debugf(a, c, f, ...) (void)(c)
-#endif
+internal String8 lnk_string_from_chunk_type(LNK_ChunkType type);
 

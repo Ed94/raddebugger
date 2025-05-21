@@ -52,14 +52,13 @@ coff_section_flag_from_align_size(U64 align)
 }
 
 internal String8
-coff_name_from_section_header(String8 raw_coff, COFF_SectionHeader *header, U64 string_table_off)
+coff_name_from_section_header(String8 string_table, COFF_SectionHeader *header)
 {
   String8 name = str8_cstring_capped(header->name, header->name + sizeof(header->name));
   if (name.str[0] == '/') {
-    String8 ascii_off    = str8_skip(name, 1);
-    U64     name_rel_off = u64_from_str8(ascii_off, 10);
-    U64     name_off     = name_rel_off + string_table_off;
-    name = str8_cstring_capped(raw_coff.str + name_off, raw_coff.str + raw_coff.size);
+    String8 name_off_str = str8_skip(name, 1);
+    U64     name_off     = u64_from_str8(name_off_str, 10);
+    name = str8_cstring_capped(string_table.str + name_off, string_table.str+string_table.size);
   }
   return name;
 }
@@ -94,12 +93,11 @@ coff_parse_section_name(String8 full_name, String8 *name_out, String8 *postfix_o
 }
 
 internal String8
-coff_read_symbol_name(String8 raw_coff, U64 string_table_off, COFF_SymbolName *name)
+coff_read_symbol_name(String8 string_table, COFF_SymbolName *name)
 {
   String8 name_str = str8_lit("");
   if (name->long_name.zeroes == 0) {
-    U64 name_string_off = string_table_off + name->long_name.string_table_offset;
-    str8_deserial_read_cstr(raw_coff, name_string_off, &name_str);
+    str8_deserial_read_cstr(string_table, name->long_name.string_table_offset, &name_str);
   } else {
     U32 i;
     for (i = 0; i < sizeof(name->short_name); ++i) {
@@ -174,8 +172,8 @@ internal U64
 coff_apply_size_from_reloc(COFF_MachineType machine, COFF_RelocType x)
 {
   switch (machine) {
-    case COFF_Machine_X64: return coff_apply_size_from_reloc_x64(x);
-    case COFF_Machine_X86: return coff_apply_size_from_reloc_x86(x);
+    case COFF_MachineType_X64: return coff_apply_size_from_reloc_x64(x);
+    case COFF_MachineType_X86: return coff_apply_size_from_reloc_x86(x);
     default: NotImplemented;
   }
   return 0;
@@ -221,7 +219,7 @@ coff_make_import_header_by_name(Arena            *arena,
   flags |= COFF_ImportBy_Name << COFF_ImportHeader_ImportByShift;
 
   COFF_ImportHeader header = {0};
-  header.sig1              = COFF_Machine_Unknown;
+  header.sig1              = COFF_MachineType_Unknown;
   header.sig2              = max_U16;
   header.version           = 0;
   header.machine           = machine;
@@ -264,7 +262,7 @@ coff_make_import_header_by_ordinal(Arena             *arena,
   flags |= COFF_ImportBy_Ordinal << COFF_ImportHeader_ImportByShift;
 
   COFF_ImportHeader header = {0};
-  header.sig1              = COFF_Machine_Unknown;
+  header.sig1              = COFF_MachineType_Unknown;
   header.sig2              = max_U16;
   header.version           = 0;
   header.machine           = machine;
@@ -298,8 +296,8 @@ coff_word_size_from_machine(COFF_MachineType machine)
 {
   U64 result = 0;
   switch (machine) {
-  case COFF_Machine_X64: result = 8; break;
-  case COFF_Machine_X86: result = 4; break;
+  case COFF_MachineType_X64: result = 8; break;
+  case COFF_MachineType_X86: result = 4; break;
   }
   return result;
 }
@@ -332,11 +330,11 @@ arch_from_coff_machine(COFF_MachineType machine)
 {
   Arch result = Arch_Null;
   switch (machine) {
-    case COFF_Machine_Unknown: break;
-    case COFF_Machine_X86:   result = Arch_x86;   break;
-    case COFF_Machine_X64:   result = Arch_x64;   break;
-    case COFF_Machine_Arm:   result = Arch_arm32; break;
-    case COFF_Machine_Arm64: result = Arch_arm64; break;
+    case COFF_MachineType_Unknown: break;
+    case COFF_MachineType_X86:   result = Arch_x86;   break;
+    case COFF_MachineType_X64:   result = Arch_x64;   break;
+    case COFF_MachineType_Arm:   result = Arch_arm32; break;
+    case COFF_MachineType_Arm64: result = Arch_arm64; break;
   }
   return result;
 }

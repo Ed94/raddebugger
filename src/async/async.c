@@ -1,6 +1,9 @@
 // Copyright (c) 2024 Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
+#undef LAYER_COLOR
+#define LAYER_COLOR 0x59b6c3ff
+
 ////////////////////////////////
 //~ rjf: Top-Level Layer Initialization
 
@@ -23,8 +26,9 @@ async_init(CmdLine *cmdline)
   String8 work_thread_count_string = cmd_line_string(cmdline, str8_lit("work_threads_count"));
   if(work_thread_count_string.size == 0 || !try_u64_from_str8_c_rules(work_thread_count_string, &async_shared->work_threads_count))
   {
-    async_shared->work_threads_count = Max(1, os_get_system_info()->logical_processor_count-1);
+    async_shared->work_threads_count = Max(4, os_get_system_info()->logical_processor_count-1);
   }
+  async_shared->work_threads_count = Max(4, async_shared->work_threads_count);
   async_shared->work_threads = push_array(arena, OS_Handle, async_shared->work_threads_count);
   for EachIndex(idx, async_shared->work_threads_count)
   {
@@ -57,6 +61,7 @@ async_push_work_(ASYNC_WorkFunctionType *work_function, ASYNC_WorkParams *params
   work.output             = params->output;
   work.semaphore          = params->semaphore;
   work.completion_counter = params->completion_counter;
+  work.working_counter    = params->working_counter;
   
   // rjf: loop; try to write into user -> writer ring buffer. if we're on a
   // worker thread, determine if we need to execute this task locally on this
@@ -159,7 +164,6 @@ async_task_join(ASYNC_Task *task)
 internal ASYNC_Work
 async_pop_work(void)
 {
-  ProfBeginFunction();
   ASYNC_Work work = {0};
   B32 done = 0;
   ASYNC_Priority taken_priority = ASYNC_Priority_Low;
@@ -194,7 +198,6 @@ async_pop_work(void)
   }
   os_condition_variable_broadcast(async_shared->ring_cv);
   os_condition_variable_broadcast(async_shared->rings[taken_priority].ring_cv);
-  ProfEnd();
   return work;
 }
 
@@ -222,6 +225,12 @@ async_execute_work(ASYNC_Work work)
   if(work.completion_counter != 0)
   {
     ins_atomic_u64_inc_eval(work.completion_counter);
+  }
+  
+  //- rjf: decrement working counter
+  if(work.working_counter != 0)
+  {
+    ins_atomic_u64_dec_eval(work.working_counter);
   }
 }
 

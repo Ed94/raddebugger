@@ -408,6 +408,20 @@ pe_subsystem_from_string(String8 string)
 ////////////////////////////////
 //~ rjf: Parser Functions
 
+internal B32
+pe_check_magic(String8 data)
+{
+  B32 is_pe = 0;
+  PE_DosHeader dos_header = {0};
+  str8_deserial_read_struct(data, 0, &dos_header);
+  if (dos_header.magic == PE_DOS_MAGIC) {
+    U32 pe_magic = 0;
+    str8_deserial_read_struct(data, dos_header.coff_file_offset, &pe_magic);
+    is_pe= pe_magic == PE_MAGIC;
+  }
+  return is_pe;
+}
+
 internal PE_BinInfo
 pe_bin_info_from_data(Arena *arena, String8 data)
 {
@@ -554,8 +568,8 @@ pe_bin_info_from_data(Arena *arena, String8 data)
     switch(file_header.machine)
     {
       default:{ NotImplemented; }break;
-      case COFF_Machine_Unknown: break;
-      case COFF_Machine_X86:
+      case COFF_MachineType_Unknown: break;
+      case COFF_MachineType_X86:
       {
         PE_TLSHeader32 tls_header32 = {0};
         if(str8_deserial_read_struct(data, tls_header_frng.min, &tls_header32) == sizeof(tls_header32))
@@ -572,7 +586,7 @@ pe_bin_info_from_data(Arena *arena, String8 data)
           Assert(!"unable to read TLS Header 32");
         }
       }break;
-      case COFF_Machine_X64:
+      case COFF_MachineType_X64:
       {
         if(str8_deserial_read_struct(data, tls_header_frng.min, &tls_header) != sizeof(tls_header))
         {
@@ -586,20 +600,20 @@ pe_bin_info_from_data(Arena *arena, String8 data)
   // rjf: fill info
   if(valid)
   {
-    info.image_base         = image_base;
-    info.entry_point        = entry_point;
-    info.is_pe32            = (optional_magic == PE_PE32_MAGIC);
-    info.virt_section_align = virt_section_align;
-    info.file_section_align = file_section_align;
-    info.section_array_off  = sec_array_off;
-    info.section_count      = clamped_sec_count;
-    info.symbol_array_off   = symbol_array_off;
-    info.symbol_count       = symbol_count;
-    info.string_table_off   = string_table_off;
-    info.data_dir_franges   = data_dir_franges;
-    info.data_dir_count     = data_dir_count;
-    info.arch               = arch_from_coff_machine(file_header.machine);
-    info.tls_header         = tls_header;
+    info.arch                = arch_from_coff_machine(file_header.machine);
+    info.image_base          = image_base;
+    info.entry_point         = entry_point;
+    info.is_pe32             = (optional_magic == PE_PE32_MAGIC);
+    info.virt_section_align  = virt_section_align;
+    info.file_section_align  = file_section_align;
+    info.section_count       = clamped_sec_count;
+    info.symbol_count        = symbol_count;
+    info.section_table_range = rng_1u64(sec_array_off, sec_array_off + sizeof(COFF_SectionHeader) * clamped_sec_count);
+    info.symbol_table_range  = rng_1u64(symbol_array_off, symbol_array_off + sizeof(COFF_Symbol16) * symbol_count);
+    info.string_table_range  = rng_1u64(string_table_off, data.size);
+    info.data_dir_franges    = data_dir_franges;
+    info.data_dir_count      = data_dir_count;
+    info.tls_header          = tls_header;
   }
 
   return info;
@@ -748,80 +762,15 @@ pe_pdata_off_from_voff__binary_search_x8664(String8 raw_pdata, U64 voff)
   return result;
 }
 
-internal void *
-pe_ptr_from_voff(String8 data, PE_BinInfo *bin, U64 voff)
-{
-  // rjf: get the section for this voff
-  U64 sec_count = bin->section_count;
-  COFF_SectionHeader *sec_array = (COFF_SectionHeader*)((U8*)data.str + bin->section_array_off);
-  COFF_SectionHeader *sec_ptr = sec_array;
-  COFF_SectionHeader *sec = 0;
-  for(U64 i = 1; i <= sec_count; i += 1, sec_ptr += 1)
-  {
-    if(sec_ptr->voff <= voff && voff < sec_ptr->voff + sec_ptr->vsize)
-    {
-      sec = sec_ptr;
-      break;
-    }
-  }
-  
-  // rjf: adjust to file pointer
-  void *result = 0;
-  if(sec != 0 && sec_ptr->fsize > 0)
-  {
-    U64 off = voff - sec->voff + sec->foff;
-    if(off < data.size)
-    {
-      result = data.str + off;
-    }
-  }
-  return result;
-}
-
-internal U64
-pe_section_num_from_voff(String8 data, PE_BinInfo *bin, U64 voff)
-{
-  U64 sec_count = bin->section_count;
-  COFF_SectionHeader *sec_array = (COFF_SectionHeader*)((U8*)data.str + bin->section_array_off);
-  COFF_SectionHeader *sec_ptr = sec_array;
-  U64 result = 0;
-  for(U64 i = 1; i <= sec_count; i += 1, sec_ptr += 1)
-  {
-    if(sec_ptr->voff <= voff && voff < sec_ptr->voff + sec_ptr->vsize)
-    {
-      result = i;
-      break;
-    }
-  }
-  return result;
-}
-
-internal void *
-pe_ptr_from_section_num(String8 data, PE_BinInfo *bin, U64 n)
-{
-  void *result = 0;
-  U64 sec_count = bin->section_count;
-  if(1 <= n && n <= sec_count)
-  {
-    COFF_SectionHeader *sec_array = (COFF_SectionHeader*)((U8*)data.str + bin->section_array_off);
-    COFF_SectionHeader *sec = sec_array + n - 1;
-    if(sec->fsize > 0)
-    {
-      result = data.str + sec->foff;
-    }
-  }
-  return(result);
-}
-
 internal U64
 pe_foff_from_voff(String8 data, PE_BinInfo *bin, U64 voff)
 {
-  U64 foff = 0;
-  COFF_SectionHeader *sections = (COFF_SectionHeader*)(data.str+bin->section_array_off);
-  U64 section_count = bin->section_count;
-  for(U64 sect_idx = 0; sect_idx < section_count; sect_idx += 1)
+  U64                 foff              = 0;
+  String8             raw_section_table = str8_substr(data, bin->section_table_range);
+  COFF_SectionHeader *section_table     = (COFF_SectionHeader *)raw_section_table.str;
+  for(U64 sect_idx = 0; sect_idx < bin->section_count; sect_idx += 1)
   {
-    COFF_SectionHeader *sect = &sections[sect_idx];
+    COFF_SectionHeader *sect = &section_table[sect_idx];
     if(sect->voff <= voff && voff < sect->voff + sect->vsize)
     {
       if(!(sect->flags & COFF_SectionFlag_CntUninitializedData))
@@ -967,7 +916,7 @@ pe_get_entry_point_names(COFF_MachineType            machine,
   String8Array entry_point_names = {0};
   
   if (file_characteristics & PE_ImageFileCharacteristic_FILE_DLL) {
-    if (machine == COFF_Machine_X86) {
+    if (machine == COFF_MachineType_X86) {
       read_only static String8 dll_entry_point_arr[] = {
         str8_lit_comp("__DllMainCRTStartup@12"),
       };
@@ -1418,8 +1367,8 @@ pe_tls_from_data(Arena              *arena,
   U64            *callback_addrs = 0;
 
   switch (machine) {
-    case COFF_Machine_Unknown: break;
-    case COFF_Machine_X86: {
+    case COFF_MachineType_Unknown: break;
+    case COFF_MachineType_X86: {
       PE_TLSHeader32 header32 = {0};
       str8_deserial_read_struct(raw_tls, 0, &header32);
 
@@ -1444,7 +1393,7 @@ pe_tls_from_data(Arena              *arena,
         callback_addrs[i] = (U64)src[i];
       }
     } break;
-    case COFF_Machine_X64: {
+    case COFF_MachineType_X64: {
       str8_deserial_read_struct(raw_tls, 0, &header64);
 
       U64 callbacks_voff = header64.callbacks_address - image_base;
@@ -1554,7 +1503,7 @@ pe_resource_dir_push_dir(Arena *arena, PE_ResourceDir *dir, COFF_ResourceID id, 
 internal PE_ResourceNode *
 pe_resource_dir_search_node(PE_ResourceDir *dir, COFF_ResourceID id)
 {
-  for (PE_ResourceNode *i = dir->id_list.first; i != NULL; i = i->next) {
+  for (PE_ResourceNode *i = dir->id_list.first; i != 0; i = i->next) {
     if (coff_resource_id_compar(&i->data.id, &id) == 0) {
       return i;
     }
