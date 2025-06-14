@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 ////////////////////////////////
@@ -1309,6 +1309,7 @@ e_type_data_members_from_key(Arena *arena, E_TypeKey key)
             SLLQueuePush(members_list.first, members_list.last, n);
             members_list.count += 1;
             members_need_offset_sort = members_need_offset_sort || (type->members[member_idx].kind == E_MemberKind_DataField && n->v.off < last_member_off);
+            members_need_offset_sort = members_need_offset_sort || (type->members[member_idx].kind != E_MemberKind_DataField);
             last_member_off = n->v.off;
           }
           else if(type->members[member_idx].kind == E_MemberKind_Base)
@@ -2307,7 +2308,9 @@ E_TYPE_EXPAND_INFO_FUNCTION_DEF(default)
     {
       E_TypeKind array_type_kind = e_type_kind_from_key(expand_type_key);
       if(array_type_kind == E_TypeKind_Array ||
-         array_type_kind == E_TypeKind_Ptr)
+         array_type_kind == E_TypeKind_Ptr ||
+         array_type_kind == E_TypeKind_RRef ||
+         array_type_kind == E_TypeKind_LRef)
       {
         E_Type *array_type = e_type_from_key(expand_type_key);
         result.expr_count = array_type->count;
@@ -2383,6 +2386,8 @@ E_TYPE_EXPAND_RANGE_FUNCTION_DEF(default)
     
     //- rjf: ptr case -> the lookup-range will return a range of dereferences
     else if(expand_type_kind == E_TypeKind_Ptr ||
+            expand_type_kind == E_TypeKind_LRef ||
+            expand_type_kind == E_TypeKind_RRef ||
             expand_type_kind == E_TypeKind_Array ||
             expand_type_kind == E_TypeKind_Set)
     {
@@ -2536,7 +2541,7 @@ E_TYPE_EXPAND_INFO_FUNCTION_DEF(array)
 {
   E_Type *type = e_type_from_key(eval.irtree.type_key);
   U64 count = 1;
-  if(type->args != 0 && type->count > 0) E_ParentKey(eval.parent_key)
+  if(type->args != 0 && type->count > 0) E_ParentKey(e_key_match(e_key_zero(), eval.parent_key) ? eval.key : eval.parent_key)
   {
     E_Key count_key = e_key_from_expr(type->args[0]);
     E_Value count_value = e_value_from_key(count_key);

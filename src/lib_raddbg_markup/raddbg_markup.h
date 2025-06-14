@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #ifndef RADDBG_MARKUP_H
@@ -37,6 +37,7 @@
 # define raddbg_type_view(type, ...)                  raddbg_exe_data char raddbg_gen_data_id()[] = ("type_view: {type: ```" #type "```, expr: ```" #__VA_ARGS__ "```}")
 # define raddbg_add_breakpoint(ptr, size, r, w, x)    raddbg_add_or_remove_breakpoint__impl((ptr), (1), (size), (r), (w), (x))
 # define raddbg_remove_breakpoint(ptr, size, r, w, x) raddbg_add_or_remove_breakpoint__impl((ptr), (0), (size), (r), (w), (x))
+# define raddbg_annotate_vaddr_range(ptr, size, ...)  raddbg_annotate_vaddr_range__impl((ptr), (size), __VA_ARGS__)
 #else
 # define raddbg_is_attached(...)                      (0)
 # define raddbg_thread_id(...)                        ((void)0)
@@ -55,6 +56,7 @@
 # define raddbg_type_view(type, ...)                  struct raddbg_gen_data_id(){int __unused__;}
 # define raddbg_add_breakpoint(ptr, size, r, w, x)    ((void)0)
 # define raddbg_remove_breakpoint(ptr, size, r, w, x) ((void)0)
+# define raddbg_annotate_vaddr_range(ptr, size, ...)  ((void)0)
 #endif
 
 ////////////////////////////////
@@ -65,22 +67,38 @@
 #define raddbg_gen_data_id() raddbg_glue(raddbg_data__, __COUNTER__)
 
 ////////////////////////////////
+//~ Global Symbols
+
+#if !defined(RADDBG_MARKUP_STUBS)
+int raddbg_is_attached__impl(void);
+int raddbg_thread_id__impl(void);
+void raddbg_thread_name__impl(int id, char *fmt, ...);
+void raddbg_thread_color__impl(int id, unsigned int hexcode);
+void raddbg_watch__impl(char *fmt, ...);
+void raddbg_log__impl(char *fmt, ...);
+void raddbg_add_or_remove_breakpoint__impl(void *ptr, int set, int size, int r, int w, int x);
+void raddbg_annotate_vaddr_range__impl(void *ptr, unsigned __int64 size, char *fmt, ...);
+#endif
+
+////////////////////////////////
 //~ Win32 Implementations
 
-#if defined(RADDBG_MARKUP_IMPLEMENTATION) && !defined(RADDBG_MARKUP_STUBS)
-#if defined(_WIN32)
+#if defined(_WIN32) && !defined(RADDBG_MARKUP_STUBS)
+
+//- section allocating
+#pragma section(".raddbg", read, write)
+#define raddbg_exe_data __declspec(allocate(".raddbg"))
+
+//- one-time implementations
+#if defined(RADDBG_MARKUP_IMPLEMENTATION)
 
 //- default includes
 #if RADDBG_MARKUP_DEFAULT_VSNPRINTF
 #include <stdio.h>
 #endif
 
-//- section allocating
-#pragma section(".raddbg", read, write)
-#define raddbg_exe_data __declspec(allocate(".raddbg"))
-
 //- first byte of exe data section -> is attached
-raddbg_exe_data unsigned char raddbg_is_attached_byte_marker[1];
+static raddbg_exe_data unsigned char raddbg_is_attached_byte_marker[1];
 
 //- types
 
@@ -135,7 +153,7 @@ struct RADDBG_MARKUP_UnicodeDecode
 };
 static __int8 raddbg_utf8_class[32] = {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,2,2,2,2,3,3,4,5};
 
-static inline RADDBG_MARKUP_UnicodeDecode
+static RADDBG_MARKUP_UnicodeDecode
 raddbg_decode_utf8(char *str, unsigned __int64 max)
 {
   RADDBG_MARKUP_UnicodeDecode result = {1, 0xffffffff};
@@ -190,7 +208,7 @@ raddbg_decode_utf8(char *str, unsigned __int64 max)
   return result;
 }
 
-static inline unsigned __int32
+static unsigned __int32
 raddbg_encode_utf16(wchar_t *str, unsigned __int32 codepoint)
 {
   unsigned __int32 inc = 1;
@@ -214,20 +232,20 @@ raddbg_encode_utf16(wchar_t *str, unsigned __int32 codepoint)
 
 //- implementations
 
-static inline int
+int
 raddbg_is_attached__impl(void)
 {
   return !!raddbg_is_attached_byte_marker[0];
 }
 
-static inline int
+int
 raddbg_thread_id__impl(void)
 {
   DWORD result = GetCurrentThreadId();
   return result;
 }
 
-static inline void
+void
 raddbg_thread_name__impl(int id, char *fmt, ...)
 {
   // rjf: resolve variadic arguments
@@ -307,7 +325,7 @@ raddbg_thread_name__impl(int id, char *fmt, ...)
   }
 }
 
-static inline void
+void
 raddbg_thread_color__impl(int id, unsigned int hexcode)
 {
   if(raddbg_is_attached())
@@ -340,13 +358,13 @@ raddbg_thread_color__impl(int id, unsigned int hexcode)
 
 #define raddbg_break__impl() (__debugbreak())
 
-static inline void
+void
 raddbg_watch__impl(char *fmt, ...)
 {
   // TODO(rjf)
 }
 
-static inline void
+void
 raddbg_log__impl(char *fmt, ...)
 {
   // rjf: resolve variadic arguments
@@ -362,7 +380,7 @@ raddbg_log__impl(char *fmt, ...)
   OutputDebugStringA(buffer);
 }
 
-static inline void
+void
 raddbg_add_or_remove_breakpoint__impl(void *ptr, int set, int size, int r, int w, int x)
 {
   if(raddbg_is_attached())
@@ -399,8 +417,52 @@ raddbg_add_or_remove_breakpoint__impl(void *ptr, int set, int size, int r, int w
   }
 }
 
-#endif // defined(_WIN32)
+void
+raddbg_annotate_vaddr_range__impl(void *ptr, unsigned __int64 size, char *fmt, ...)
+{
+  if(raddbg_is_attached())
+  {
+    // rjf: resolve variadic arguments
+    char buffer[4096];
+    int buffer_size = 0;
+    {
+      va_list args;
+      va_start(args, fmt);
+      buffer_size = RADDBG_MARKUP_VSNPRINTF(buffer, sizeof(buffer), fmt, args);
+      va_end(args);
+    }
+    
+    // rjf: send annotation info via exception
+#pragma pack(push, 8)
+    typedef struct RADDBG_VaddrRangeAnnotationInfo RADDBG_VaddrRangeAnnotationInfo;
+    struct RADDBG_VaddrRangeAnnotationInfo
+    {
+      unsigned __int64 vaddr;
+      unsigned __int64 size;
+      void *name;
+      unsigned __int64 name_size;
+    };
+#pragma pack(pop)
+    RADDBG_VaddrRangeAnnotationInfo info;
+    info.vaddr     = (unsigned __int64)ptr;
+    info.size      = size;
+    info.name      = buffer;
+    info.name_size = buffer_size;
+#pragma warning(push)
+#pragma warning(disable: 6320 6322)
+    __try
+    {
+      RaiseException(0x00524156u, 0, sizeof(info) / sizeof(void *), (const ULONG_PTR *)&info);
+    }
+    __except(1)
+    {
+    }
+#pragma warning(pop)
+  }
+}
+
 #endif // defined(RADDBG_MARKUP_IMPLEMENTATION)
+#endif // defined(_WIN32) && !defined(RADDBG_MARKUP_STUBS)
 
 ////////////////////////////////
 //~ Win32 STL Type Views

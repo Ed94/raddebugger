@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 ////////////////////////////////
@@ -300,8 +300,8 @@ RD_VocabTable:
       //- rjf: visualizers
       @display_name('Use Default C++ STL Type Visualizers') @description("Enables the built-in type views for C++ STL types.")
         @default(1) use_default_stl_type_views: bool,
-      // @display_name('Use Default Unreal Engine Type Visualizers') @description("Enables the built-in type views for Unreal Engine types.")
-      // @default(1) use_default_ue_type_views: bool,
+      @display_name('Use Default Unreal Engine Type Visualizers') @description("Enables the built-in type views for Unreal Engine types.")
+        @default(1) use_default_ue_type_views: bool,
       
       //- rjf: theme
       @default("None") @display_name('Project Theme') @description("The project's theme, which describes all colors used throughout the UI, and can override the user's theme.")
@@ -507,7 +507,7 @@ RD_VocabTable:
     ```
       @inherit(tab) x:
     {
-      @description("An expression which refers to the data which should be viewed as memory.")
+      @description("An expression which refers to the base address of data which should be viewed as memory.")
         'expression': expr_string,
       @display_name("Address Range Size") @description("The number of bytes of the viewed memory range.")
         'size': expr_string,
@@ -517,6 +517,8 @@ RD_VocabTable:
         'cursor_size': @range[1, 16] u64,
       @default(16) @description("The number of columns to build before building new rows.")
         'num_columns': @range[1, 64] u64,
+      @default(1) @display_name("Track Mark To Cursor") @description("Ensures that the mark always follows the cursor, if the cursor value is updated.")
+        'track_mark_to_cursor': bool,
     }
     ```
   }
@@ -525,7 +527,7 @@ RD_VocabTable:
     ```
       @inherit(tab) x:
     {
-      @description("An expression which refers to the data which should be viewed as a bitmap.")
+      @description("An expression which refers to the base address of data which should be viewed as a bitmap.")
         'expression': expr_string,
       @description("An expression describing the width of the bitmap, in pixels.") @order(0) 'w': u64,
       @description("An expression describing the height of the bitmap, in pixels.") @order(1) 'h': u64,
@@ -708,6 +710,9 @@ RD_RegTable:
   {RD_CfgID          cfg              Cfg           }
   {RD_CfgIDList      cfg_list         CfgList       }
   
+  // rjf: evaluation space
+  {E_Space           eval_space       EvalSpace     }
+  
   // rjf: frame selection
   {U64               unwind_count     UnwindCount   }
   {U64               inline_depth     InlineDepth   }
@@ -730,6 +735,7 @@ RD_RegTable:
   
   // rjf: ui context
   {UI_Key            ui_key           UIKey         }
+  {UI_Key            src_ui_key       SrcUIKey      }
   {Vec2F32           off_px           OffPx         }
   {RD_RegSlot        reg_slot         RegSlot       }
   
@@ -742,6 +748,8 @@ RD_RegTable:
   {B32               do_implicit_root DoImplicitRoot}
   {B32               do_lister        DoLister      }
   {B32               do_big_rows      DoBigRows     }
+  {B32               all_windows      AllWindows    }
+  {B32               non_graphical    NonGraphical  }
   {Dir2              dir2             Dir2          }
   {String8           string           String        }
   {String8           cmd_name         CmdName       }
@@ -894,6 +902,8 @@ RD_CmdTable:    //               |        |              |                |     
   {OpenRecentProject              1        1              0                0               "query:recent_projects"                          Cfg                null              RecentProject           Null       0  0  0  0  0  1  1                                                           Briefcase             "open_recent_project"         "Open Recent Project"                         "Opens a recently used project file."                                                                              "project,project,session"        ""                                                               }
   {SaveUser                       1        1              0                0               `folder:\\"$input\\"`                            FilePath           null              Nil                     Null       1  0  0  0  0  1  1                                                           Save                  "save_user"                   "Save User"                                   "Saves user data to a file, and sets the current user path as that path."                                          "load,user,project,layout"       ""                                                               }
   {SaveProject                    1        1              0                0               `folder:\\"$input\\"`                            FilePath           null              Nil                     Null       1  0  0  0  0  1  1                                                           Save                  "save_project"                "Save Project"                                "Saves project data to a file, and sets the current project path as that path."                                    "project,project,session"        ""                                                               }
+  {RecordUserAsLastOpened         0        0              0                0               ""                                               Null               null              Nil                     Null       0  0  0  0  0  0  0                                                           Null                  "record_user_as_last_opened"  "Record User As Last Opened"                  "Records a file path as the last opened user."                                                                     ""                               ""                                                               }
+  {RecordProjectInUser            0        0              0                0               ""                                               Null               null              Nil                     Null       0  0  0  0  0  0  0                                                           Null                  "record_project_in_user"      "Records Project In User"                     "Records a file path as a recent project in user data."                                                            ""                               ""                                                               }
   
   //- rjf: writing config changes
   {WriteUserData                  0        1              0                0               ""                                               Null               null              Nil                     Null       0  0  0  0  0  0  0                                                           Null                  "write_user_data"             "Write User Data"                             "Writes user data to the active user file."                                                                        ""                               ""                                                               }

@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 /*
@@ -158,6 +158,22 @@ struct Dynamic_Array
   int count;
 };
 raddbg_type_view(Dynamic_Array, slice($));
+
+template<typename T>
+struct TemplatedDynamicArray
+{
+  T *v;
+  int count;
+};
+raddbg_type_view(TemplatedDynamicArray<?>, rows($, count, array(v, count)));
+
+template<typename T>
+struct OpaqueTemplatedDynamicArray
+{
+  void *v;
+  int count;
+};
+raddbg_type_view(OpaqueTemplatedDynamicArray<?{type}>, array(cast(type *)v, count));
 
 struct Struct_With_Embedded_Arrays
 {
@@ -427,6 +443,18 @@ type_coverage_eval_tests(void)
     6
   };
   
+  TemplatedDynamicArray<Pair> templated_dynamic = {dynamic.pairs, dynamic.count};
+  TemplatedDynamicArray<Pair> templated_dynamics[] =
+  {
+    {dynamic.pairs, dynamic.count},
+    {dynamic.pairs, dynamic.count},
+    {dynamic.pairs, dynamic.count},
+    {dynamic.pairs, dynamic.count},
+    {dynamic.pairs, dynamic.count},
+  };
+  
+  OpaqueTemplatedDynamicArray<Pair> otd = {dynamic.pairs, dynamic.count};
+  
   raddbg_pin(columns(sequence(6), fixed.pairs[$], memory_[$]));
   raddbg_pin(basics);
   raddbg_pin(fixed);
@@ -585,6 +613,12 @@ type_coverage_eval_tests(void)
   int_vector.push_back(5);
   int_vector.push_back(6);
   int_vector.push_back(7);
+  
+  std::vector<Dynamic_Array> dynamic_array_vector;
+  dynamic_array_vector.push_back(dynamic);
+  dynamic_array_vector.push_back(dynamic);
+  dynamic_array_vector.push_back(dynamic);
+  dynamic_array_vector.push_back(dynamic);
   
   int x = (int)(Anonymous_D);
 }
@@ -1846,6 +1880,11 @@ fancy_viz_eval_tests(void)
   raddbg_pin(text(code_string, lang=c));
   raddbg_pin(disasm(fancy_viz_eval_tests));
   
+  //- rjf: programmatic memory annotations
+  void *some_block_of_memory = malloc(256);
+  memset(some_block_of_memory, 0x27, 256);
+  raddbg_annotate_vaddr_range(some_block_of_memory, 256, "test memory annotation");
+  
   //- rjf: half-floats
   PackedF16 f16s[] =
   {
@@ -2625,6 +2664,56 @@ recursion_stepping_tests(void){
 }
 
 ////////////////////////////////
+// NOTE(rjf): Thread Stepping
+
+#if _WIN32
+DWORD thread_step_thread(void *p)
+{
+  int x = 0;
+  for(int i = 0; i < 100000; i += 1)
+  {
+    x += 1;
+    x += 1;
+    x += 1;
+    x += 1;
+    x += 1;
+    x += 1;
+    x += 1;
+    x += 1;
+    x += 1;
+    x += 1;
+    x += 1;
+    x += 1;
+    x += 1;
+    x += 1;
+  }
+  return 0;
+}
+#endif
+
+void thread_stepping_tests(void)
+{
+#if _WIN32
+  HANDLE h[8] = {0};
+  for(int i = 0; i < sizeof(h)/sizeof(h[0]); i += 1)
+  {
+    DWORD id = 0;
+    h[i] = CreateThread(0, 0, thread_step_thread, 0, CREATE_SUSPENDED, &id);
+    raddbg_thread_id_name(id, "thread_step_thread_%i", i);
+    raddbg_thread_id_color_u32(id, 0xff9f23ff);
+  }
+  for(int i = 0; i < sizeof(h)/sizeof(h[0]); i += 1)
+  {
+    ResumeThread(h[i]);
+  }
+  for(int i = 0; i < sizeof(h)/sizeof(h[0]); i += 1)
+  {
+    WaitForSingleObject(h[i], INFINITE);
+  }
+#endif
+}
+
+////////////////////////////////
 // NOTE(rjf): Debug Strings
 
 static void
@@ -3038,6 +3127,8 @@ mule_main(int argc, char** argv)
   long_jump_stepping_tests();
   
   recursion_stepping_tests();
+  
+  thread_stepping_tests();
   
   debug_string_tests();
   

@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #undef LAYER_COLOR
@@ -378,10 +378,12 @@ d_trap_net_from_thread__step_over_line(Arena *arena, CTRL_Entity *thread)
   
   // rjf: line vaddr range => line's machine code
   String8 machine_code = {0};
+  B32 good_machine_code = 0;
   if(good_line_info)
   {
     CTRL_ProcessMemorySlice machine_code_slice = ctrl_process_memory_slice_from_vaddr_range(scratch.arena, process->handle, line_vaddr_rng, os_now_microseconds()+50000);
     machine_code = machine_code_slice.data;
+    good_machine_code = (machine_code.size == dim_1u64(line_vaddr_rng) && !machine_code_slice.any_byte_bad);
     LogInfoNamedBlockF("machine_code_slice")
     {
       log_infof("stale: %i\n", machine_code_slice.stale);
@@ -402,7 +404,7 @@ d_trap_net_from_thread__step_over_line(Arena *arena, CTRL_Entity *thread)
   
   // rjf: machine code => ctrl flow analysis
   DASM_CtrlFlowInfo ctrl_flow_info = {0};
-  if(good_line_info)
+  if(good_machine_code)
   {
     ctrl_flow_info = dasm_ctrl_flow_info_from_arch_vaddr_code(scratch.arena,
                                                               DASM_InstFlag_Call|
@@ -423,7 +425,7 @@ d_trap_net_from_thread__step_over_line(Arena *arena, CTRL_Entity *thread)
   }
   
   // rjf: push traps for all exit points
-  if(good_line_info) for(DASM_CtrlFlowPointNode *n = ctrl_flow_info.exit_points.first; n != 0; n = n->next)
+  if(good_machine_code) for(DASM_CtrlFlowPointNode *n = ctrl_flow_info.exit_points.first; n != 0; n = n->next)
   {
     DASM_CtrlFlowPoint *point = &n->v;
     CTRL_TrapFlags flags = 0;
@@ -534,15 +536,17 @@ d_trap_net_from_thread__step_into_line(Arena *arena, CTRL_Entity *thread)
   
   // rjf: line vaddr range => line's machine code
   String8 machine_code = {0};
+  B32 good_machine_code = 0;
   if(good_line_info)
   {
     CTRL_ProcessMemorySlice machine_code_slice = ctrl_process_memory_slice_from_vaddr_range(scratch.arena, process->handle, line_vaddr_rng, os_now_microseconds()+5000);
     machine_code = machine_code_slice.data;
+    good_machine_code = (machine_code.size == dim_1u64(line_vaddr_rng) && !machine_code_slice.any_byte_bad);
   }
   
   // rjf: machine code => ctrl flow analysis
   DASM_CtrlFlowInfo ctrl_flow_info = {0};
-  if(good_line_info)
+  if(good_machine_code)
   {
     ctrl_flow_info = dasm_ctrl_flow_info_from_arch_vaddr_code(scratch.arena,
                                                               DASM_InstFlag_Call|
@@ -557,7 +561,7 @@ d_trap_net_from_thread__step_into_line(Arena *arena, CTRL_Entity *thread)
   
   // rjf: determine last 
   DASM_CtrlFlowPoint *last_call_point = 0;
-  if(good_line_info) for(DASM_CtrlFlowPointNode *n = ctrl_flow_info.exit_points.first; n != 0; n = n->next)
+  if(good_machine_code) for(DASM_CtrlFlowPointNode *n = ctrl_flow_info.exit_points.first; n != 0; n = n->next)
   {
     if(n->v.inst_flags & DASM_InstFlag_Call)
     {
@@ -566,7 +570,7 @@ d_trap_net_from_thread__step_into_line(Arena *arena, CTRL_Entity *thread)
   }
   
   // rjf: push traps for all exit points
-  if(good_line_info) for(DASM_CtrlFlowPointNode *n = ctrl_flow_info.exit_points.first; n != 0; n = n->next)
+  if(good_machine_code) for(DASM_CtrlFlowPointNode *n = ctrl_flow_info.exit_points.first; n != 0; n = n->next)
   {
     DASM_CtrlFlowPoint *point = &n->v;
     CTRL_TrapFlags flags = 0;
@@ -836,7 +840,7 @@ d_lines_array_from_dbgi_key_file_path_line_range(Arena *arena, DI_Key dbgi_key, 
       override_n = override_n->next)
   {
     String8 file_path = override_n->string;
-    String8 file_path_normalized = lower_from_str8(scratch.arena, file_path);
+    String8 file_path_normalized = lower_from_str8(scratch.arena, path_normalized_from_string(scratch.arena, file_path));
     
     // rjf: binary -> rdi
     RDI_Parsed *rdi = di_rdi_from_key(scope, &dbgi_key, 0);

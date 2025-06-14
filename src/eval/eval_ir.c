@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 ////////////////////////////////
@@ -511,7 +511,7 @@ E_TYPE_ACCESS_FUNCTION_DEF(default)
       {
         break;
       }
-      else if(l_restype_kind != E_TypeKind_Ptr && l_restype_kind != E_TypeKind_Array)
+      else if(l_restype_kind != E_TypeKind_Ptr && l_restype_kind != E_TypeKind_Array && l_restype_kind != E_TypeKind_LRef && l_restype_kind != E_TypeKind_RRef)
       {
         e_msgf(arena, &result.msgs, E_MsgKind_MalformedInput, exprl->range, "Cannot index into this type.");
         break;
@@ -567,7 +567,7 @@ E_TYPE_ACCESS_FUNCTION_DEF(default)
           
           // rjf: ops to compute the base offset (resolve to value if addr-of-pointer)
           E_IRNode *base_tree = l.root;
-          if(l_restype_kind == E_TypeKind_Ptr && l.mode != E_Mode_Value)
+          if(e_type_kind_is_pointer_or_ref(l_restype_kind) && l.mode != E_Mode_Value)
           {
             base_tree = e_irtree_resolve_to_value(arena, l.mode, base_tree, l_restype);
           }
@@ -607,6 +607,8 @@ e_push_irtree_and_type_from_expr(Arena *arena, E_IRTreeAndType *root_parent, E_I
   {
     Task *next;
     E_Expr *expr;
+    E_AutoHookWildcardInst *first_wildcard_inst;
+    E_AutoHookWildcardInst *last_wildcard_inst;
     E_IRTreeAndType *overridden;
   };
   Task start_task = {0, root_expr, 0};
@@ -619,6 +621,12 @@ e_push_irtree_and_type_from_expr(Arena *arena, E_IRTreeAndType *root_parent, E_I
     
     //- rjf: poison the expression we are about to use, so we don't recursively use it
     e_expr_poison(expr);
+    
+    //- rjf: push stack elements
+    E_AutoHookWildcardInst *first_wildcard_inst_restore = e_cache->first_wildcard_inst;
+    E_AutoHookWildcardInst *last_wildcard_inst_restore = e_cache->last_wildcard_inst;
+    if(t->first_wildcard_inst) { e_cache->first_wildcard_inst = t->first_wildcard_inst; }
+    if(t->last_wildcard_inst) { e_cache->last_wildcard_inst = t->last_wildcard_inst; }
     
     //- rjf: do expr -> irtree generation for this expression
     if(expr->kind == E_ExprKind_Ref)
@@ -1588,7 +1596,6 @@ e_push_irtree_and_type_from_expr(Arena *arena, E_IRTreeAndType *root_parent, E_I
       case E_ExprKind_LeafIdentifier:
       {
         Temp scratch = scratch_begin(&arena, 1);
-        B32 is_auto_hook = 0;
         String8 qualifier = expr->qualifier;
         String8 string = expr->string;
         String8 string__redirected = string;
@@ -1614,6 +1621,21 @@ e_push_irtree_and_type_from_expr(Arena *arena, E_IRTreeAndType *root_parent, E_I
           {
             default:{}break;
             
+            //- rjf: try to map name as a wildcard instance
+            case E_IdentifierResolutionPath_WildcardInst:
+            if(!generated && qualifier.size == 0 && !string_mapped && e_cache->first_wildcard_inst != 0)
+            {
+              for(E_AutoHookWildcardInst *inst = e_cache->first_wildcard_inst; inst != 0; inst = inst->next)
+              {
+                if(str8_match(inst->name, string, 0))
+                {
+                  generated = 1;
+                  result = e_push_irtree_and_type_from_expr(arena, parent, &e_default_identifier_resolution_rule, disallow_autohooks, 1, inst->inst_expr);
+                  break;
+                }
+              }
+            }break;
+            
             //- rjf: try to map name as parent expression signifier ('$')
             case E_IdentifierResolutionPath_ParentExpr:
             if(qualifier.size == 0 && !string_mapped && str8_match(string, str8_lit("$"), 0) && parent != 0 && (parent->root != &e_irnode_nil || parent->msgs.first != 0))
@@ -1629,16 +1651,18 @@ e_push_irtree_and_type_from_expr(Arena *arena, E_IRTreeAndType *root_parent, E_I
                   }
                 }
               }
-              E_OpList oplist = e_oplist_from_irtree(arena, parent_irtree->root);
               string_mapped = 1;
-              mapped_bytecode = e_bytecode_from_oplist(arena, &oplist);
-              mapped_bytecode_mode = parent_irtree->mode;
-              mapped_type_key = parent_irtree->type_key;
-              mapped_user_data = parent_irtree->user_data;
-              is_auto_hook = parent_irtree->auto_hook;
+              generated = 1;
               disallow_autohooks = 1;
+              E_OpList oplist = e_oplist_from_irtree(scratch.arena, parent_irtree->root);
+              String8 bytecode = e_bytecode_from_oplist(arena, &oplist);
+              result.root = e_irtree_bytecode_no_copy(arena, bytecode);
+              result.type_key = parent_irtree->type_key;
+              result.mode = parent_irtree->mode;
+              result.auto_hook = parent_irtree->auto_hook;
               E_MsgList msgs = e_msg_list_copy(arena, &parent_irtree->msgs);
               e_msg_list_concat_in_place(&result.msgs, &msgs);
+              result.prev = parent_irtree->prev;
             }
             break;
             
@@ -1715,10 +1739,11 @@ e_push_irtree_and_type_from_expr(Arena *arena, E_IRTreeAndType *root_parent, E_I
               }
             }break;
             
-            //- rjf: globals / procedures / types
+            //- rjf: globals / procedures / types / constants
             case E_IdentifierResolutionPath_Globals:
             case E_IdentifierResolutionPath_Procedures:
             case E_IdentifierResolutionPath_ThreadLocals:
+            case E_IdentifierResolutionPath_Constants:
             {
               //- rjf: form namespaceified fallback versions of this lookup string
               if(!string_mapped)
@@ -1824,6 +1849,75 @@ e_push_irtree_and_type_from_expr(Arena *arena, E_IRTreeAndType *root_parent, E_I
                 }
               }
               
+              //- rjf: try constants
+              if(path == E_IdentifierResolutionPath_Constants && !string_mapped && (qualifier.size == 0 || str8_match(qualifier, str8_lit("constant"), 0)))
+              {
+                if(str8_match(string, str8_lit("true"), 0))
+                {
+                  string_mapped = 1;
+                  E_OpList oplist = {0};
+                  e_oplist_push_uconst(arena, &oplist, 1);
+                  mapped_type_key = e_type_key_basic(E_TypeKind_Bool);
+                  mapped_bytecode = e_bytecode_from_oplist(arena, &oplist);
+                  mapped_bytecode_mode = E_Mode_Value;
+                }
+                else if(str8_match(string, str8_lit("false"), 0))
+                {
+                  string_mapped = 1;
+                  E_OpList oplist = {0};
+                  e_oplist_push_uconst(arena, &oplist, 0);
+                  mapped_type_key = e_type_key_basic(E_TypeKind_Bool);
+                  mapped_bytecode = e_bytecode_from_oplist(arena, &oplist);
+                  mapped_bytecode_mode = E_Mode_Value;
+                }
+                else for(U64 module_idx = 0; module_idx < e_base_ctx->modules_count; module_idx += 1)
+                {
+                  E_Module *module = &e_base_ctx->modules[module_idx];
+                  RDI_Parsed *rdi = module->rdi;
+                  RDI_NameMap *name_map = rdi_element_from_name_idx(rdi, NameMaps, RDI_NameMapKind_Constants);
+                  RDI_ParsedNameMap parsed_name_map = {0};
+                  rdi_parsed_from_name_map(rdi, name_map, &parsed_name_map);
+                  RDI_NameMapNode *node = rdi_name_map_lookup(rdi, &parsed_name_map, string.str, string.size);
+                  U32 matches_count = 0;
+                  U32 *matches = rdi_matches_from_map_node(rdi, node, &matches_count);
+                  for(String8Node *n = namespaceified_strings.first;
+                      n != 0 && matches_count == 0;
+                      n = n->next)
+                  {
+                    node = rdi_name_map_lookup(rdi, &parsed_name_map, n->string.str, n->string.size);
+                    matches_count = 0;
+                    matches = rdi_matches_from_map_node(rdi, node, &matches_count);
+                  }
+                  if(matches_count != 0)
+                  {
+                    U32 match_idx = matches[matches_count-1];
+                    RDI_Constant *constant = rdi_element_from_name_idx(rdi, Constants, match_idx);
+                    U32 type_idx = constant->type_idx;
+                    RDI_TypeNode *type_node = rdi_element_from_name_idx(rdi, TypeNodes, type_idx);
+                    RDI_U32 constant_value_off = *rdi_element_from_name_idx(rdi, ConstantValueTable, constant->constant_value_idx);
+                    RDI_U32 constant_value_size = *rdi_element_from_name_idx(rdi, ConstantValueTable, constant->constant_value_idx+1) - constant_value_off;
+                    if(constant_value_size <= 8)
+                    {
+                      RDI_U64 constant_value_data_size = 0;
+                      RDI_U8 *constant_value_data = rdi_table_from_name(rdi, ConstantValueData, &constant_value_data_size);
+                      if(0 <= constant_value_off && constant_value_off + constant_value_size <= constant_value_data_size)
+                      {
+                        RDI_U64 value = 0;
+                        MemoryCopy(&value, constant_value_data+constant_value_off, constant_value_size);
+                        E_OpList oplist = {0};
+                        e_oplist_push_op(arena, &oplist, RDI_EvalOp_ConstU64, e_value_u64(value));
+                        string_mapped = 1;
+                        mapped_type_key = e_type_key_ext(e_type_kind_from_rdi(type_node->kind), type_idx, (U32)module_idx);
+                        mapped_bytecode = e_bytecode_from_oplist(arena, &oplist);
+                        mapped_bytecode_mode = E_Mode_Value;
+                        mapped_bytecode_space = module->space;
+                        break;
+                      }
+                    }
+                  }
+                }
+              }
+              
               //- rjf: try procedures
               if(path == E_IdentifierResolutionPath_Procedures && !string_mapped && (qualifier.size == 0 || str8_match(qualifier, str8_lit("procedure"), 0)))
               {
@@ -1913,27 +2007,6 @@ e_push_irtree_and_type_from_expr(Arena *arena, E_IRTreeAndType *root_parent, E_I
                 mapped_bytecode_space = e_base_ctx->thread_reg_space;
                 mapped_type_key = e_type_key_reg_alias(e_base_ctx->primary_module->arch, alias_num);
               }
-            }break;
-            
-            //- rjf: try basic constants
-            case E_IdentifierResolutionPath_Constants:
-            if(!string_mapped && str8_match(string, str8_lit("true"), 0))
-            {
-              string_mapped = 1;
-              E_OpList oplist = {0};
-              e_oplist_push_uconst(arena, &oplist, 1);
-              mapped_type_key = e_type_key_basic(E_TypeKind_Bool);
-              mapped_bytecode = e_bytecode_from_oplist(arena, &oplist);
-              mapped_bytecode_mode = E_Mode_Value;
-            }
-            if(!string_mapped && str8_match(string, str8_lit("false"), 0))
-            {
-              string_mapped = 1;
-              E_OpList oplist = {0};
-              e_oplist_push_uconst(arena, &oplist, 0);
-              mapped_type_key = e_type_key_basic(E_TypeKind_Bool);
-              mapped_bytecode = e_bytecode_from_oplist(arena, &oplist);
-              mapped_bytecode_mode = E_Mode_Value;
             }break;
             
             //- rjf: try macros
@@ -2072,10 +2145,6 @@ e_push_irtree_and_type_from_expr(Arena *arena, E_IRTreeAndType *root_parent, E_I
           E_Expr *access = e_expr_irext_member_access(arena, &e_expr_nil, &result, string);
           result = e_push_irtree_and_type_from_expr(arena, parent, &e_default_identifier_resolution_rule, disallow_autohooks, 1, access); 
         }
-        
-        //- rjf: mark if auto hook, equip user data
-        result.auto_hook = is_auto_hook;
-        result.user_data = mapped_user_data;
         
         //- rjf: error on failure-to-generate
         if(!generated && !str8_match(string, str8_lit("$"), 0))
@@ -2357,10 +2426,27 @@ e_push_irtree_and_type_from_expr(Arena *arena, E_IRTreeAndType *root_parent, E_I
     }
     
     //- rjf: equip previous task's irtree
-    if(parent != 0)
+    if(parent != 0 && parent->root != &e_irnode_nil)
     {
-      result.prev = push_array(arena, E_IRTreeAndType, 1);
-      result.prev[0] = *parent;
+      E_IRTreeAndType *new_chain = push_array(arena, E_IRTreeAndType, 1);
+      MemoryCopyStruct(new_chain, parent);
+      E_IRTreeAndType *first_chain = 0;
+      E_IRTreeAndType *last_chain = 0;
+      if(result.prev)
+      {
+        for(E_IRTreeAndType *p = result.prev; p != 0; p = p->prev)
+        {
+          E_IRTreeAndType *p_copy = push_array(arena, E_IRTreeAndType, 1);
+          MemoryCopyStruct(p_copy, p);
+          SLLQueuePush_N(first_chain, last_chain, p_copy, prev);
+        }
+        SLLQueuePushFront_N(first_chain, last_chain, new_chain, prev);
+        result.prev = first_chain;
+      }
+      else
+      {
+        result.prev = new_chain;
+      }
     }
     
     //- rjf: mark this result as an auto-hook, if we have an override
@@ -2369,24 +2455,27 @@ e_push_irtree_and_type_from_expr(Arena *arena, E_IRTreeAndType *root_parent, E_I
       result.auto_hook = 1;
     }
     
+    //- rjf: restore stack elements
+    e_cache->first_wildcard_inst = first_wildcard_inst_restore;
+    e_cache->last_wildcard_inst = last_wildcard_inst_restore;
+    
     //- rjf: find any auto hooks according to this generation's type
     if(!disallow_autohooks && result.mode != E_Mode_Null)
     {
-      E_ExprList exprs = e_auto_hook_exprs_from_type_key__cached(result.type_key);
-      for(E_ExprNode *n = exprs.first; n != 0; n = n->next)
+      E_AutoHookMatchList matches = e_auto_hook_matches_from_type_key(result.type_key);
+      for(E_AutoHookMatch *match = matches.first; match != 0; match = match->next)
       {
-        for(E_Expr *e = n->v; e != &e_expr_nil; e = e->next)
+        B32 e_is_poisoned = e_expr_is_poisoned(match->expr);
+        if(!e_is_poisoned)
         {
-          B32 e_is_poisoned = e_expr_is_poisoned(e);
-          if(!e_is_poisoned)
-          {
-            Task *task = push_array(scratch.arena, Task, 1);
-            SLLQueuePush(first_task, last_task, task);
-            task->expr = e;
-            task->overridden = push_array(scratch.arena, E_IRTreeAndType, 1);
-            task->overridden[0] = result;
-            goto end_autohook_find;
-          }
+          Task *task = push_array(scratch.arena, Task, 1);
+          SLLQueuePush(first_task, last_task, task);
+          task->expr = match->expr;
+          task->first_wildcard_inst = match->first_wildcard_inst;
+          task->last_wildcard_inst  = match->last_wildcard_inst;
+          task->overridden = push_array(scratch.arena, E_IRTreeAndType, 1);
+          task->overridden[0] = result;
+          goto end_autohook_find;
         }
       }
       end_autohook_find:;

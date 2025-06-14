@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 global U64 global_update_tick_idx = 0;
@@ -15,6 +15,11 @@ main_thread_base_entry_point(int arguments_count, char **arguments)
   tmLoadLibrary(TM_RELEASE);
   tmSetMaxThreadCount(256);
   tmInitialize(sizeof(tm_data), tm_data);
+#endif
+  
+  //- rjf: set up spall
+#if PROFILE_SPALL
+  spall_profile = spall_init_file_ex("spall_capture", 1, 0);
 #endif
   
   //- rjf: parse command line
@@ -35,9 +40,6 @@ main_thread_base_entry_point(int arguments_count, char **arguments)
   //- rjf: initialize all included layers
 #if defined(ASYNC_H) && !defined(ASYNC_INIT_MANUAL)
   async_init(&cmdline);
-#endif
-#if defined(RDI_FROM_PDB_H) && !defined(P2R_INIT_MANUAL)
-  p2r_init();
 #endif
 #if defined(HASH_STORE_H) && !defined(HS_INIT_MANUAL)
   hs_init();

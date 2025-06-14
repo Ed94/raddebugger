@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #ifndef EVAL_CORE_H
@@ -663,13 +663,54 @@ struct E_String2TypeKeyMap
 ////////////////////////////////
 //~ rjf: Type Pattern -> Hook Key Data Structure (Type Views)
 
+typedef struct E_PatternPart E_PatternPart;
+struct E_PatternPart
+{
+  E_PatternPart *next;
+  String8 string;
+  String8List wildcard_inst_names;
+};
+
+typedef struct E_Pattern E_Pattern;
+struct E_Pattern
+{
+  E_PatternPart *first_part;
+  E_PatternPart *last_part;
+  U64 count;
+};
+
+typedef struct E_AutoHookWildcardInst E_AutoHookWildcardInst;
+struct E_AutoHookWildcardInst
+{
+  E_AutoHookWildcardInst *next;
+  String8 name;
+  E_Expr *inst_expr;
+};
+
+typedef struct E_AutoHookMatch E_AutoHookMatch;
+struct E_AutoHookMatch
+{
+  E_AutoHookMatch *next;
+  E_Expr *expr;
+  E_AutoHookWildcardInst *first_wildcard_inst;
+  E_AutoHookWildcardInst *last_wildcard_inst;
+};
+
+typedef struct E_AutoHookMatchList E_AutoHookMatchList;
+struct E_AutoHookMatchList
+{
+  E_AutoHookMatch *first;
+  E_AutoHookMatch *last;
+  U64 count;
+};
+
 typedef struct E_AutoHookNode E_AutoHookNode;
 struct E_AutoHookNode
 {
   E_AutoHookNode *hash_next;
   E_AutoHookNode *pattern_order_next;
   String8 type_string;
-  String8List type_pattern_parts;
+  E_Pattern type_pattern;
   String8 expr_string;
 };
 
@@ -890,7 +931,7 @@ struct E_TypeAutoHookCacheNode
 {
   E_TypeAutoHookCacheNode *next;
   E_TypeKey key;
-  E_ExprList exprs;
+  E_AutoHookMatchList matches;
 };
 
 typedef struct E_TypeAutoHookCacheSlot E_TypeAutoHookCacheSlot;
@@ -1042,6 +1083,8 @@ struct E_Cache
   //- rjf: [ir] ir gen options
   B32 disallow_autohooks;
   B32 disallow_chained_fastpaths;
+  E_AutoHookWildcardInst *first_wildcard_inst;
+  E_AutoHookWildcardInst *last_wildcard_inst;
   
   //- rjf: [ir] ir caches
   E_UsedExprMap *used_expr_map;
@@ -1108,6 +1151,7 @@ internal E_MsgList e_msg_list_copy(Arena *arena, E_MsgList *src);
 //~ rjf: Space Functions
 
 internal E_Space e_space_make(E_SpaceKind kind);
+internal B32 e_space_match(E_Space a, E_Space b);
 
 ////////////////////////////////
 //~ rjf: Map Functions
@@ -1227,8 +1271,8 @@ internal E_Eval e_value_eval_from_eval(E_Eval eval);
 #define e_value_from_expr(expr) e_value_eval_from_eval(e_eval_from_expr(expr)).value
 
 //- rjf: type key -> auto hooks
-internal E_ExprList e_auto_hook_exprs_from_type_key(Arena *arena, E_TypeKey type_key);
-internal E_ExprList e_auto_hook_exprs_from_type_key__cached(E_TypeKey type_key);
+internal E_AutoHookMatchList e_push_auto_hook_matches_from_type_key(Arena *arena, E_TypeKey type_key);
+internal E_AutoHookMatchList e_auto_hook_matches_from_type_key(E_TypeKey type_key);
 
 //- rjf: string IDs
 internal U64 e_id_from_string(String8 string);

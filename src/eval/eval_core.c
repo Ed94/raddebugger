@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 ////////////////////////////////
@@ -187,6 +187,13 @@ e_space_make(E_SpaceKind kind)
   E_Space space = {0};
   space.kind = kind;
   return space;
+}
+
+internal B32
+e_space_match(E_Space a, E_Space b)
+{
+  B32 result = MemoryMatchStruct(&a, &b);
+  return result;
 }
 
 ////////////////////////////////
@@ -445,22 +452,61 @@ e_auto_hook_map_insert_new_(Arena *arena, E_AutoHookMap *map, E_AutoHookParams *
     type_key = e_type_key_from_expr(parse.expr);
   }
   
-  // rjf: get type pattern parts
-  String8List pattern_parts = {0};
+  // rjf: extract type pattern
+  E_Pattern pattern = {0};
   if(e_type_key_match(e_type_key_zero(), type_key))
   {
-    U8 pattern_split = '?';
-    pattern_parts = str8_split(arena, params->type_pattern, &pattern_split, 1, StringSplitFlag_KeepEmpties);
+    U64 start_string_off = 0;
+    for(U64 off = 0; off <= params->type_pattern.size; off += 1)
+    {
+      U8 byte = (off < params->type_pattern.size ? params->type_pattern.str[off] : 0);
+      if(byte == 0 || byte == '?')
+      {
+        String8 new_part = str8_substr(params->type_pattern, r1u64(start_string_off, off));
+        if(new_part.size != 0)
+        {
+          E_PatternPart *p = push_array(arena, E_PatternPart, 1);
+          SLLQueuePush(pattern.first_part, pattern.last_part, p);
+          p->string = new_part;
+          pattern.count += 1;
+        }
+      }
+      if(byte == '?')
+      {
+        E_PatternPart *p = push_array(arena, E_PatternPart, 1);
+        SLLQueuePush(pattern.first_part, pattern.last_part, p);
+        pattern.count += 1;
+        if(off+1 < params->type_pattern.size && params->type_pattern.str[off+1] == '{')
+        {
+          off += 2;
+          String8 wildcard_inst_names_string = str8_skip(params->type_pattern, off);
+          wildcard_inst_names_string = str8_prefix(wildcard_inst_names_string, str8_find_needle(wildcard_inst_names_string, 0, str8_lit("}"), 0));
+          if(wildcard_inst_names_string.size != 0)
+          {
+            Temp scratch = scratch_begin(&arena, 1);
+            U8 wildcard_inst_name_split_char = ',';
+            String8List wildcard_inst_names = str8_split(scratch.arena, wildcard_inst_names_string, &wildcard_inst_name_split_char, 1, 0);
+            for(String8Node *n = wildcard_inst_names.first; n != 0; n = n->next)
+            {
+              str8_list_push(arena, &p->wildcard_inst_names, str8_skip_chop_whitespace(n->string));
+            }
+            scratch_end(scratch);
+            off += wildcard_inst_names_string.size;
+          }
+        }
+        start_string_off = off+1;
+      }
+    }
   }
   
   // rjf: if the type key is nonzero, *or* we have type patterns, then insert
-  // into map accordingle
+  // into map accordingly
   if(!e_type_key_match(e_type_key_zero(), type_key) ||
-     pattern_parts.node_count != 0)
+     pattern.count != 0)
   {
     E_AutoHookNode *node = push_array(arena, E_AutoHookNode, 1);
     node->type_string = str8_skip_chop_whitespace(e_type_string_from_key(arena, type_key));
-    node->type_pattern_parts = pattern_parts;
+    node->type_pattern = pattern;
     node->expr_string = push_str8_copy(arena, params->tag_expr_string);
     if(!e_type_key_match(e_type_key_zero(), type_key))
     {
@@ -1037,18 +1083,20 @@ e_value_eval_from_eval(E_Eval eval)
 
 //- rjf: type key -> auto hooks
 
-internal E_ExprList
-e_auto_hook_exprs_from_type_key(Arena *arena, E_TypeKey type_key)
+internal E_AutoHookMatchList
+e_push_auto_hook_matches_from_type_key(Arena *arena, E_TypeKey type_key)
 {
   ProfBeginFunction();
-  E_ExprList exprs = {0};
+  E_AutoHookMatchList matches = {0};
   if(e_ir_ctx != 0)
   {
     Temp scratch = scratch_begin(&arena, 1);
     E_AutoHookMap *map = e_ir_ctx->auto_hook_map;
     String8 type_string = str8_skip_chop_whitespace(e_type_string_from_key(scratch.arena, type_key));
     
+    ////////////////////////////
     //- rjf: gather exact-type-key-matches from the map
+    //
     if(map != 0 && map->slots_count != 0)
     {
       U64 hash = e_hash_from_string(5381, type_string);
@@ -1057,44 +1105,132 @@ e_auto_hook_exprs_from_type_key(Arena *arena, E_TypeKey type_key)
       {
         if(str8_match(n->type_string, type_string, 0))
         {
-          E_Expr *expr = e_parse_from_string(n->expr_string).expr;
-          e_expr_list_push(arena, &exprs, expr);
+          E_AutoHookMatch *match = push_array(arena, E_AutoHookMatch, 1);
+          SLLQueuePush(matches.first, matches.last, match);
+          match->expr = e_parse_from_string(n->expr_string).expr;
+          matches.count += 1;
         }
       }
     }
     
+    ////////////////////////////
     //- rjf: gather fuzzy matches from all patterns in the map
+    //
     if(map != 0 && map->first_pattern != 0)
     {
       for(E_AutoHookNode *auto_hook_node = map->first_pattern;
           auto_hook_node != 0;
           auto_hook_node = auto_hook_node->pattern_order_next)
       {
+        ////////////////////////
+        //- rjf: determine if this pattern fits this type's string; gather wildcard instances
+        //
+        E_AutoHookWildcardInst *first_wildcard_inst = 0;
+        E_AutoHookWildcardInst *last_wildcard_inst = 0;
         B32 fits_this_type_string = 1;
-        U64 scan_pos = 0;
-        for(String8Node *n = auto_hook_node->type_pattern_parts.first; n != 0; n = n->next)
         {
-          if(n->string.size == 0)
+          U64 scan_pos = 0;
+          for(E_PatternPart *part = auto_hook_node->type_pattern.first_part; part != 0 && fits_this_type_string; part = part->next)
           {
-            continue;
+            String8 pattern_string = part->string;
+            
+            //- rjf: skip whitespace
+            for(;scan_pos < type_string.size;)
+            {
+              if(char_is_space(type_string.str[scan_pos]))
+              {
+                scan_pos += 1;
+              }
+              else
+              {
+                break;
+              }
+            }
+            
+            //- rjf: no pattern string -> wildcard. skip wildcard portion
+            if(pattern_string.size == 0)
+            {
+              String8 terminator_pattern_string = part->next ? part->next->string : str8_zero();
+              U64 brace_nest_depth = 0;
+              U64 paren_nest_depth = 0;
+              U64 angle_nest_depth = 0;
+              U64 brack_nest_depth = 0;
+              U64 start_inst_off = scan_pos;
+              String8Node *wildcard_inst_name_node = part->wildcard_inst_names.first;
+              for(B32 done = 0; !done && scan_pos < type_string.size; scan_pos += 1)
+              {
+                if(0){}
+                else if(type_string.str[scan_pos] == '{') { brace_nest_depth += 1; }
+                else if(type_string.str[scan_pos] == '(') { paren_nest_depth += 1; }
+                else if(type_string.str[scan_pos] == '<') { angle_nest_depth += 1; }
+                else if(type_string.str[scan_pos] == '[') { brack_nest_depth += 1; }
+                else if(type_string.str[scan_pos] == '}' && brace_nest_depth > 0) { brace_nest_depth -= 1; }
+                else if(type_string.str[scan_pos] == ')' && paren_nest_depth > 0) { paren_nest_depth -= 1; }
+                else if(type_string.str[scan_pos] == '>' && angle_nest_depth > 0) { angle_nest_depth -= 1; }
+                else if(type_string.str[scan_pos] == ']' && brack_nest_depth > 0) { brack_nest_depth -= 1; }
+                else if(part->next == 0)
+                {
+                  done = 1;
+                  scan_pos = type_string.size;
+                }
+                else if(str8_match(terminator_pattern_string, str8_skip(type_string, scan_pos), StringMatchFlag_RightSideSloppy))
+                {
+                  done = 1;
+                }
+                if((type_string.str[scan_pos] == ',' || done) &&
+                   brace_nest_depth == 0 &&
+                   paren_nest_depth == 0 &&
+                   angle_nest_depth == 0 &&
+                   brack_nest_depth == 0)
+                {
+                  String8 wildcard_inst_string = str8_skip_chop_whitespace(str8_substr(type_string, r1u64(start_inst_off, scan_pos)));
+                  start_inst_off = scan_pos+1;
+                  E_AutoHookWildcardInst *inst = push_array(arena, E_AutoHookWildcardInst, 1);
+                  SLLQueuePush(first_wildcard_inst, last_wildcard_inst, inst);
+                  inst->name = wildcard_inst_name_node ? wildcard_inst_name_node->string : str8_zero();
+                  inst->inst_expr = e_parse_from_string(wildcard_inst_string).expr;
+                  if(wildcard_inst_name_node)
+                  {
+                    wildcard_inst_name_node = wildcard_inst_name_node->next;
+                  }
+                }
+                if(done)
+                {
+                  break;
+                }
+              }
+            }
+            
+            //- rjf: pattern string -> find next occurrence.
+            else if(pattern_string.size != 0)
+            {
+              if(!str8_match(str8_substr(type_string, r1u64(scan_pos, scan_pos+pattern_string.size)), pattern_string, 0))
+              {
+                fits_this_type_string = 0;
+              }
+              else
+              {
+                scan_pos += pattern_string.size;
+              }
+            }
           }
-          U64 pattern_part_pos = str8_find_needle(type_string, scan_pos, n->string, 0);
-          if(pattern_part_pos > scan_pos && n == auto_hook_node->type_pattern_parts.first)
+          if(fits_this_type_string && scan_pos < type_string.size)
           {
             fits_this_type_string = 0;
-            break;
           }
-          if(pattern_part_pos >= type_string.size)
-          {
-            fits_this_type_string = 0;
-            break;
-          }
-          scan_pos = pattern_part_pos + n->string.size;
         }
+        
+        ////////////////////////
+        //- rjf: push match if this type fits
+        //
         if(fits_this_type_string)
         {
-          E_Expr *expr = e_parse_from_string(auto_hook_node->expr_string).expr;
-          e_expr_list_push(arena, &exprs, expr);
+          E_AutoHookMatch *match = push_array(arena, E_AutoHookMatch, 1);
+          SLLQueuePush(matches.first, matches.last, match);
+          match->expr = e_parse_from_string(auto_hook_node->expr_string).expr;
+          match->first_wildcard_inst = first_wildcard_inst;
+          match->last_wildcard_inst = last_wildcard_inst;
+          matches.count += 1;
         }
       }
     }
@@ -1102,13 +1238,13 @@ e_auto_hook_exprs_from_type_key(Arena *arena, E_TypeKey type_key)
     scratch_end(scratch);
   }
   ProfEnd();
-  return exprs;
+  return matches;
 }
 
-internal E_ExprList
-e_auto_hook_exprs_from_type_key__cached(E_TypeKey type_key)
+internal E_AutoHookMatchList
+e_auto_hook_matches_from_type_key(E_TypeKey type_key)
 {
-  E_ExprList exprs = {0};
+  E_AutoHookMatchList matches = {0};
   {
     U64 hash = e_hash_from_string(5381, str8_struct(&type_key));
     U64 slot_idx = hash%e_cache->type_auto_hook_cache_map->slots_count;
@@ -1127,11 +1263,11 @@ e_auto_hook_exprs_from_type_key__cached(E_TypeKey type_key)
       node = push_array(e_cache->arena, E_TypeAutoHookCacheNode, 1);
       SLLQueuePush(e_cache->type_auto_hook_cache_map->slots[slot_idx].first, e_cache->type_auto_hook_cache_map->slots[slot_idx].last, node);
       node->key = type_key;
-      node->exprs = e_auto_hook_exprs_from_type_key(e_cache->arena, type_key);
+      node->matches = e_push_auto_hook_matches_from_type_key(e_cache->arena, type_key);
     }
-    exprs = node->exprs;
+    matches = node->matches;
   }
-  return exprs;
+  return matches;
 }
 
 //- rjf: string IDs
@@ -1232,30 +1368,6 @@ e_range_size_from_eval(E_Eval eval)
     E_TypeKey type_core = e_type_key_unwrap(eval.irtree.type_key, E_TypeUnwrapFlag_AllDecorative);
     E_TypeKind type_core_kind = e_type_kind_from_key(type_core);
     B32 got_size = 0;
-    
-    // rjf: try getting size from expansions
-    if(!got_size)
-    {
-      E_TypeKey maybe_lens_type_key = e_type_key_unwrap(eval.irtree.type_key, E_TypeUnwrapFlag_Meta);
-      E_TypeKind maybe_lens_type_kind = e_type_kind_from_key(maybe_lens_type_key);
-      if(maybe_lens_type_kind == E_TypeKind_Lens)
-      {
-        E_TypeExpandRule *expand_rule = e_expand_rule_from_type_key(maybe_lens_type_key);
-        if(expand_rule->info != 0)
-        {
-          Temp scratch = scratch_begin(0, 0);
-          U64 element_size = e_type_byte_size_from_key(e_type_key_unwrap(type_core, E_TypeUnwrapFlag_All));
-          E_TypeExpandInfo expand_info = expand_rule->info(scratch.arena, eval, str8_zero());
-          U64 new_result_maybe = expand_info.expr_count * element_size;
-          if(new_result_maybe != 0)
-          {
-            result = new_result_maybe;
-            got_size = 1;
-          }
-          scratch_end(scratch);
-        }
-      }
-    }
     
     // rjf: try getting size from intrinsic type (e.g. arrays/etc.)
     if(!got_size)

@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #ifndef RADCON_DWARF_H
@@ -22,9 +22,9 @@ typedef struct D2R_TagNode
 
 typedef struct D2R_CompUnitContribMap
 {
-  U64               count;
-  U64              *info_off_arr;
-  RDIM_Rng1U64List *voff_range_arr;
+  U64                    count;
+  U64                   *info_off_arr;
+  RDIM_Rng1U64ChunkList *voff_range_arr;
 } D2R_CompUnitContribMap;
 
 ////////////////////////////////

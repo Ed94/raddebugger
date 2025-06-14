@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #undef LAYER_COLOR
@@ -1026,15 +1026,16 @@ ASYNC_WORK_DEF(di_parse_work)
         params.inherit_env = 1;
         params.consoleless = 1;
         str8_list_pushf(scratch.arena, &params.cmd_line, "raddbg");
-        str8_list_pushf(scratch.arena, &params.cmd_line, "--convert");
+        str8_list_pushf(scratch.arena, &params.cmd_line, "--bin");
         str8_list_pushf(scratch.arena, &params.cmd_line, "--quiet");
         if(should_compress)
         {
           str8_list_pushf(scratch.arena, &params.cmd_line, "--compress");
         }
         // str8_list_pushf(scratch.arena, &params.cmd_line, "--capture");
-        str8_list_pushf(scratch.arena, &params.cmd_line, "--pdb:%S", og_path);
+        str8_list_pushf(scratch.arena, &params.cmd_line, "--rdi");
         str8_list_pushf(scratch.arena, &params.cmd_line, "--out:%S", rdi_path);
+        str8_list_pushf(scratch.arena, &params.cmd_line, "%S", og_path);
         process = os_process_launch(&params);
       }
       

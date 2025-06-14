@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #ifndef RADDBG_CORE_H
@@ -634,6 +634,8 @@ struct RD_State
   Arena *cmds_arenas[2];
   RD_CmdList cmds[2];
   U64 cmds_gen;
+  Arena *cmd_output_arena;
+  String8List cmd_outputs;
   
   // rjf: popup state
   UI_Key popup_key;

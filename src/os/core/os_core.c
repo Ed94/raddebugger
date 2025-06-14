@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 ////////////////////////////////
@@ -90,13 +90,40 @@ os_write_data_list_to_file_path(String8 path, String8List list)
   if(!os_handle_match(file, os_handle_zero()))
   {
     good = 1;
-    U64 off = 0;
-    for(String8Node *n = list.first; n != 0; n = n->next)
+    Temp scratch = scratch_begin(0, 0);
+    U64 write_buffer_size = KB(64);
+    U8 *write_buffer = push_array_no_zero(scratch.arena, U8, write_buffer_size);
+    U64 write_buffer_write_pos = 0;
+    U64 write_buffer_read_pos = 0;
+    U64 file_off = 0;
     {
-      os_file_write(file, r1u64(off, off+n->string.size), n->string.str);
-      off += n->string.size;
+      for(String8Node *n = list.first; n != 0; n = n->next)
+      {
+        for(U64 n_off = 0; n_off < n->string.size;)
+        {
+          U64 write_buffer_unconsumed_size = (write_buffer_write_pos - write_buffer_read_pos);
+          U64 write_buffer_available_size = (write_buffer_size - write_buffer_unconsumed_size);
+          if(write_buffer_available_size == 0)
+          {
+            os_file_write(file, r1u64(file_off, file_off+write_buffer_size), write_buffer);
+            file_off += write_buffer_size;
+            write_buffer_read_pos += write_buffer_size;
+          }
+          else
+          {
+            U64 bytes_to_copy = Min(write_buffer_available_size, n->string.size - n_off);
+            write_buffer_write_pos += ring_write(write_buffer, write_buffer_size, write_buffer_write_pos, n->string.str + n_off, bytes_to_copy);
+            n_off += bytes_to_copy;
+          }
+        }
+      }
+      if(write_buffer_write_pos > write_buffer_read_pos)
+      {
+        os_file_write(file, r1u64(file_off, file_off + (write_buffer_write_pos-write_buffer_read_pos)), write_buffer);
+      }
     }
     os_file_close(file);
+    scratch_end(scratch);
   }
   return good;
 }
@@ -148,6 +175,27 @@ os_string_from_file_range(Arena *arena, OS_Handle file, Rng1U64 range)
     arena_pop_to(arena, pre_pos + actual_read_size);
     result.size = actual_read_size;
   }
+  return result;
+}
+
+internal String8
+os_file_read_cstring(Arena *arena, OS_Handle file, U64 off)
+{
+  Temp scratch = scratch_begin(&arena, 1);
+  String8List block_list = {0};
+  for(U64 cursor = off, stride = 256;; cursor += stride)
+  {
+    U8      *raw_block = push_array_no_zero(scratch.arena, U8, stride);
+    U64      read_size = os_file_read(file, r1u64(cursor, cursor + stride), raw_block);
+    String8  block     = str8_cstring_capped(raw_block, raw_block+read_size);
+    str8_list_push(scratch.arena, &block_list, block);
+    if(read_size != stride || (block.size+1 <= read_size && block.str[block.size] == 0))
+    {
+      break;
+    }
+  }
+  String8 result = str8_list_join(arena, &block_list, 0);
+  scratch_end(scratch);
   return result;
 }
 

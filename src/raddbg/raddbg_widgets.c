@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 ////////////////////////////////
@@ -548,7 +548,7 @@ rd_title_fstrs_from_ctrl_entity(Arena *arena, CTRL_Entity *entity, B32 include_e
     Arch arch = entity->arch;
     B32 call_stack_high_priority = ctrl_handle_match(entity->handle, rd_base_regs()->thread);
     CTRL_CallStack call_stack = ctrl_call_stack_from_thread(ctrl_scope, &d_state->ctrl_entity_store->ctx, entity, call_stack_high_priority, call_stack_high_priority ? rd_state->frame_eval_memread_endt_us : 0);
-    for(U64 idx = 0, limit = 6; idx < call_stack.frames_count && idx < limit; idx += 1)
+    for(U64 idx = 0, limit = 10; idx < call_stack.frames_count && idx < limit; idx += 1)
     {
       CTRL_CallStackFrame *f = &call_stack.frames[call_stack.frames_count - 1 - idx];
       U64 rip_vaddr = regs_rip_from_arch_block(arch, f->regs);
@@ -1279,7 +1279,7 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
     };
     U64 line_idx = 0;
     for(S64 line_num = params->line_num_range.min;
-        line_num < params->line_num_range.max;
+        line_num <= params->line_num_range.max;
         line_num += 1, line_idx += 1)
     {
       String8 line_string = params->line_text[line_idx];
@@ -1971,7 +1971,7 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
   {
     U64 line_idx = 0;
     for(S64 line_num = params->line_num_range.min;
-        line_num < params->line_num_range.max;
+        line_num <= params->line_num_range.max;
         line_num += 1, line_idx += 1)
     {
       DR_FStrList line_fstrs = lines_fstrs[line_idx];
@@ -2119,7 +2119,7 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
         params->line_pins[line_idx],
         immediate_pins,
       };
-      for EachElement(list_idx, pin_lists)
+      E_ParentKey(e_key_zero()) for EachElement(list_idx, pin_lists)
       {
         RD_CfgList pins = pin_lists[list_idx];
         if(pins.count != 0) UI_Parent(line_extras_boxes[line_idx])

@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #ifndef BASE_STRINGS_H
@@ -432,5 +432,11 @@ internal U64    str8_deserial_read_windows_utf16_string16(String8 string, U64 of
 internal U64    str8_deserial_read_block(String8 string, U64 off, U64 size, String8 *block_out);
 #define str8_deserial_read_array(string, off, ptr, count) str8_deserial_read((string), (off), (ptr), sizeof(*(ptr))*(count), sizeof(*(ptr)))
 #define str8_deserial_read_struct(string, off, ptr)       str8_deserial_read_array(string, off, ptr, 1)
+
+////////////////////////////////
+//~ rjf: Basic String Hashes
+
+internal U64 u64_hash_from_seed_str8(U64 seed, String8 string);
+internal U64 u64_hash_from_str8(String8 string);
 
 #endif // BASE_STRINGS_H

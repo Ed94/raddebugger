@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #ifndef BASE_CONTEXT_CRACKING_H
@@ -159,7 +159,7 @@
 #endif
 
 #if !defined(BUILD_VERSION_PATCH)
-# define BUILD_VERSION_PATCH 18
+# define BUILD_VERSION_PATCH 20
 #endif
 
 #define BUILD_VERSION_STRING_LITERAL Stringify(BUILD_VERSION_MAJOR) "." Stringify(BUILD_VERSION_MINOR) "." Stringify(BUILD_VERSION_PATCH)

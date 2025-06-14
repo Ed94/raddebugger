@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #ifndef CTRL_CORE_H
@@ -424,6 +424,7 @@ typedef enum CTRL_EventKind
   CTRL_EventKind_ThreadColor,
   CTRL_EventKind_SetBreakpoint,
   CTRL_EventKind_UnsetBreakpoint,
+  CTRL_EventKind_SetVAddrRangeNote,
   
   //- rjf: memory
   CTRL_EventKind_MemReserve,

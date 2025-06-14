@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 ////////////////////////////////////////////////////////////////
@@ -310,6 +310,46 @@ RDIM_CheckNil(nil,p) ? \
 #define rdim_noop ((void)0)
 
 ////////////////////////////////
+//~ rjf: RDI Subsets
+
+#define RDIM_Subset_XList \
+X(BinarySections,              binary_sections)\
+X(Units,                       units)\
+X(Procedures,                  procedures)\
+X(GlobalVariables,             global_variables)\
+X(ThreadVariables,             thread_variables)\
+X(Scopes,                      scopes)\
+X(Locals,                      locals)\
+X(Types,                       types)\
+X(UDTs,                        udts)\
+X(LineInfo,                    line_info)\
+X(InlineLineInfo,              inline_line_info)\
+X(GlobalVariableNameMap,       global_variable_name_map)\
+X(ThreadVariableNameMap,       thread_variable_name_map)\
+X(ProcedureNameMap,            procedure_name_map)\
+X(ConstantNameMap,             constant_name_map)\
+X(TypeNameMap,                 type_name_map)\
+X(LinkNameProcedureNameMap,    link_name_procedure_name_map)\
+X(NormalSourcePathNameMap,     normal_source_path_name_map)\
+
+typedef enum RDIM_Subset
+{
+#define X(name, name_lower) RDIM_Subset_##name,
+  RDIM_Subset_XList
+#undef X
+}
+RDIM_Subset;
+
+typedef U32 RDIM_SubsetFlags;
+enum
+{
+#define X(name, name_lower) RDIM_SubsetFlag_##name = (1<<RDIM_Subset_##name),
+  RDIM_Subset_XList
+#undef X
+  RDIM_SubsetFlag_All = 0xffffffffu,
+};
+
+////////////////////////////////
 //~ rjf: Auxiliary Data Structure Types
 
 //- rjf: 1-dimensional U64 ranges
@@ -334,6 +374,25 @@ struct RDIM_Rng1U64List
   RDIM_Rng1U64Node *first;
   RDIM_Rng1U64Node *last;
   RDI_U64 count;
+  RDI_U64 min;
+};
+
+typedef struct RDIM_Rng1U64ChunkNode RDIM_Rng1U64ChunkNode;
+struct RDIM_Rng1U64ChunkNode
+{
+  RDIM_Rng1U64ChunkNode *next;
+  RDIM_Rng1U64 *v;
+  RDI_U64 count;
+  RDI_U64 cap;
+};
+
+typedef struct RDIM_Rng1U64ChunkList RDIM_Rng1U64ChunkList;
+struct RDIM_Rng1U64ChunkList
+{
+  RDIM_Rng1U64ChunkNode *first;
+  RDIM_Rng1U64ChunkNode *last;
+  RDI_U64 chunk_count;
+  RDI_U64 total_count;
   RDI_U64 min;
 };
 
@@ -570,7 +629,7 @@ struct RDIM_Unit
   RDIM_String8 build_path;
   RDI_Language language;
   RDIM_LineTable *line_table;
-  RDIM_Rng1U64List voff_ranges;
+  RDIM_Rng1U64ChunkList voff_ranges;
 };
 
 typedef struct RDIM_UnitChunkNode RDIM_UnitChunkNode;
@@ -763,16 +822,6 @@ struct RDIM_LocationSet
 ////////////////////////////////
 //~ rjf: Symbol Info Types
 
-typedef enum RDIM_SymbolKind
-{
-  RDIM_SymbolKind_NULL,
-  RDIM_SymbolKind_GlobalVariable,
-  RDIM_SymbolKind_ThreadVariable,
-  RDIM_SymbolKind_Procedure,
-  RDIM_SymbolKind_COUNT
-}
-RDIM_SymbolKind;
-
 typedef struct RDIM_Symbol RDIM_Symbol;
 struct RDIM_Symbol
 {
@@ -786,6 +835,7 @@ struct RDIM_Symbol
   RDIM_Type *container_type;
   struct RDIM_Scope *root_scope;
   RDIM_LocationSet frame_base;
+  RDIM_String8 value_data;
 };
 
 typedef struct RDIM_SymbolChunkNode RDIM_SymbolChunkNode;
@@ -805,6 +855,7 @@ struct RDIM_SymbolChunkList
   RDIM_SymbolChunkNode *last;
   RDI_U64 chunk_count;
   RDI_U64 total_count;
+  RDI_U64 total_value_data_size;
 };
 
 ////////////////////////////////
@@ -907,6 +958,7 @@ struct RDIM_BakeParams
   RDIM_LineTableChunkList line_tables;
   RDIM_SymbolChunkList global_variables;
   RDIM_SymbolChunkList thread_variables;
+  RDIM_SymbolChunkList constants;
   RDIM_SymbolChunkList procedures;
   RDIM_ScopeChunkList scopes;
   RDIM_InlineSiteChunkList inline_sites;
@@ -1192,6 +1244,17 @@ struct RDIM_ThreadVariableBakeResult
   RDI_U64 thread_variables_count;
 };
 
+typedef struct RDIM_ConstantsBakeResult RDIM_ConstantsBakeResult;
+struct RDIM_ConstantsBakeResult
+{
+  RDI_Constant *constants;
+  RDI_U64 constants_count;
+  RDI_U32 *constant_values;
+  RDI_U64 constant_values_count;
+  RDI_U8 *constant_value_data;
+  RDI_U64 constant_value_data_size;
+};
+
 typedef struct RDIM_ProcedureBakeResult RDIM_ProcedureBakeResult;
 struct RDIM_ProcedureBakeResult
 {
@@ -1276,6 +1339,7 @@ struct RDIM_BakeResults
   RDIM_GlobalVariableBakeResult global_variables;
   RDIM_GlobalVMapBakeResult global_vmap;
   RDIM_ThreadVariableBakeResult thread_variables;
+  RDIM_ConstantsBakeResult constants;
   RDIM_ProcedureBakeResult procedures;
   RDIM_ScopeBakeResult scopes;
   RDIM_InlineSiteBakeResult inline_sites;
@@ -1357,8 +1421,9 @@ RDI_PROC RDIM_String8 rdim_str8_list_join(RDIM_Arena *arena, RDIM_String8List *l
 //- rjf: sortable range sorting
 RDI_PROC RDIM_SortKey *rdim_sort_key_array(RDIM_Arena *arena, RDIM_SortKey *keys, RDI_U64 count);
 
-//- rjf: rng1u64 list
+//- rjf: rng1u64 lists
 RDI_PROC void rdim_rng1u64_list_push(RDIM_Arena *arena, RDIM_Rng1U64List *list, RDIM_Rng1U64 r);
+RDI_PROC void rdim_rng1u64_chunk_list_push(RDIM_Arena *arena, RDIM_Rng1U64ChunkList *list, RDI_U64 chunk_cap, RDIM_Rng1U64 r);
 
 ////////////////////////////////
 //~ Data Model
@@ -1419,6 +1484,7 @@ RDI_PROC RDIM_UDTEnumVal *rdim_udt_push_enum_val(RDIM_Arena *arena, RDIM_UDTChun
 RDI_PROC RDIM_Symbol *rdim_symbol_chunk_list_push(RDIM_Arena *arena, RDIM_SymbolChunkList *list, RDI_U64 cap);
 RDI_PROC RDI_U64 rdim_idx_from_symbol(RDIM_Symbol *symbol);
 RDI_PROC void rdim_symbol_chunk_list_concat_in_place(RDIM_SymbolChunkList *dst, RDIM_SymbolChunkList *to_push);
+internal void rdim_symbol_push_value_data(RDIM_Arena *arena, RDIM_SymbolChunkList *list, RDIM_Symbol *symbol, RDIM_String8 data);
 
 ////////////////////////////////
 //~ rjf: [Building] Inline Site Info Building
@@ -1453,9 +1519,8 @@ RDI_PROC RDIM_Location *rdim_push_location_val_reg(RDIM_Arena *arena, RDI_U8 reg
 //- rjf: location sets
 RDI_PROC void rdim_location_set_push_case(RDIM_Arena *arena, RDIM_ScopeChunkList *scopes, RDIM_LocationSet *locset, RDIM_Rng1U64 voff_range, RDIM_Location *location);
 
-//- location block chunk list
-
-RDI_PROC RDI_LocationBlock * rdim_location_block_chunk_list_push_array(RDIM_Arena *arena, RDIM_String8List *list, RDI_U32 count);
+//- rjf:location block chunk list
+RDI_PROC RDI_LocationBlock *rdim_location_block_chunk_list_push_array(RDIM_Arena *arena, RDIM_String8List *list, RDI_U32 count);
 RDI_PROC RDI_U32 rdim_count_from_location_block_chunk_list(RDIM_String8List *list);
 
 ////////////////////////////////
@@ -1562,6 +1627,7 @@ RDI_PROC RDIM_UDTBakeResult             rdim_bake_udts(RDIM_Arena *arena, RDIM_B
 RDI_PROC RDIM_GlobalVariableBakeResult  rdim_bake_global_variables(RDIM_Arena *arena, RDIM_BakeStringMapTight *strings, RDIM_SymbolChunkList *src);
 RDI_PROC RDIM_GlobalVMapBakeResult      rdim_bake_global_vmap(RDIM_Arena *arena, RDIM_SymbolChunkList *src);
 RDI_PROC RDIM_ThreadVariableBakeResult  rdim_bake_thread_variables(RDIM_Arena *arena, RDIM_BakeStringMapTight *strings, RDIM_SymbolChunkList *src);
+RDI_PROC RDIM_ConstantsBakeResult       rdim_bake_constants(RDIM_Arena *arena, RDIM_BakeStringMapTight *strings, RDIM_SymbolChunkList *src);
 RDI_PROC RDIM_ProcedureBakeResult       rdim_bake_procedures(RDIM_Arena *arena, RDIM_BakeStringMapTight *strings, RDIM_String8List *location_blocks, RDIM_String8List *location_data_blobs, RDIM_SymbolChunkList *src);
 RDI_PROC RDIM_ScopeBakeResult           rdim_bake_scopes(RDIM_Arena *arena, RDIM_BakeStringMapTight *strings, RDIM_String8List *location_blocks, RDIM_String8List *location_data_blobs, RDIM_ScopeChunkList *src);
 RDI_PROC RDIM_ScopeVMapBakeResult       rdim_bake_scope_vmap(RDIM_Arena *arena, RDIM_ScopeChunkList *src);

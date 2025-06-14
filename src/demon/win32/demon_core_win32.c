@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 ////////////////////////////////
@@ -2558,6 +2558,21 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
                     if(read)  { e->flags |= DMN_TrapFlag_BreakOnRead; }
                     if(write) { e->flags |= DMN_TrapFlag_BreakOnWrite; }
                     if(exec)  { e->flags |= DMN_TrapFlag_BreakOnExecute; }
+                  }break;
+                  
+                  //- rjf: fill set-vaddr-range-note info
+                  case DMN_W32_EXCEPTION_RADDBG_SET_VADDR_RANGE_NOTE:
+                  {
+                    U64 vaddr      = exception->ExceptionInformation[0];
+                    U64 size       = exception->ExceptionInformation[1];
+                    U64 name_vaddr = exception->ExceptionInformation[2];
+                    U64 name_size  = exception->ExceptionInformation[3];
+                    U8 *name_buffer = push_array(arena, U8, name_size);
+                    dmn_w32_process_read(process->handle, r1u64(name_vaddr, name_vaddr+name_size), name_buffer), 
+                    e->kind = DMN_EventKind_SetVAddrRangeNote;
+                    e->address = vaddr;
+                    e->size    = size;
+                    e->string  = str8(name_buffer, name_size);
                   }break;
                   
                   //- rjf: unhandled exception case
