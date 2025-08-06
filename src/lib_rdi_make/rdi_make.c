@@ -196,6 +196,21 @@ rdim_str8_match(RDIM_String8 a, RDIM_String8 b, RDIM_StringMatchFlags flags)
   return result;
 }
 
+RDI_PROC RDIM_String8
+rdim_lower_from_str8(RDIM_Arena *arena, RDIM_String8 string)
+{
+  RDIM_String8 result = rdim_str8_copy(arena, string);
+  for(RDI_U64 idx = 0; idx < result.RDIM_String8_SizeMember; idx += 1)
+  {
+    RDI_U8 byte = result.RDIM_String8_BaseMember[idx];
+    if('A' <= byte && byte <= 'Z')
+    {
+      result.RDIM_String8_BaseMember[idx] += ('a' - 'A');
+    }
+  }
+  return result;
+}
+
 //- rjf: string lists
 
 RDI_PROC void
@@ -464,7 +479,7 @@ rdim_rng1u64_chunk_list_push(RDIM_Arena *arena, RDIM_Rng1U64ChunkList *list, RDI
 //~ Data Model
 
 RDI_PROC RDI_TypeKind
-rdim_short_type_from_data_model(RDIM_DataModel data_model)
+rdim_short_type_kind_from_data_model(RDIM_DataModel data_model)
 {
   switch(data_model)
   {
@@ -480,7 +495,7 @@ rdim_short_type_from_data_model(RDIM_DataModel data_model)
 }
 
 RDI_PROC RDI_TypeKind
-rdim_unsigned_short_type_from_data_model(RDIM_DataModel data_model)
+rdim_unsigned_short_type_kind_from_data_model(RDIM_DataModel data_model)
 {
   switch(data_model)
   {
@@ -528,7 +543,7 @@ rdim_unsigned_int_type_from_data_model(RDIM_DataModel data_model)
 }
 
 RDI_PROC RDI_TypeKind
-rdim_long_type_from_data_model(RDIM_DataModel data_model)
+rdim_long_type_kind_from_data_model(RDIM_DataModel data_model)
 {
   switch(data_model)
   {
@@ -544,7 +559,7 @@ rdim_long_type_from_data_model(RDIM_DataModel data_model)
 }
 
 RDI_PROC RDI_TypeKind
-rdim_unsigned_long_type_from_data_model(RDIM_DataModel data_model)
+rdim_unsigned_long_type_kind_from_data_model(RDIM_DataModel data_model)
 {
   switch(data_model)
   {
@@ -560,7 +575,7 @@ rdim_unsigned_long_type_from_data_model(RDIM_DataModel data_model)
 }
 
 RDI_PROC RDI_TypeKind
-rdim_long_long_type_from_data_model(RDIM_DataModel data_model)
+rdim_long_long_type_kind_from_data_model(RDIM_DataModel data_model)
 {
   switch(data_model)
   {
@@ -576,7 +591,7 @@ rdim_long_long_type_from_data_model(RDIM_DataModel data_model)
 }
 
 RDI_PROC RDI_TypeKind
-rdim_unsigned_long_long_type_from_data_model(RDIM_DataModel data_model)
+rdim_unsigned_long_long_type_kind_from_data_model(RDIM_DataModel data_model)
 {
   switch(data_model)
   {
@@ -592,7 +607,7 @@ rdim_unsigned_long_long_type_from_data_model(RDIM_DataModel data_model)
 }
 
 RDI_PROC RDI_TypeKind
-rdim_pointer_size_t_type_from_data_model(RDIM_DataModel data_model)
+rdim_pointer_size_t_type_kind_from_data_model(RDIM_DataModel data_model)
 {
   switch(data_model)
   {
@@ -1332,41 +1347,6 @@ rdim_count_from_location_block_chunk_list(RDIM_String8List *list)
 }
 
 ////////////////////////////////
-
-RDI_PROC RDIM_Type *
-rdim_builtin_type_from_kind(RDIM_TypeChunkList list, RDI_TypeKind type_kind)
-{
-  return &list.first->v[type_kind];
-}
-
-RDI_PROC RDIM_TypeChunkList
-rdim_init_type_chunk_list(RDIM_Arena *arena, RDI_Arch arch)
-{
-  RDIM_TypeChunkList list = {0};
-  
-  RDI_U64 type_cap = (RDI_TypeKind_LastBuiltIn - RDI_TypeKind_FirstBuiltIn) + 2;
-  
-  // RDI_TypeKind_NULL
-  rdim_type_chunk_list_push(arena, &list, type_cap);
-  
-  for(RDI_TypeKind type_kind = RDI_TypeKind_FirstBuiltIn; type_kind <= RDI_TypeKind_LastBuiltIn; type_kind += 1)
-  {
-    RDIM_Type *type = rdim_type_chunk_list_push(arena, &list, type_cap);
-    type->name.str  = rdi_string_from_type_kind(type_kind, &type->name.size);
-    type->kind      = type_kind;
-    type->byte_size = rdi_size_from_basic_type_kind(type_kind);
-  }
-  
-  RDIM_Type *void_type = rdim_builtin_type_from_kind(list, RDI_TypeKind_Void);
-  void_type->byte_size = rdi_addr_size_from_arch(arch);
-  
-  RDIM_Type *handle_type = rdim_builtin_type_from_kind(list, RDI_TypeKind_Handle);
-  handle_type->byte_size = rdi_addr_size_from_arch(arch);
-  
-  return list;
-}
-
-////////////////////////////////
 //~ rjf: [Baking Helpers] Baked VMap Building
 
 RDI_PROC RDIM_BakeVMap
@@ -1949,7 +1929,7 @@ rdim_bake_path_node_from_string(RDIM_BakePathTree *tree, RDIM_String8 string)
     RDIM_BakePathNode *sub_dir_node = 0;
     for(RDIM_BakePathNode *child = node->first_child; child != 0; child = child->next_sibling)
     {
-      if(rdim_str8_match(child->name, sub_dir, RDIM_StringMatchFlag_CaseInsensitive))
+      if(rdim_str8_match(child->name, sub_dir, 0))
       {
         sub_dir_node = child;
       }
@@ -2022,7 +2002,7 @@ rdim_bake_path_tree_insert(RDIM_Arena *arena, RDIM_BakePathTree *tree, RDIM_Stri
     RDIM_BakePathNode *sub_dir_node = 0;
     for(RDIM_BakePathNode *child = node->first_child; child != 0; child = child->next_sibling)
     {
-      if(rdim_str8_match(child->name, sub_dir, RDIM_StringMatchFlag_CaseInsensitive))
+      if(rdim_str8_match(child->name, sub_dir, 0))
       {
         sub_dir_node = child;
       }
@@ -2210,7 +2190,8 @@ rdim_bake_string_map_loose_push_src_file_slice(RDIM_Arena *arena, RDIM_BakeStrin
 {
   for(RDI_U64 idx = 0; idx < count; idx += 1)
   {
-    rdim_bake_string_map_loose_insert(arena, top, map, 1, v[idx].normal_full_path);
+    RDIM_String8 normalized_path = rdim_lower_from_str8(arena, v[idx].path);
+    rdim_bake_string_map_loose_insert(arena, top, map, 1, normalized_path);
   }
 }
 
@@ -2438,7 +2419,8 @@ rdim_bake_name_map_from_kind_params(RDIM_Arena *arena, RDI_NameMapKind kind, RDI
         for(RDI_U64 idx = 0; idx < n->count; idx += 1)
         {
           RDI_U64 src_file_idx = rdim_idx_from_src_file(&n->v[idx]);
-          rdim_bake_name_map_push(arena, map, n->v[idx].normal_full_path, (RDI_U32)src_file_idx); // TODO(rjf): @u64_to_u32
+          RDIM_String8 normalized_path = rdim_lower_from_str8(arena, n->v[idx].path);
+          rdim_bake_name_map_push(arena, map, normalized_path, (RDI_U32)src_file_idx); // TODO(rjf): @u64_to_u32
         }
       }
     }break;
@@ -2545,7 +2527,7 @@ rdim_bake_path_tree_from_params(RDIM_Arena *arena, RDIM_BakeParams *params)
     {
       for(RDI_U64 idx = 0; idx < n->count; idx += 1)
       {
-        RDIM_BakePathNode *node = rdim_bake_path_tree_insert(arena, tree, n->v[idx].normal_full_path);
+        RDIM_BakePathNode *node = rdim_bake_path_tree_insert(arena, tree, n->v[idx].path);
         node->src_file = &n->v[idx];
       }
     }
@@ -3056,9 +3038,12 @@ rdim_bake_src_files(RDIM_Arena *arena, RDIM_BakeStringMapTight *strings, RDIM_Ba
       ////////////////////////
       //- rjf: fill file info
       //
-      dst_file->file_path_node_idx = rdim_bake_path_node_idx_from_string(path_tree, src_file->normal_full_path);
-      dst_file->normal_full_path_string_idx = rdim_bake_idx_from_string(strings, src_file->normal_full_path);
+      RDI_U64 scratch_pos_restore = rdim_arena_pos(scratch.arena);
+      RDIM_String8 normalized_path = rdim_lower_from_str8(scratch.arena, src_file->path);
+      dst_file->file_path_node_idx = rdim_bake_path_node_idx_from_string(path_tree, src_file->path);
+      dst_file->normal_full_path_string_idx = rdim_bake_idx_from_string(strings, normalized_path);
       dst_file->source_line_map_idx = (RDI_U32)(dst_map ? (dst_map - dst_maps) : 0);
+      rdim_arena_pop_to(scratch.arena, scratch_pos_restore);
     }
   }
   

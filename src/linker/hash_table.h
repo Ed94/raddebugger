@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) 2025 Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #pragma once
@@ -74,15 +74,22 @@ internal KeyValuePair * hash_table_search_path    (HashTable *ht, String8 path  
 internal void *         hash_table_search_path_raw(HashTable *ht, String8 path  );
 
 internal B32 hash_table_search_path_u64(HashTable *ht, String8 key, U64 *value_out);
+internal B32 hash_table_search_string_u64(HashTable *ht, String8 key, U64 *value_out);
+internal B32 hash_table_search_string_raw(HashTable *ht, String8 key, void *value_out);
+internal B32 hash_table_search_string_string(HashTable *ht, String8 key, String8 *value_out);
 
 //- key-value helpers
 
 internal U32 *          keys_from_hash_table_u32       (Arena *arena, HashTable *ht);
 internal U64 *          keys_from_hash_table_u64       (Arena *arena, HashTable *ht);
+internal String8        keys_from_hash_table_str8      (Arena *arena, HashTable *ht);
 internal KeyValuePair * key_value_pairs_from_hash_table(Arena *arena, HashTable *ht);
+
+internal void * values_from_hash_table_raw(Arena *arena, HashTable *ht);
 
 internal void sort_key_value_pairs_as_u32(KeyValuePair *pairs, U64 count);
 internal void sort_key_value_pairs_as_u64(KeyValuePair *pairs, U64 count);
+internal void sort_key_value_pairs_as_string_sensitive(KeyValuePair *pairs, U64 count);
 
 ////////////////////////////////
 

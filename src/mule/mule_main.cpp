@@ -395,6 +395,9 @@ type_coverage_eval_tests(void)
   Basics basics = {-1, 1, -2, 2, -4, 4, -8, 8, 1.5f, 1.50000000000001};
   Basics_Stdint basics_stdint = {-1, 1, -2, 2, -4, 4, -8, 8, 1.5f, 1.50000000000001};
   
+  uint32_t a = (1<<31);
+  int32_t  b = (1<<31);
+  
   char string[] = "Hello World!";
   char longer_text[] =
     "Suppose there was some text\n"
@@ -404,6 +407,15 @@ type_coverage_eval_tests(void)
   wchar_t a_wide_string[] =
     L"This is a string, but instead of being encoded in a stream of bytes,\n"
     L"it is encoded in a stream of 2-byte packages!\n";
+  char some_data_with_a_string[] =
+  {
+    'H', 'e', 'l', 'l', 'o', 27, 27, 2, 27, 125,
+  };
+  struct SomeDataStructured
+  {
+    char data[4];
+  };
+  SomeDataStructured *some_data = (SomeDataStructured *)&some_data_with_a_string[0];
   
   const char *const_string = "Hello, World!";
   const char const_string_array[] = "Hello, World!";
@@ -613,6 +625,9 @@ type_coverage_eval_tests(void)
   int_vector.push_back(5);
   int_vector.push_back(6);
   int_vector.push_back(7);
+  
+  std::vector<int> *pint_vector = &int_vector;
+  std::vector<int> &rint_vector =  int_vector;
   
   std::vector<Dynamic_Array> dynamic_array_vector;
   dynamic_array_vector.push_back(dynamic);
@@ -1813,6 +1828,17 @@ basic_inline_tests(void)
 ////////////////////////////////
 //~ rjf: Fancy Visualization Eval Tests
 
+struct PackedBits
+{
+  unsigned char b1 : 1;
+  unsigned char b2 : 1;
+  unsigned char b3 : 1;
+  unsigned char b4 : 1;
+  unsigned char b5 : 1;
+  unsigned char b6 : 1;
+};
+raddbg_type_view(unsigned char : 1, bool($));
+
 struct Bitmap
 {
   unsigned char *base;
@@ -1848,6 +1874,10 @@ fancy_viz_eval_tests(void)
   bool bool1 = 0; raddbg_pin(bool1);
   bool bool2 = 1; raddbg_pin(bool2);
   bool bool3 = 0; raddbg_pin(bool3);
+  PackedBits packed_bits = {};
+  packed_bits.b1 = 1;
+  packed_bits.b3 = 1;
+  packed_bits.b5 = 1;
   
   //- rjf: sliders
   float slide1 = 500.f; raddbg_pin(range1(slide1, 0, 1000));

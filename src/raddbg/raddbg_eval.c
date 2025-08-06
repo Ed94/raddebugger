@@ -511,15 +511,24 @@ E_TYPE_EXPAND_INFO_FUNCTION_DEF(schema)
         MD_Node *tag = md_tag_from_string(schema, str8_lit("expand_commands"), 0);
         for MD_EachNode(arg, tag->first)
         {
-          RD_CmdKindInfo *cmd_kind_info = rd_cmd_kind_info_from_string(arg->string);
-          FuzzyMatchRangeList name_matches = fuzzy_match_find(scratch.arena, filter, rd_display_from_code_name(cmd_kind_info->string));
-          FuzzyMatchRangeList desc_matches = fuzzy_match_find(scratch.arena, filter, cmd_kind_info->description);
-          FuzzyMatchRangeList tags_matches = fuzzy_match_find(scratch.arena, filter, cmd_kind_info->search_tags);
-          if(name_matches.count == name_matches.needle_part_count ||
-             desc_matches.count == desc_matches.needle_part_count ||
-             tags_matches.count == tags_matches.needle_part_count)
+          B32 filtered = 0;
+          if(md_node_has_tag(arg, str8_lit("output"), 0))
           {
-            str8_list_push(scratch.arena, &commands_list, arg->string);
+            String8 expr = rd_expr_from_cfg(ext->cfg);
+            filtered = (!str8_match(expr, str8_lit("query:output"), 0));
+          }
+          if(!filtered)
+          {
+            RD_CmdKindInfo *cmd_kind_info = rd_cmd_kind_info_from_string(arg->string);
+            FuzzyMatchRangeList name_matches = fuzzy_match_find(scratch.arena, filter, rd_display_from_code_name(cmd_kind_info->string));
+            FuzzyMatchRangeList desc_matches = fuzzy_match_find(scratch.arena, filter, cmd_kind_info->description);
+            FuzzyMatchRangeList tags_matches = fuzzy_match_find(scratch.arena, filter, cmd_kind_info->search_tags);
+            if(name_matches.count == name_matches.needle_part_count ||
+               desc_matches.count == desc_matches.needle_part_count ||
+               tags_matches.count == tags_matches.needle_part_count)
+            {
+              str8_list_push(scratch.arena, &commands_list, arg->string);
+            }
           }
         }
       }
@@ -783,7 +792,7 @@ E_TYPE_EXPAND_INFO_FUNCTION_DEF(cfgs_slice)
       for EachIndex(idx, ext->cfgs.count)
       {
         RD_Cfg *cfg = ext->cfgs.v[idx];
-        DR_FStrList fstrs = rd_title_fstrs_from_cfg(scratch.arena, cfg);
+        DR_FStrList fstrs = rd_title_fstrs_from_cfg(scratch.arena, cfg, 1);
         String8 string = dr_string_from_fstrs(scratch.arena, &fstrs);
         FuzzyMatchRangeList fuzzy_matches = fuzzy_match_find(scratch.arena, filter, string);
         if(fuzzy_matches.count == fuzzy_matches.needle_part_count)
@@ -795,6 +804,7 @@ E_TYPE_EXPAND_INFO_FUNCTION_DEF(cfgs_slice)
     }
     
     //- rjf: fill
+    // TODO(rjf): @cleanup don't smuggle this through like this...
     if(rd_cfg_child_from_string(rd_cfg_from_id(rd_regs()->view), str8_lit("lister")) == &rd_nil_cfg)
     {
       accel->cmds = ext->cmds;
@@ -838,7 +848,7 @@ E_TYPE_EXPAND_INFO_FUNCTION_DEF(cfgs_query)
       MemoryZeroStruct(&children__filtered);
       for(RD_CfgNode *n = children.first; n != 0; n = n->next)
       {
-        DR_FStrList cfg_fstrs = rd_title_fstrs_from_cfg(scratch.arena, n->v);
+        DR_FStrList cfg_fstrs = rd_title_fstrs_from_cfg(scratch.arena, n->v, 1);
         String8 cfg_string = dr_string_from_fstrs(scratch.arena, &cfg_fstrs);
         FuzzyMatchRangeList ranges = fuzzy_match_find(scratch.arena, filter, cfg_string);
         if(ranges.count == ranges.needle_part_count)
@@ -1555,6 +1565,7 @@ E_TYPE_EXPAND_INFO_FUNCTION_DEF(debug_info_table)
     else if(str8_match(lhs_type->name, str8_lit("thread_locals"), 0))    {section = RDI_SectionKind_ThreadVariables;}
     else if(str8_match(lhs_type->name, str8_lit("constants"), 0))        {section = RDI_SectionKind_Constants;}
     else if(str8_match(lhs_type->name, str8_lit("types"), 0))            {section = RDI_SectionKind_UDTs;}
+    else if(str8_match(lhs_type->name, str8_lit("source_files"), 0))     {section = RDI_SectionKind_SourceFiles;}
   }
   
   // rjf: gather debug info table items
@@ -1570,7 +1581,7 @@ E_TYPE_EXPAND_INFO_FUNCTION_DEF(debug_info_table)
     RDI_Parsed **rdis = push_array(arena, RDI_Parsed *, rdis_count);
     for(U64 idx = 0; idx < rdis_count; idx += 1)
     {
-      rdis[idx] = di_rdi_from_key(rd_state->frame_di_scope, &dbgi_keys.v[idx], endt_us);
+      rdis[idx] = di_rdi_from_key(rd_state->frame_di_scope, &dbgi_keys.v[idx], 1, endt_us);
     }
     
     //- rjf: query all filtered items from dbgi searching system
@@ -1613,6 +1624,7 @@ E_TYPE_EXPAND_RANGE_FUNCTION_DEF(debug_info_table)
     
     // rjf: get item's string
     String8 item_string = {0};
+    B32 item_is_path = 0;
     {
       U64 element_idx = item->idx;
       switch(accel->section)
@@ -1662,11 +1674,33 @@ E_TYPE_EXPAND_RANGE_FUNCTION_DEF(debug_info_table)
           name.str = rdi_string_from_idx(module->rdi, type_node->user_defined.name_string_idx, &name.size);
           item_string = name;
         }break;
+        case RDI_SectionKind_SourceFiles:
+        {
+          RDI_SourceFile *sf = rdi_element_from_name_idx(module->rdi, SourceFiles, element_idx);
+          String8List path_parts = {0};
+          for(RDI_FilePathNode *fpn = rdi_element_from_name_idx(rdi, FilePathNodes, sf->file_path_node_idx);
+              fpn != rdi_element_from_name_idx(rdi, FilePathNodes, 0);
+              fpn = rdi_element_from_name_idx(rdi, FilePathNodes, fpn->parent_path_node))
+          {
+            String8 path_part = {0};
+            path_part.str = rdi_string_from_idx(rdi, fpn->name_string_idx, &path_part.size);
+            str8_list_push_front(scratch.arena, &path_parts, path_part);
+          }
+          StringJoin join = {0};
+          join.sep = str8_lit("/");
+          item_string = str8_list_join(scratch.arena, &path_parts, &join);
+          item_is_path = 1;
+        }break;
       }
     }
     
     // rjf: build a valid expression string given item string
     String8 item_expr = item_string;
+    if(item_is_path)
+    {
+      item_expr = push_str8f(scratch.arena, "file:\"%S\"", item_string);
+    }
+    else
     {
       B32 string_can_be_evalled = 1;
       E_TokenArray tokens = e_token_array_from_text(scratch.arena, item_string);

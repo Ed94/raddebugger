@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) 2025 Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 internal String8List
@@ -129,9 +129,8 @@ lnk_cmd_line_push_option_if_not_present(Arena *arena, LNK_CmdLine *cmd_line, cha
 internal LNK_CmdLine
 lnk_cmd_line_parse_windows_rules(Arena *arena, String8List arg_list)
 {
-  Temp scratch = scratch_begin(&arena, 1);
-
   LNK_CmdLine cmd_line = {0};
+  cmd_line.raw_cmd_line = str8_list_copy(arena, &arg_list);
 
   for (String8Node *arg_node = arg_list.first; arg_node != 0; arg_node = arg_node->next) {
     String8 arg = arg_node->string;
@@ -156,8 +155,6 @@ lnk_cmd_line_parse_windows_rules(Arena *arena, String8List arg_list)
       str8_list_push(arena, &cmd_line.input_list, arg);
     }
   }
-  
-  scratch_end(scratch);
   return cmd_line;
 }
 
@@ -185,46 +182,6 @@ internal B32
 lnk_cmd_line_has_option(LNK_CmdLine cmd_line, char *string)
 {
   return lnk_cmd_line_has_option_string(cmd_line, str8_cstring(string));
-}
-
-internal String8List
-lnk_unwrap_rsp(Arena *arena, String8List arg_list)
-{
-  Temp scratch = scratch_begin(&arena, 1);
-
-  String8List result = {0};
-
-  for (String8Node *curr = arg_list.first; curr != 0; curr = curr->next) {
-    B32 is_rsp = str8_match_lit("@", curr->string, StringMatchFlag_RightSideSloppy);
-    if (is_rsp) {
-      // remove "@"
-      String8 name = str8_skip(curr->string, 1);
-
-      if (os_file_path_exists(name)) {
-        // read rsp from disk
-        String8 file = lnk_read_data_from_file_path(scratch.arena, name);
-        
-        // parse rsp
-        String8List rsp_args = lnk_arg_list_parse_windows_rules(scratch.arena, file);
-        
-        // handle case where rsp references another rsp
-        String8List list = lnk_unwrap_rsp(arena, rsp_args);
-
-        // push arguments from rsp
-        list = str8_list_copy(arena, &list);
-        str8_list_concat_in_place(&result, &list);
-       } else {
-        lnk_error(LNK_Error_Cmdl, "unable to find rsp: %S", name);
-      }
-    } else {
-      // push regular argument
-      String8 str = push_str8_copy(arena, curr->string);
-      str8_list_push(arena, &result, str);
-    }
-  }
-  
-  scratch_end(scratch);
-  return result;
 }
 
 internal String8List

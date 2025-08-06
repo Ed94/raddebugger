@@ -9,14 +9,16 @@
 ////////////////////////////////
 //~ rjf: Basic Type Functions
 
+#if !defined(XXH_IMPLEMENTATION)
+# define XXH_IMPLEMENTATION
+# define XXH_STATIC_LINKING_ONLY
+# include "third_party/xxHash/xxhash.h"
+#endif
+
 internal U64
 ctrl_hash_from_string(String8 string)
 {
-  U64 result = 5381;
-  for(U64 i = 0; i < string.size; i += 1)
-  {
-    result = ((result << 5) + result) + string.str[i];
-  }
+  U64 result = XXH3_64bits_withSeed(string.str, string.size, 5381);
   return result;
 }
 
@@ -1366,14 +1368,16 @@ ctrl_entity_store_apply_events(CTRL_EntityCtxRWStore *store, CTRL_EventList *lis
       }break;
       case CTRL_EventKind_ModuleDebugInfoPathChange:
       {
+        Temp scratch = scratch_begin(0, 0);
         CTRL_Entity *module = ctrl_entity_from_handle(&store->ctx, event->entity);
         CTRL_Entity *debug_info_path = ctrl_entity_child_from_kind(module, CTRL_EntityKind_DebugInfoPath);
         if(debug_info_path == &ctrl_entity_nil)
         {
           debug_info_path = ctrl_entity_alloc(store, module, CTRL_EntityKind_DebugInfoPath, Arch_Null, ctrl_handle_zero(), 0);
         }
-        ctrl_entity_equip_string(store, debug_info_path, event->string);
+        ctrl_entity_equip_string(store, debug_info_path, path_normalized_from_string(scratch.arena, event->string));
         debug_info_path->timestamp = event->timestamp;
+        scratch_end(scratch);
       }break;
       
       //- rjf: dynamic, program-created breakpoints
@@ -1552,6 +1556,7 @@ ctrl_init(void)
   ctrl_state->ctrl_thread_entity_ctx_rw_mutex = os_rw_mutex_alloc();
   ctrl_state->ctrl_thread_entity_store = ctrl_entity_ctx_rw_store_alloc();
   ctrl_state->ctrl_thread_eval_cache = e_cache_alloc();
+  ctrl_state->ctrl_thread_msg_process_arena = arena_alloc();
   ctrl_state->dmn_event_arena = arena_alloc();
   ctrl_state->user_entry_point_arena = arena_alloc();
   ctrl_state->dbg_dir_arena = arena_alloc();
@@ -1681,14 +1686,14 @@ ctrl_key_from_process_vaddr_range(CTRL_Handle process, Rng1U64 vaddr_range, B32 
             {
               id_exists = 1;
               id_stale = (n->mem_gen < mem_gen);
-              id_working = (ins_atomic_u64_eval(&n->working_count) != 0);
+              id_working = (n->working_count != 0);
               goto end_fast_lookup;
             }
           }
         }
       }
       end_fast_lookup:;
-      if(os_now_microseconds() >= endt_us || !id_working)
+      if(!id_stale || !id_working || os_now_microseconds() >= endt_us)
       {
         break;
       }
@@ -1715,7 +1720,6 @@ ctrl_key_from_process_vaddr_range(CTRL_Handle process, Rng1U64 vaddr_range, B32 
     if(!id_exists || (id_exists && id_stale && !id_working))
     {
       B32 node_needs_stream = 0;
-      U64 *node_working_count = 0;
       OS_MutexScopeW(process_stripe->rw_mutex)
       {
         for(CTRL_ProcessMemoryCacheNode *process_n = process_slot->first; process_n != 0; process_n = process_n->next)
@@ -1744,13 +1748,12 @@ ctrl_key_from_process_vaddr_range(CTRL_Handle process, Rng1U64 vaddr_range, B32 
             }
             else
             {
-              node_needs_stream = (range_n->mem_gen < mem_gen);
+              node_needs_stream = (range_n->mem_gen < mem_gen && range_n->working_count == 0);
             }
             if(node_needs_stream)
             {
-              ins_atomic_u64_inc_eval(&range_n->working_count);
+              range_n->working_count += 1;
             }
-            node_working_count = &range_n->working_count;
             break;
           }
         }
@@ -1759,10 +1762,14 @@ ctrl_key_from_process_vaddr_range(CTRL_Handle process, Rng1U64 vaddr_range, B32 
       {
         if(ctrl_u2ms_enqueue_req(key, process, vaddr_range, zero_terminated, endt_us))
         {
-          async_push_work(ctrl_mem_stream_work, .working_counter = node_working_count);
+          // NOTE(rjf): debugging
+#if 0
+          raddbg_log("[0x%I64x, 0x%I64x) push: (gen: %I64u)\n", vaddr_range.min, vaddr_range.max, mem_gen);
+#endif
+          async_push_work(ctrl_mem_stream_work);
           requested = 1;
         }
-        else OS_MutexScopeR(process_stripe->rw_mutex)
+        else OS_MutexScopeW(process_stripe->rw_mutex)
         {
           for(CTRL_ProcessMemoryCacheNode *process_n = process_slot->first; process_n != 0; process_n = process_n->next)
           {
@@ -1770,23 +1777,29 @@ ctrl_key_from_process_vaddr_range(CTRL_Handle process, Rng1U64 vaddr_range, B32 
             {
               U64 range_slot_idx = range_hash%process_n->range_hash_slots_count;
               CTRL_ProcessMemoryRangeHashSlot *range_slot = &process_n->range_hash_slots[range_slot_idx];
+              CTRL_ProcessMemoryRangeHashNode *range_n = 0;
               for(CTRL_ProcessMemoryRangeHashNode *n = range_slot->first; n != 0; n = n->next)
               {
                 if(hs_id_match(n->id, id))
                 {
-                  ins_atomic_u64_dec_eval(&n->working_count);
-                  goto end_fail_work;
+                  n->working_count -= 1;
+                  break;
                 }
               }
             }
           }
-          end_fail_work:;
         }
       }
     }
     
     //- rjf: step 4: if we didn't request, and if we aren't working, then exit
-    if(!requested && !id_working)
+    if(!requested)
+    {
+      break;
+    }
+    
+    //- rjf: step 5: exit if out of time
+    if(os_now_microseconds() >= endt_us)
     {
       break;
     }
@@ -1971,6 +1984,12 @@ ctrl_process_write(CTRL_Handle process, Rng1U64 range, void *src)
   ProfBeginFunction();
   B32 result = dmn_process_write(process.dmn_handle, range, src);
   
+  //- rjf: success -> bump generation
+  if(result)
+  {
+    ins_atomic_u64_inc_eval(&ctrl_state->mem_gen);
+  }
+  
   //- rjf: success -> wait for cache updates, for small regions - prefer relatively seamless
   // writes within calling frame's "view" of the memory, at the expense of a small amount of
   // time.
@@ -2077,7 +2096,7 @@ ctrl_reg_block_from_thread(Arena *arena, CTRL_EntityCtx *ctx, CTRL_Handle handle
     // rjf: copy from node
     if(node)
     {
-      U64 current_reg_gen = dmn_reg_gen();
+      U64 current_reg_gen = ctrl_reg_gen();
       B32 need_stale = 1;
       if(node->reg_gen != current_reg_gen && dmn_thread_read_reg_block(handle.dmn_handle, result))
       {
@@ -2135,6 +2154,10 @@ ctrl_thread_write_reg_block(CTRL_Handle thread, void *block)
 {
   // TODO(rjf): @callstacks immediately reflect this in the call stack cache
   B32 good = dmn_thread_write_reg_block(thread.dmn_handle, block);
+  if(good)
+  {
+    ins_atomic_u64_inc_eval(&ctrl_state->reg_gen);
+  }
   return good;
 }
 
@@ -3287,7 +3310,7 @@ ctrl_call_stack_from_unwind(Arena *arena, CTRL_Entity *process, CTRL_Unwind *bas
       CTRL_Entity *module = ctrl_module_from_process_vaddr(process, rip_vaddr);
       U64 rip_voff = ctrl_voff_from_vaddr(module, rip_vaddr);
       DI_Key dbgi_key = ctrl_dbgi_key_from_module(module);
-      RDI_Parsed *rdi = di_rdi_from_key(di_scope, &dbgi_key, 0);
+      RDI_Parsed *rdi = di_rdi_from_key(di_scope, &dbgi_key, 1, 0);
       RDI_Scope *scope = rdi_scope_from_voff(rdi, rip_voff);
       
       // rjf: build inline frames (minus parent & inline depth)
@@ -3405,96 +3428,89 @@ ctrl_call_stack_from_thread(CTRL_Scope *scope, CTRL_EntityCtx *entity_ctx, CTRL_
   //- rjf: loop: try to grab cached call stack; request; wait
   //
   B32 can_request = !ins_atomic_u64_eval(&ctrl_state->ctrl_thread_run_state);
-  B32 did_request = 0;
-  OS_MutexScopeR(stripe->rw_mutex)
+  for(U64 retry_idx = 0;; retry_idx += 1)
   {
-    CTRL_CallStackCacheNode *taken_node = 0;
-    for(;;)
+    //- rjf: [read-only] try to look for current call stack; wait if working
+    B32 node_exists = 0;
+    B32 node_stale = 1;
+    B32 node_working = 0;
+    OS_MutexScopeR(stripe->rw_mutex) for(;;)
     {
-      ////////////////////////////
-      //- rjf: try to grab cached
-      //
-      B32 is_good = 0;
-      B32 is_stale = 1;
-      B32 is_working = 0;
       CTRL_CallStackCacheNode *node = 0;
+      for(CTRL_CallStackCacheNode *n = slot->first; n != 0; n = n->next)
       {
-        for(CTRL_CallStackCacheNode *n = slot->first; n != 0; n = n->next)
+        if(ctrl_handle_match(n->thread, handle))
         {
-          if(ctrl_handle_match(n->thread, handle))
-          {
-            node = n;
-            is_good    = 1;
-            is_stale   = (reg_gen > n->reg_gen || mem_gen > n->mem_gen);
-            is_working = (n->working_count > 0);
-            call_stack = n->call_stack;
-            taken_node = node;
-            break;
-          }
+          node = n;
+          node_exists  = 1;
+          node_stale   = (reg_gen > n->reg_gen || mem_gen > n->mem_gen);
+          node_working = (n->working_count > 0);
+          break;
         }
       }
-      
-      ////////////////////////////
-      //- rjf: create node if needed
-      //
-      if(!is_good) OS_MutexScopeRWPromote(stripe->rw_mutex)
+      if(node_exists && (!can_request || !node_stale || os_now_microseconds() >= endt_us))
       {
-        node = 0;
-        for(CTRL_CallStackCacheNode *n = slot->first; n != 0; n = n->next)
-        {
-          if(ctrl_handle_match(n->thread, handle))
-          {
-            node = n;
-            break;
-          }
-        }
-        if(node == 0)
-        {
-          node = push_array(stripe->arena, CTRL_CallStackCacheNode, 1);
-          DLLPushBack(slot->first, slot->last, node);
-          node->thread = thread->handle;
-        }
-      }
-      
-      ////////////////////////////
-      //- rjf: request if needed
-      //
-      if(can_request && node != 0 && !is_working && is_stale)
-      {
-        if(ctrl_u2csb_enqueue_req(thread->handle, endt_us))
-        {
-          did_request = 1;
-          is_working = 1;
-          ins_atomic_u64_inc_eval(&node->working_count);
-          async_push_work(ctrl_call_stack_build_work, .priority = high_priority ? ASYNC_Priority_High : ASYNC_Priority_Low);
-        }
-      }
-      
-      ////////////////////////////
-      //- rjf: good, or timeout? -> exit
-      //
-      if(!can_request || !is_stale || os_now_microseconds() >= endt_us)
-      {
+        call_stack = node->call_stack;
+        ctrl_scope_touch_call_stack_node__stripe_r_guarded(scope, stripe, node);
         break;
       }
-      
-      ////////////////////////////
-      //- rjf: time to wait for new result? -> wait
-      //
-      if(did_request && !is_working)
-      {
-        break;
-      }
-      else if(did_request)
+      else if(node_working)
       {
         os_condition_variable_wait_rw_r(stripe->cv, stripe->rw_mutex, endt_us);
       }
+      else
+      {
+        break;
+      }
     }
-    if(taken_node != 0)
+    
+    //- rjf: out of time => exit
+    if(retry_idx > 0 && os_now_microseconds() >= endt_us)
     {
-      ctrl_scope_touch_call_stack_node__stripe_r_guarded(scope, stripe, taken_node);
+      break;
+    }
+    
+    //- rjf: [write] node does not exist => create; request if new or stale
+    B32 need_request = (!node_exists || node_stale);
+    CTRL_CallStackCacheNode *node_to_request = 0;
+    if(can_request && need_request) OS_MutexScopeW(stripe->rw_mutex)
+    {
+      CTRL_CallStackCacheNode *node = 0;
+      for(CTRL_CallStackCacheNode *n = slot->first; n != 0; n = n->next)
+      {
+        if(ctrl_handle_match(n->thread, handle))
+        {
+          node = n;
+          break;
+        }
+      }
+      if(node == 0)
+      {
+        node = push_array(stripe->arena, CTRL_CallStackCacheNode, 1);
+        DLLPushBack(slot->first, slot->last, node);
+        node->thread = thread->handle;
+      }
+      if(node->working_count == 0)
+      {
+        node->working_count += 1;
+        node_to_request = node;
+      }
+    }
+    
+    //- rjf: request if needed
+    if(node_to_request != 0)
+    {
+      if(ctrl_u2csb_enqueue_req(thread->handle, endt_us))
+      {
+        async_push_work(ctrl_call_stack_build_work, .priority = high_priority ? ASYNC_Priority_High : ASYNC_Priority_Low);
+      }
+      else OS_MutexScopeW(stripe->rw_mutex)
+      {
+        node_to_request->working_count -= 1;
+      }
     }
   }
+  
   return call_stack;
 }
 
@@ -3510,26 +3526,26 @@ ctrl_halt(void)
 ////////////////////////////////
 //~ rjf: Shared Accessor Functions
 
-//- rjf: run generation counter
+//- rjf: generation counters
 
 internal U64
 ctrl_run_gen(void)
 {
-  U64 result = dmn_run_gen();
+  U64 result = ins_atomic_u64_eval(&ctrl_state->run_gen);
   return result;
 }
 
 internal U64
 ctrl_mem_gen(void)
 {
-  U64 result = dmn_mem_gen();
+  U64 result = ins_atomic_u64_eval(&ctrl_state->mem_gen);
   return result;
 }
 
 internal U64
 ctrl_reg_gen(void)
 {
-  U64 result = dmn_reg_gen();
+  U64 result = ins_atomic_u64_eval(&ctrl_state->reg_gen);
   return result;
 }
 
@@ -3709,9 +3725,75 @@ ctrl_thread__entry_point(void *p)
           log_infof("user2ctrl_msg:{kind:\"%S\"}\n", ctrl_string_from_msg_kind(msg->kind));
         }
         
-        //- rjf: unpack per-message parameterizations & store
+        //- rjf: reset per-message state
+        arena_clear(ctrl_state->ctrl_thread_msg_process_arena);
+        ctrl_state->module_req_cache_slots_count = 1024;
+        ctrl_state->module_req_cache_slots = push_array(ctrl_state->ctrl_thread_msg_process_arena, CTRL_ModuleReqCacheNode *, ctrl_state->module_req_cache_slots_count);
+        MemoryZeroStruct(&ctrl_state->msg_user_bp_touched_files);
+        MemoryZeroStruct(&ctrl_state->msg_user_bp_touched_symbols);
+        MemoryCopyArray(ctrl_state->exception_code_filters, msg->exception_code_filters);
+        
+        //- rjf: gather all touched symbols by user breakpoints
         {
-          MemoryCopyArray(ctrl_state->exception_code_filters, msg->exception_code_filters);
+          Temp scratch = scratch_begin(0, 0);
+          for(CTRL_UserBreakpointNode *n = msg->user_bps.first; n != 0; n = n->next)
+          {
+            if(n->v.kind != CTRL_UserBreakpointKind_Expression)
+            {
+              continue;
+            }
+            E_Parse addr_parse = e_push_parse_from_string(scratch.arena, n->v.string);
+            E_Parse cnd_parse = e_push_parse_from_string(scratch.arena, n->v.condition);
+            E_Expr *exprs[] = {addr_parse.expr, cnd_parse.expr};
+            for EachElement(idx, exprs)
+            {
+              typedef struct ExprWalkTask ExprWalkTask;
+              struct ExprWalkTask
+              {
+                ExprWalkTask *next;
+                E_Expr *expr;
+              };
+              ExprWalkTask start_task = {0, exprs[idx]};
+              ExprWalkTask *first_task = &start_task;
+              for(ExprWalkTask *t = first_task; t != 0; t = t->next)
+              {
+                E_Expr *expr = t->expr;
+                if(expr->ref != &e_expr_nil)
+                {
+                  expr = expr->ref;
+                }
+                if(expr->kind == E_ExprKind_LeafIdentifier)
+                {
+                  str8_list_push(ctrl_state->ctrl_thread_msg_process_arena, &ctrl_state->msg_user_bp_touched_symbols, expr->string);
+                }
+                if(expr->next != &e_expr_nil)
+                {
+                  ExprWalkTask *task = push_array(scratch.arena, ExprWalkTask, 1);
+                  task->expr = expr->next;
+                  task->next = t->next;
+                  t->next = task;
+                }
+                if(expr->first != &e_expr_nil)
+                {
+                  ExprWalkTask *task = push_array(scratch.arena, ExprWalkTask, 1);
+                  task->expr = expr->first;
+                  task->next = t->next;
+                  t->next = task;
+                }
+              }
+            }
+          }
+          scratch_end(scratch);
+        }
+        
+        //- rjf: gather all touched files by user breakpoints
+        for(CTRL_UserBreakpointNode *n = msg->user_bps.first; n != 0; n = n->next)
+        {
+          if(n->v.kind != CTRL_UserBreakpointKind_FileNameAndLineColNumber)
+          {
+            continue;
+          }
+          str8_list_push(ctrl_state->ctrl_thread_msg_process_arena, &ctrl_state->msg_user_bp_touched_files, n->v.string);
         }
         
         //- rjf: process message
@@ -3747,7 +3829,10 @@ ctrl_thread__entry_point(void *p)
             CTRL_Entity *debug_info_path = ctrl_entity_child_from_kind(module, CTRL_EntityKind_DebugInfoPath);
             DI_Key old_dbgi_key = {debug_info_path->string, debug_info_path->timestamp};
             di_close(&old_dbgi_key);
-            OS_MutexScopeW(ctrl_state->ctrl_thread_entity_ctx_rw_mutex) ctrl_entity_equip_string(ctrl_state->ctrl_thread_entity_store, debug_info_path, path);
+            OS_MutexScopeW(ctrl_state->ctrl_thread_entity_ctx_rw_mutex)
+            {
+              ctrl_entity_equip_string(ctrl_state->ctrl_thread_entity_store, debug_info_path, path_normalized_from_string(scratch.arena, path));
+            }
             U64 new_dbgi_timestamp = os_properties_from_file_path(path).modified;
             debug_info_path->timestamp = new_dbgi_timestamp;
             DI_Key new_dbgi_key = {debug_info_path->string, new_dbgi_timestamp};
@@ -3780,18 +3865,28 @@ ctrl_thread__entry_point(void *p)
       }
       ins_atomic_u64_eval_assign(&ctrl_state->ctrl_thread_run_state, 0);
     }
+    ins_atomic_u64_inc_eval(&ctrl_state->run_gen);
+    ins_atomic_u64_inc_eval(&ctrl_state->mem_gen);
+    ins_atomic_u64_inc_eval(&ctrl_state->reg_gen);
+    
+    //- rjf: update thread register cache
+    ProfScope("update thread register cache")
+    {
+      CTRL_EntityCtx *entity_ctx = &ctrl_state->ctrl_thread_entity_store->ctx;
+      CTRL_EntityArray threads = ctrl_entity_array_from_kind(entity_ctx, CTRL_EntityKind_Thread);
+      REGS_RegBlockX64 *blocks = push_array(scratch.arena, REGS_RegBlockX64, threads.count);
+      {
+        for EachIndex(idx, threads.count)
+        {
+          Temp scratch = scratch_begin(0, 0);
+          ctrl_reg_block_from_thread(scratch.arena, entity_ctx, threads.v[idx]->handle);
+          scratch_end(scratch);
+        }
+      }
+    }
     
     //- rjf: gather & output logs
-    LogScopeResult log = log_scope_end(scratch.arena);
-    ctrl_thread__flush_info_log(log.strings[LogMsgKind_Info]);
-    if(log.strings[LogMsgKind_UserError].size != 0)
-    {
-      CTRL_EventList evts = {0};
-      CTRL_Event *evt = ctrl_event_list_push(scratch.arena, &evts);
-      evt->kind       = CTRL_EventKind_Error;
-      evt->string     = log.strings[LogMsgKind_UserError];
-      ctrl_c2u_push_events(&evts);
-    }
+    ctrl_thread__end_and_flush_log();
   }
   
   scratch_end(scratch);
@@ -3804,13 +3899,14 @@ internal void
 ctrl_thread__append_resolved_module_user_bp_traps(Arena *arena, CTRL_EvalScope *eval_scope, CTRL_Handle process, CTRL_Handle module, CTRL_UserBreakpointList *user_bps, DMN_TrapChunkList *traps_out)
 {
   if(user_bps->first == 0) { return; }
+  ProfBeginFunction();
   Temp scratch = scratch_begin(&arena, 1);
   DI_Scope *di_scope = eval_scope->di_scope;
   CTRL_EntityCtx *entity_ctx = &ctrl_state->ctrl_thread_entity_store->ctx;
   CTRL_Entity *module_entity = ctrl_entity_from_handle(entity_ctx, module);
   CTRL_Entity *debug_info_path_entity = ctrl_entity_child_from_kind(module_entity, CTRL_EntityKind_DebugInfoPath);
   DI_Key dbgi_key = {debug_info_path_entity->string, debug_info_path_entity->timestamp};
-  RDI_Parsed *rdi = di_rdi_from_key(di_scope, &dbgi_key, max_U64);
+  RDI_Parsed *rdi = di_rdi_from_key(di_scope, &dbgi_key, 1, 0);
   U64 base_vaddr = module_entity->vaddr_range.min;
   for(CTRL_UserBreakpointNode *n = user_bps->first; n != 0; n = n->next)
   {
@@ -3854,6 +3950,7 @@ ctrl_thread__append_resolved_module_user_bp_traps(Arena *arena, CTRL_EvalScope *
         }
         
         // rjf: src_id * pt -> push
+        if(src_id != 0)
         {
           RDI_SourceFile *src = rdi_element_from_name_idx(rdi, SourceFiles, src_id);
           RDI_SourceLineMap *src_line_map = rdi_element_from_name_idx(rdi, SourceLineMaps, src->source_line_map_idx);
@@ -3875,7 +3972,7 @@ ctrl_thread__append_resolved_module_user_bp_traps(Arena *arena, CTRL_EvalScope *
       {
         String8 expr = bp->string;
         E_Value value = e_value_from_string(expr);
-        if(value.u64 != 0)
+        if(value.u64 != 0 || bp->flags != 0)
         {
           DMN_Trap trap = {process.dmn_handle, value.u64, (U64)bp};
           trap.flags = ctrl_dmn_trap_flags_from_user_breakpoint_flags(bp->flags);
@@ -3886,6 +3983,7 @@ ctrl_thread__append_resolved_module_user_bp_traps(Arena *arena, CTRL_EvalScope *
     }
   }
   scratch_end(scratch);
+  ProfEnd();
 }
 
 internal void
@@ -3898,7 +3996,7 @@ ctrl_thread__append_resolved_process_user_bp_traps(Arena *arena, CTRL_EvalScope 
     {
       String8 expr = bp->string;
       E_Value value = e_value_from_string(expr);
-      if(value.u64 != 0)
+      if(value.u64 != 0 || bp->flags != 0)
       {
         DMN_Trap trap = {process.dmn_handle, value.u64, (U64)bp};
         trap.flags = ctrl_dmn_trap_flags_from_user_breakpoint_flags(bp->flags);
@@ -3946,6 +4044,7 @@ ctrl_thread__module_open(CTRL_Handle process, CTRL_Handle module, Rng1U64 vaddr_
   String8 rdi_dbg_path = str8_zero();
   String8 raddbg_data = str8_zero();
   Rng1U64 raddbg_section_voff_range = r1u64(0, 0);
+  Rng1U64 raddbg_is_attached_section_voff_range = r1u64(0, 0);
   ProfScope("unpack relevant PE info")
   {
     B32 is_valid = 1;
@@ -4144,6 +4243,11 @@ ctrl_thread__module_open(CTRL_Handle process, CTRL_Handle module, Rng1U64 vaddr_
             raddbg_section_voff_range.min = sec[idx].voff;
             raddbg_section_voff_range.max = sec[idx].voff + sec[idx].vsize;
           }
+          else if(str8_match(section_name, str8_lit(".rdbgia"), 0))
+          {
+            raddbg_is_attached_section_voff_range.min = sec[idx].voff;
+            raddbg_is_attached_section_voff_range.max = sec[idx].voff + sec[idx].vsize;
+          }
         }
         raddbg_data.size = dim_1u64(raddbg_section_voff_range);
         raddbg_data.str = push_array(arena, U8, raddbg_data.size);
@@ -4152,11 +4256,11 @@ ctrl_thread__module_open(CTRL_Handle process, CTRL_Handle module, Rng1U64 vaddr_
         scratch_end(scratch);
       }
       
-      // rjf: if we have a raddbg section, mark the first byte as 1, to signify attachment
-      if(raddbg_section_voff_range.max != raddbg_section_voff_range.min)
+      // rjf: if we have a "raddbg is attached" section, mark the first byte as 1, to signify attachment
+      if(raddbg_is_attached_section_voff_range.max != raddbg_is_attached_section_voff_range.min)
       {
         U8 new_value = 1;
-        dmn_process_write_struct(process.dmn_handle, vaddr_range.min + raddbg_section_voff_range.min, &new_value);
+        dmn_process_write_struct(process.dmn_handle, vaddr_range.min + raddbg_is_attached_section_voff_range.min, &new_value);
       }
     }
   }
@@ -4384,7 +4488,7 @@ ctrl_thread__next_dmn_event(Arena *arena, DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg, 
                 B32 asan_shadow_variable_exists_but_is_zero = 0;
                 CTRL_Entity *dbg_path = ctrl_entity_child_from_kind(module, CTRL_EntityKind_DebugInfoPath);
                 DI_Key dbgi_key = {dbg_path->string, dbg_path->timestamp};
-                RDI_Parsed *rdi = di_rdi_from_key(di_scope, &dbgi_key, max_U64);
+                RDI_Parsed *rdi = di_rdi_from_key(di_scope, &dbgi_key, 1, max_U64);
                 RDI_NameMap *unparsed_map = rdi_element_from_name_idx(rdi, NameMaps, RDI_NameMapKind_GlobalVariables);
                 {
                   RDI_ParsedNameMap map = {0};
@@ -4494,6 +4598,9 @@ ctrl_thread__next_dmn_event(Arena *arena, DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg, 
           }
         }
         DMN_EventList events = dmn_ctrl_run(scratch.arena, ctrl_ctx, run_ctrls);
+        ins_atomic_u64_inc_eval(&ctrl_state->mem_gen);
+        ins_atomic_u64_inc_eval(&ctrl_state->reg_gen);
+        ins_atomic_u64_inc_eval(&ctrl_state->run_gen);
         for(DMN_EventNode *src_n = events.first; src_n != 0; src_n = src_n->next)
         {
           DMN_EventNode *dst_n = ctrl_state->free_dmn_event_node;
@@ -4613,6 +4720,7 @@ ctrl_thread__next_dmn_event(Arena *arena, DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg, 
       out_evt->entity_id  = event->code;
     }break;
     case DMN_EventKind_UnloadModule:
+    ProfScope("unload module %.*s", str8_varg(event->string))
     {
       CTRL_Event *out_evt = ctrl_event_list_push(scratch.arena, &evts);
       CTRL_Handle module_handle = ctrl_handle_make(CTRL_MachineID_Local, event->module);
@@ -4672,7 +4780,7 @@ ctrl_thread__next_dmn_event(Arena *arena, DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg, 
       out_evt->msg_id     = msg->msg_id;
       out_evt->vaddr_rng  = r1u64(event->address, event->address + event->size);
       out_evt->string     = event->string;
-    }
+    }break;
     case DMN_EventKind_SetBreakpoint:
     {
       CTRL_Event *out_evt = ctrl_event_list_push(scratch.arena, &evts);
@@ -4718,12 +4826,11 @@ ctrl_thread__next_dmn_event(Arena *arena, DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg, 
   // modules (a very bad heuristic that may or may not inform us that we are
   // dealing with insane-town projects)
   //
-  if(event->kind == DMN_EventKind_LoadModule &&
+  if(0 &&
+     event->kind == DMN_EventKind_LoadModule &&
      (entity_ctx->entity_kind_counts[CTRL_EntityKind_Module] > 256 ||
       entity_ctx->entity_kind_counts[CTRL_EntityKind_Module] == 1))
   {
-    U64 endt_us = os_now_microseconds() + 1000000;
-    
     //- rjf: unpack event
     CTRL_Handle process_handle = ctrl_handle_make(CTRL_MachineID_Local, event->process);
     CTRL_Handle loaded_module_handle = ctrl_handle_make(CTRL_MachineID_Local, event->module);
@@ -4867,22 +4974,20 @@ ctrl_thread__next_dmn_event(Arena *arena, DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg, 
                 DI_Key key = {push_str8f(scratch.arena, "%S/%S", t->path, info.name), info.props.modified};
                 di_open(&key);
                 di_key_list_push(scratch.arena, &preemptively_loaded_keys, &key);
+                if(preemptively_loaded_keys.count >= Max(1, async_thread_count()/2))
+                {
+                  for(DI_KeyNode *n = preemptively_loaded_keys.first; n != 0; n = n->next)
+                  {
+                    di_close(&n->v);
+                  }
+                  MemoryZeroStruct(&preemptively_loaded_keys);
+                }
               }
             }
             os_file_iter_end(it);
             ProfEnd();
           }
         }
-      }
-      
-      //- rjf: for each pre-emptively loaded key, wait for the initial
-      // load task to be done
-      for(DI_KeyNode *n = preemptively_loaded_keys.first; n != 0; n = n->next)
-      {
-        DI_Scope *di_scope = di_scope_open();
-        RDI_Parsed *rdi = di_rdi_from_key(di_scope, &n->v, endt_us);
-        di_scope_close(di_scope);
-        di_close(&n->v);
       }
     }
   }
@@ -4970,7 +5075,7 @@ ctrl_eval_space_read(void *u, E_Space space, void *out, Rng1U64 range)
 //- rjf: control thread eval scopes
 
 internal CTRL_EvalScope *
-ctrl_thread__eval_scope_begin(Arena *arena, CTRL_Entity *thread)
+ctrl_thread__eval_scope_begin(Arena *arena, CTRL_UserBreakpointList *user_bps, CTRL_Entity *thread)
 {
   CTRL_EntityCtx *entity_ctx = &ctrl_state->ctrl_thread_entity_store->ctx;
   CTRL_EvalScope *scope = push_array(arena, CTRL_EvalScope, 1);
@@ -5012,8 +5117,96 @@ ctrl_thread__eval_scope_begin(Arena *arena, CTRL_Entity *thread)
           if(mod->kind != CTRL_EntityKind_Module) { continue; }
           CTRL_Entity *dbg_path = ctrl_entity_child_from_kind(mod, CTRL_EntityKind_DebugInfoPath);
           DI_Key dbgi_key = {dbg_path->string, dbg_path->timestamp};
+          
+          //- rjf: try to obtain this module's RDI
+          RDI_Parsed *rdi = di_rdi_from_key(scope->di_scope, &dbgi_key, 1, 0);
+          
+          //- rjf: if this RDI is not yet ready => determine if we need to wait for it
+          //
+          // (we *always* wait for the initial module)
+          //
+          B32 rdi_is_necessary = 1;
+          if(rdi == &rdi_parsed_nil) ProfScope("determine if RDI is necessary")
+          {
+            // rjf: find cached result
+            U64 hash = ctrl_hash_from_handle(mod->handle);
+            U64 slot_idx = hash%ctrl_state->module_req_cache_slots_count;
+            CTRL_ModuleReqCacheNode *slot = ctrl_state->module_req_cache_slots[slot_idx];
+            CTRL_ModuleReqCacheNode *node = 0;
+            for(CTRL_ModuleReqCacheNode *n = slot; slot != 0; slot = slot->next)
+            {
+              if(ctrl_handle_match(n->module, mod->handle))
+              {
+                node = n;
+                break;
+              }
+            }
+            
+            // rjf: cached? -> take cached result
+            if(node != 0)
+            {
+              rdi_is_necessary = node->required;
+            }
+            
+            // rjf: not cached -> compute & store
+            else ProfScope("cache miss")
+            {
+              OS_Handle file = os_file_open(OS_AccessFlag_Read|OS_AccessFlag_ShareRead, dbgi_key.path);
+              {
+                //- rjf: determine if file is PDB
+                B32 file_is_pdb = 0;
+                if(!file_is_pdb)
+                {
+                  U8 msf70_magic_maybe[sizeof(msf_msf70_magic)] = {0};
+                  os_file_read(file, r1u64(0, sizeof(msf70_magic_maybe)), msf70_magic_maybe);
+                  if(MemoryMatch(msf70_magic_maybe, msf_msf70_magic, sizeof(msf70_magic_maybe)))
+                  {
+                    file_is_pdb = 1;
+                  }
+                }
+                if(!file_is_pdb)
+                {
+                  U8 msf20_magic_maybe[sizeof(msf_msf20_magic)] = {0};
+                  os_file_read(file, r1u64(0, sizeof(msf20_magic_maybe)), msf20_magic_maybe);
+                  if(MemoryMatch(msf20_magic_maybe, msf_msf20_magic, sizeof(msf20_magic_maybe)))
+                  {
+                    file_is_pdb = 1;
+                  }
+                }
+                
+                //- rjf: file is PDB -> do thin parse & lookup of all breakpoint files/symbols.
+                // if any are found in the PDB, then this RDI is necessary.
+                if(file_is_pdb)
+                {
+                  FileProperties props = os_properties_from_file(file);
+                  OS_Handle map = os_file_map_open(OS_AccessFlag_Read, file);
+                  void *file_base = os_file_map_view_open(map, OS_AccessFlag_Read, r1u64(0, props.size));
+                  String8 file_data = str8(file_base, props.size);
+                  {
+                    rdi_is_necessary = pdb_has_symbol_or_file_ref(file_data, ctrl_state->msg_user_bp_touched_symbols, ctrl_state->msg_user_bp_touched_files);
+                  }
+                  os_file_map_view_close(map, file_base, r1u64(0, props.size));
+                  os_file_map_close(map);
+                }
+              }
+              os_file_close(file);
+              node = push_array(ctrl_state->ctrl_thread_msg_process_arena, CTRL_ModuleReqCacheNode, 1);
+              node->next = slot;
+              ctrl_state->module_req_cache_slots[slot_idx] = node;
+              node->module = mod->handle;
+              node->required = rdi_is_necessary;
+            }
+          }
+          
+          //- rjf: if this RDI is necessary, but we do not have it => wait for it forever
+          if(rdi == &rdi_parsed_nil && rdi_is_necessary)
+          {
+            rdi = di_rdi_from_key(scope->di_scope, &dbgi_key, 1, max_U64);
+          }
+          
+          //- rjf: fill evaluation module info
           eval_modules[eval_module_idx].arch        = arch;
-          eval_modules[eval_module_idx].rdi         = di_rdi_from_key(scope->di_scope, &dbgi_key, max_U64);
+          eval_modules[eval_module_idx].rdi         = rdi;
           eval_modules[eval_module_idx].vaddr_range = mod->vaddr_range;
           eval_modules[eval_module_idx].space       = e_space_make(CTRL_EvalSpaceKind_Entity);
           eval_modules[eval_module_idx].space.u64_0 = (U64)process;
@@ -5101,17 +5294,19 @@ ctrl_thread__eval_scope_end(CTRL_EvalScope *scope)
 //- rjf: log flusher
 
 internal void
-ctrl_thread__flush_info_log(String8 string)
-{
-  os_append_data_to_file_path(ctrl_state->ctrl_thread_log_path, string);
-}
-
-internal void
-ctrl_thread__end_and_flush_info_log(void)
+ctrl_thread__end_and_flush_log(void)
 {
   Temp scratch = scratch_begin(0, 0);
   LogScopeResult log = log_scope_end(scratch.arena);
-  ctrl_thread__flush_info_log(log.strings[LogMsgKind_Info]);
+  os_append_data_to_file_path(ctrl_state->ctrl_thread_log_path, log.strings[LogMsgKind_Info]);
+  if(log.strings[LogMsgKind_UserError].size != 0)
+  {
+    CTRL_EventList evts = {0};
+    CTRL_Event *evt = ctrl_event_list_push(scratch.arena, &evts);
+    evt->kind       = CTRL_EventKind_Error;
+    evt->string     = log.strings[LogMsgKind_UserError];
+    ctrl_c2u_push_events(&evts);
+  }
   scratch_end(scratch);
 }
 
@@ -5447,7 +5642,7 @@ ctrl_thread__run(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg)
   DMN_TrapChunkList user_traps = {0};
   {
     CTRL_Entity *thread = ctrl_entity_from_handle(entity_ctx, target_thread);
-    CTRL_EvalScope *eval_scope = ctrl_thread__eval_scope_begin(scratch.arena, thread);
+    CTRL_EvalScope *eval_scope = ctrl_thread__eval_scope_begin(scratch.arena, &msg->user_bps, thread);
     for(CTRL_Entity *machine = entity_ctx->root->first;
         machine != &ctrl_entity_nil;
         machine = machine->next)
@@ -5692,6 +5887,7 @@ ctrl_thread__run(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg)
       //- rjf: setup run controls
       //
       DMN_RunCtrls run_ctrls = {0};
+      run_ctrls.priority_thread  = target_thread.dmn_handle;
       run_ctrls.ignore_previous_exception = 1;
       run_ctrls.run_entity_count = frozen_threads.count;
       run_ctrls.run_entities     = push_array(scratch.arena, DMN_Handle, run_ctrls.run_entity_count);
@@ -5739,7 +5935,7 @@ ctrl_thread__run(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg)
         }break;
         case DMN_EventKind_CreateProcess:
         {
-          CTRL_EvalScope *eval_scope = ctrl_thread__eval_scope_begin(scratch.arena, &ctrl_entity_nil);
+          CTRL_EvalScope *eval_scope = ctrl_thread__eval_scope_begin(scratch.arena, &msg->user_bps, &ctrl_entity_nil);
           {
             DMN_TrapChunkList new_traps = {0};
             ctrl_thread__append_resolved_process_user_bp_traps(scratch.arena, eval_scope, ctrl_handle_make(CTRL_MachineID_Local, event->process), &msg->user_bps, &new_traps);
@@ -5762,7 +5958,7 @@ ctrl_thread__run(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg)
         case DMN_EventKind_LoadModule:
         {
           CTRL_Entity *thread = ctrl_entity_from_handle(entity_ctx, ctrl_handle_make(CTRL_MachineID_Local, event->thread));
-          CTRL_EvalScope *eval_scope = ctrl_thread__eval_scope_begin(scratch.arena, thread);
+          CTRL_EvalScope *eval_scope = ctrl_thread__eval_scope_begin(scratch.arena, &msg->user_bps, thread);
           {
             DMN_TrapChunkList new_traps = {0};
             ctrl_thread__append_resolved_module_user_bp_traps(scratch.arena, eval_scope, ctrl_handle_make(CTRL_MachineID_Local, event->process), ctrl_handle_make(CTRL_MachineID_Local, event->module), &msg->user_bps, &new_traps);
@@ -5823,7 +6019,7 @@ ctrl_thread__run(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg)
         U64 module_base_vaddr = module->vaddr_range.min;
         CTRL_Entity *dbg_path = ctrl_entity_child_from_kind(module, CTRL_EntityKind_DebugInfoPath);
         DI_Key dbgi_key = {dbg_path->string, dbg_path->timestamp};
-        RDI_Parsed *rdi = di_rdi_from_key(di_scope, &dbgi_key, max_U64);
+        RDI_Parsed *rdi = di_rdi_from_key(di_scope, &dbgi_key, 1, max_U64);
         RDI_NameMap *unparsed_map = rdi_element_from_name_idx(rdi, NameMaps, RDI_NameMapKind_Procedures);
         RDI_ParsedNameMap map = {0};
         rdi_parsed_from_name_map(rdi, unparsed_map, &map);
@@ -6156,10 +6352,18 @@ ctrl_thread__run(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg)
           }
         }
         
+        // rjf: programmatic user breakpoints (we do not have state for it,
+        // but the target program(s) did something breakpoint-like, and we
+        // want to treat it as if we did)
+        if(event->address != 0)
+        {
+          hit_user_bp = 1;
+        }
+        
         // rjf: evaluate hit stop conditions
         if(conditions.node_count != 0) ProfScope("evaluate hit stop conditions")
         {
-          CTRL_EvalScope *eval_scope = ctrl_thread__eval_scope_begin(temp.arena, thread);
+          CTRL_EvalScope *eval_scope = ctrl_thread__eval_scope_begin(temp.arena, &msg->user_bps, thread);
           for(String8Node *condition_n = conditions.first; condition_n != 0; condition_n = condition_n->next)
           {
             // rjf: evaluate
@@ -6638,6 +6842,7 @@ ctrl_u2ms_dequeue_req(HS_Key *out_key, CTRL_Handle *out_process, Rng1U64 *out_va
 
 ASYNC_WORK_DEF(ctrl_mem_stream_work)
 {
+#define CTRL_MEM_STREAM_WORK_DEBUG 0
   ProfBeginFunction();
   CTRL_ProcessMemoryCache *cache = &ctrl_state->process_memory_cache;
   
@@ -6673,7 +6878,12 @@ ASYNC_WORK_DEF(ctrl_mem_stream_work)
   void *range_base = 0;
   U64 zero_terminated_size = 0;
   U64 pre_read_mem_gen = ctrl_mem_gen();
-  U64 post_read_mem_gen = 0;
+  B32 pre_run_state = ins_atomic_u64_eval(&ctrl_state->ctrl_thread_run_state);
+#if CTRL_MEM_STREAM_WORK_DEBUG
+  Log *log = log_alloc();
+  log_select(log);
+  log_scope_begin();
+#endif
   {
     range_size = dim_1u64(vaddr_range_clamped);
     U64 page_size = os_get_system_info()->page_size;
@@ -6733,8 +6943,25 @@ ASYNC_WORK_DEF(ctrl_mem_stream_work)
         }
       }
     }
-    post_read_mem_gen = dmn_mem_gen();
   }
+  U64 post_read_mem_gen = ctrl_mem_gen();
+  B32 post_run_state = ins_atomic_u64_eval(&ctrl_state->ctrl_thread_run_state);
+  // NOTE(rjf): debugging
+#if CTRL_MEM_STREAM_WORK_DEBUG
+  {
+    Temp scratch = scratch_begin(0, 0);
+    String8 sample_data_str = str8_lit("no data");
+    if(range_base != 0)
+    {
+      String8 sample_data = str8((U8*)range_base + 0x100, 16);
+      String8List sample_data_strs = numeric_str8_list_from_data(scratch.arena, 16, sample_data, 1);
+      sample_data_str = str8_list_join(scratch.arena, &sample_data_strs, &(StringJoin){.sep = str8_lit(", ")});
+    }
+    LogScopeResult log = log_scope_end(scratch.arena);
+    raddbg_log("[0x%I64x, 0x%I64x) { pre_gen: %I64u, post_gen: %I64u, pre_run: %i, post_run: %i, bytes: [%S], info:```%S``` }\n", vaddr_range.min, vaddr_range.max, pre_read_mem_gen, post_read_mem_gen, pre_run_state, post_run_state, sample_data_str, log.strings[LogMsgKind_Info]);
+    scratch_end(scratch);
+  }
+#endif
   
   //- rjf: read successful -> submit to hash store
   U128 hash = {0};
@@ -6764,6 +6991,7 @@ ASYNC_WORK_DEF(ctrl_mem_stream_work)
             {
               range_n->mem_gen = post_read_mem_gen;
             }
+            range_n->working_count -= 1;
             goto commit__break_all;
           }
         }

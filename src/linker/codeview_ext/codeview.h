@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) 2025 Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #pragma once
@@ -432,6 +432,7 @@ internal String8List cv_str8_list_from_debug_t_parallel(TP_Context *tp, Arena *a
 //~ Sub Section helpers
 
 // $$Symbols
+internal void              cv_parse_symbol_sub_section_capped(Arena *arena, CV_SymbolList *list, U64 offset_base, String8 data, U64 align, U64 cap);
 internal void              cv_parse_symbol_sub_section(Arena *arena, CV_SymbolList *list, U64 offset_base, String8 data, U64 align);
 internal void              cv_symbol_list_push_node(CV_SymbolList *list, CV_SymbolNode *node);
 internal CV_SymbolNode *   cv_symbol_list_push(Arena *arena, CV_SymbolList *list);

@@ -5,7 +5,7 @@
 //~ rjf: UI Widgets: Fancy Title Strings
 
 internal DR_FStrList
-rd_title_fstrs_from_cfg(Arena *arena, RD_Cfg *cfg)
+rd_title_fstrs_from_cfg(Arena *arena, RD_Cfg *cfg, B32 include_extras)
 {
   DR_FStrList result = {0};
   {
@@ -288,7 +288,12 @@ rd_title_fstrs_from_cfg(Arena *arena, RD_Cfg *cfg)
     //- rjf: push text location
     if(loc.file_path.size != 0)
     {
-      String8 location_string = push_str8f(arena, "%S:%I64d:%I64d", str8_skip_last_slash(loc.file_path), loc.pt.line, loc.pt.column);
+      String8 path = loc.file_path;
+      if(!include_extras)
+      {
+        path = str8_skip_last_slash(loc.file_path);
+      }
+      String8 location_string = push_str8f(arena, "%S:%I64d:%I64d", path, loc.pt.line, loc.pt.column);
       dr_fstrs_push_new(arena, &result, &params, location_string);
       dr_fstrs_push_new(arena, &result, &params, str8_lit("  "));
       start_secondary();
@@ -548,22 +553,32 @@ rd_title_fstrs_from_ctrl_entity(Arena *arena, CTRL_Entity *entity, B32 include_e
     Arch arch = entity->arch;
     B32 call_stack_high_priority = ctrl_handle_match(entity->handle, rd_base_regs()->thread);
     CTRL_CallStack call_stack = ctrl_call_stack_from_thread(ctrl_scope, &d_state->ctrl_entity_store->ctx, entity, call_stack_high_priority, call_stack_high_priority ? rd_state->frame_eval_memread_endt_us : 0);
-    for(U64 idx = 0, limit = 10; idx < call_stack.frames_count && idx < limit; idx += 1)
+    B32 did_first_known = 0;
+    for(U64 idx = 0, limit = 10;
+        idx < call_stack.frames_count && idx < limit;
+        idx += 1)
     {
       CTRL_CallStackFrame *f = &call_stack.frames[call_stack.frames_count - 1 - idx];
       U64 rip_vaddr = regs_rip_from_arch_block(arch, f->regs);
       CTRL_Entity *module = ctrl_module_from_process_vaddr(process, rip_vaddr);
       U64 rip_voff = ctrl_voff_from_vaddr(module, rip_vaddr);
-      DI_Key dbgi_key = ctrl_dbgi_key_from_module(module);
-      RDI_Parsed *rdi = di_rdi_from_key(di_scope, &dbgi_key, 0);
-      if(rdi != &rdi_parsed_nil)
+      String8 name = {0};
       {
-        RDI_Procedure *procedure = rdi_procedure_from_voff(rdi, rip_voff);
-        String8 name = {0};
-        name.str = rdi_string_from_idx(rdi, procedure->name_string_idx, &name.size);
-        name = push_str8_copy(arena, name);
+        DI_Key dbgi_key = ctrl_dbgi_key_from_module(module);
+        RDI_Parsed *rdi = di_rdi_from_key(di_scope, &dbgi_key, 1, 0);
+        if(rdi != &rdi_parsed_nil)
+        {
+          RDI_Procedure *procedure = rdi_procedure_from_voff(rdi, rip_voff);
+          name.str = rdi_string_from_idx(rdi, procedure->name_string_idx, &name.size);
+          name = push_str8_copy(arena, name);
+        }
+        if(name.size == 0 && did_first_known)
+        {
+          name = str8_lit("???");
+        }
         if(name.size != 0)
         {
+          did_first_known = 1;
           dr_fstrs_push_new(arena, &result, &params, name, .size = extras_size, .color = symbol_color);
           if(idx+1 < call_stack.frames_count)
           {
@@ -585,7 +600,7 @@ rd_title_fstrs_from_ctrl_entity(Arena *arena, CTRL_Entity *entity, B32 include_e
   {
     DI_Scope *di_scope = di_scope_open();
     DI_Key dbgi_key = ctrl_dbgi_key_from_module(entity);
-    RDI_Parsed *rdi = di_rdi_from_key(di_scope, &dbgi_key, 0);
+    RDI_Parsed *rdi = di_rdi_from_key(di_scope, &dbgi_key, 1, 0);
     if(rdi->raw_data_size == 0)
     {
       dr_fstrs_push_new(arena, &result, &params, str8_lit(" "));
@@ -1259,75 +1274,16 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
   B32 do_thread_glow = rd_setting_b32_from_name(str8_lit("thread_glow"));
   B32 do_bp_lines = rd_setting_b32_from_name(str8_lit("breakpoint_lines"));
   B32 do_bp_glow = rd_setting_b32_from_name(str8_lit("breakpoint_glow"));
+  B32 do_scope_lines = rd_setting_b32_from_name(str8_lit("cursor_scope_lines"));
   Vec4F32 pop_color = {0};
   UI_TagF("pop")
   {
     pop_color = ui_color_from_name(str8_lit("background"));
   }
-  
-  //////////////////////////////
-  //- rjf: produce fancy strings for each line
-  //
-  DR_FStrList *lines_fstrs = push_array(scratch.arena, DR_FStrList, dim_1s64(params->line_num_range)+1);
+  Vec4F32 highlight_color = {0};
+  UI_TagF("focus")
   {
-    DR_FStrParams fstr_params =
-    {
-      params->font,
-      rd_raster_flags_from_slot(RD_FontSlot_Code),
-      rd_rgba_from_code_color_slot(RD_CodeColorSlot_CodeDefault),
-      params->font_size,
-    };
-    U64 line_idx = 0;
-    for(S64 line_num = params->line_num_range.min;
-        line_num <= params->line_num_range.max;
-        line_num += 1, line_idx += 1)
-    {
-      String8 line_string = params->line_text[line_idx];
-      Rng1U64 line_range = params->line_ranges[line_idx];
-      TXT_TokenArray *line_tokens = &params->line_tokens[line_idx];
-      DR_FStrList fstrs = {0};
-      if(line_tokens->count == 0)
-      {
-        dr_fstrs_push_new(scratch.arena, &fstrs, &fstr_params, line_string);
-      }
-      else
-      {
-        TXT_Token *line_tokens_first = line_tokens->v;
-        TXT_Token *line_tokens_opl = line_tokens->v + line_tokens->count;
-        for(TXT_Token *token = line_tokens_first; token < line_tokens_opl; token += 1)
-        {
-          // rjf: token -> token string
-          String8 token_string = {0};
-          {
-            Rng1U64 token_range = r1u64(0, line_string.size);
-            if(token->range.min > line_range.min)
-            {
-              token_range.min += token->range.min-line_range.min;
-            }
-            if(token->range.max < line_range.max)
-            {
-              token_range.max = token->range.max-line_range.min;
-            }
-            token_string = str8_substr(line_string, token_range);
-          }
-          
-          // rjf: token -> token color
-          RD_CodeColorSlot token_color_slot = rd_code_color_slot_from_txt_token_kind(token->kind);
-          RD_CodeColorSlot lookup_color_slot = rd_code_color_slot_from_txt_token_kind_lookup_string(token->kind, token_string);
-          Vec4F32 token_color = rd_rgba_from_code_color_slot(token_color_slot);
-          if(lookup_color_slot != RD_CodeColorSlot_CodeDefault)
-          {
-            Vec4F32 lookup_color = rd_rgba_from_code_color_slot(lookup_color_slot);
-            F32 lookup_color_mix_t = ui_anim(ui_key_from_stringf(ui_key_zero(), "%S_lookup", token_string), 1.f);
-            token_color = mix_4f32(token_color, lookup_color, lookup_color_mix_t);
-          }
-          
-          // rjf: push fancy string
-          dr_fstrs_push_new(scratch.arena, &fstrs, &fstr_params, token_string, .color = token_color);
-        }
-      }
-      lines_fstrs[line_idx] = fstrs;
-    }
+    highlight_color = ui_color_from_name(str8_lit("border"));
   }
   
   //////////////////////////////
@@ -1965,6 +1921,68 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
   }
   
   //////////////////////////////
+  //- rjf: mouse -> text coordinates
+  //
+  TxtPt mouse_pt = {0};
+  ProfScope("mouse -> text coordinates")
+  {
+    Vec2F32 mouse = ui_mouse();
+    
+    // rjf: mouse y => index
+    U64 mouse_y_line_idx = (U64)((mouse.y - text_container_box->rect.y0) / params->line_height_px);
+    
+    // rjf: index => line num
+    S64 line_num = (params->line_num_range.min + mouse_y_line_idx);
+    String8 line_string = (params->line_num_range.min <= line_num && line_num <= params->line_num_range.max) ? (params->line_text[mouse_y_line_idx]) : str8_zero();
+    
+    // rjf: mouse x * string => column
+    S64 column = fnt_char_pos_from_tag_size_string_p(params->font, params->font_size, 0, params->tab_size, line_string, mouse.x-text_container_box->rect.x0-params->line_num_width_px-line_num_padding_px)+1;
+    
+    // rjf: bundle
+    mouse_pt = txt_pt(line_num, column);
+    
+    // rjf: clamp
+    {
+      U64 last_line_size = params->line_text[dim_1s64(params->line_num_range)].size;
+      TxtRng legal_pt_rng = txt_rng(txt_pt(params->line_num_range.min, 1),
+                                    txt_pt(params->line_num_range.max, last_line_size+1));
+      if(txt_pt_less_than(mouse_pt, legal_pt_rng.min))
+      {
+        mouse_pt = legal_pt_rng.min;
+      }
+      if(txt_pt_less_than(legal_pt_rng.max, mouse_pt))
+      {
+        mouse_pt = legal_pt_rng.max;
+      }
+    }
+    
+    result.mouse_pt = mouse_pt;
+  }
+  
+  //////////////////////////////
+  //- rjf: mouse point -> mouse token range, mouse line range
+  //
+  TxtRng mouse_token_rng = txt_rng(mouse_pt, mouse_pt);
+  TxtRng mouse_line_rng = txt_rng(mouse_pt, mouse_pt);
+  if(contains_1s64(params->line_num_range, mouse_pt.line))
+  {
+    TXT_TokenArray *line_tokens = &params->line_tokens[mouse_pt.line-params->line_num_range.min];
+    Rng1U64 line_range = params->line_ranges[mouse_pt.line-params->line_num_range.min];
+    U64 mouse_pt_off = (mouse_pt.column-1) + line_range.min;
+    for(U64 line_token_idx = 0; line_token_idx < line_tokens->count; line_token_idx += 1)
+    {
+      TXT_Token *line_token = &line_tokens->v[line_token_idx];
+      if(contains_1u64(line_token->range, mouse_pt_off))
+      {
+        Rng1U64 line_token_range_clamped = intersect_1u64(line_token->range, line_range);
+        mouse_token_rng = txt_rng(txt_pt(mouse_pt.line, 1+line_token_range_clamped.min-line_range.min), txt_pt(mouse_pt.line, 1+line_token_range_clamped.max-line_range.min));
+        break;
+      }
+    }
+    mouse_line_rng = txt_rng(txt_pt(mouse_pt.line, 1), txt_pt(mouse_pt.line, 1+(line_range.max-line_range.min)));
+  }
+  
+  //////////////////////////////
   //- rjf: determine starting offset for each at line, at which we can begin placing extra info to the right
   //
   F32 *line_extras_off = push_array(scratch.arena, F32, dim_1s64(params->line_num_range)+1);
@@ -1974,8 +1992,7 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
         line_num <= params->line_num_range.max;
         line_num += 1, line_idx += 1)
     {
-      DR_FStrList line_fstrs = lines_fstrs[line_idx];
-      F32 line_text_dim = dr_dim_from_fstrs(params->tab_size, &line_fstrs).x + params->line_num_width_px + params->catchall_margin_width_px + params->priority_margin_width_px;
+      F32 line_text_dim = fnt_dim_from_tag_size_string(params->font, params->font_size, 0, params->tab_size, params->line_text[line_idx]).x + params->line_num_width_px + params->catchall_margin_width_px + params->priority_margin_width_px;
       line_extras_off[line_idx] = Max(line_text_dim, params->font_size*30);
     }
   }
@@ -1994,36 +2011,6 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
       ui_set_next_fixed_x(line_extras_off[line_idx]);
       ui_set_next_fixed_y(line_idx*params->line_height_px);
       line_extras_boxes[line_idx] = ui_build_box_from_stringf(0, "###extras_%I64x", line_idx);
-    }
-  }
-  
-  //////////////////////////////
-  //- rjf: build exception annotations
-  //
-  UI_Focus(UI_FocusKind_Off)
-  {
-    U64 line_idx = 0;
-    for(S64 line_num = params->line_num_range.min;
-        line_num < params->line_num_range.max;
-        line_num += 1, line_idx += 1)
-    {
-      CTRL_EntityList threads = params->line_ips[line_idx];
-      for(CTRL_EntityNode *n = threads.first; n != 0; n = n->next)
-      {
-        CTRL_Entity *thread = n->v;
-        if(thread == stopper_thread &&
-           (stop_event.cause == CTRL_EventCause_InterruptedByException ||
-            stop_event.cause == CTRL_EventCause_InterruptedByTrap))
-        {
-          DR_FStrList explanation_fstrs = rd_stop_explanation_fstrs_from_ctrl_event(scratch.arena, &stop_event);
-          UI_Parent(line_extras_boxes[line_idx]) UI_PrefWidth(ui_text_dim(10, 1)) UI_TextAlignment(UI_TextAlign_Center) UI_PrefHeight(ui_px(params->line_height_px, 1.f))
-            UI_TagF("bad_pop")
-          {
-            UI_Box *box = ui_build_box_from_stringf(UI_BoxFlag_DrawText, "###exception_info");
-            ui_box_equip_display_fstrs(box, &explanation_fstrs);
-          }
-        }
-      }
     }
   }
   
@@ -2169,68 +2156,6 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
   }
   
   //////////////////////////////
-  //- rjf: mouse -> text coordinates
-  //
-  TxtPt mouse_pt = {0};
-  ProfScope("mouse -> text coordinates")
-  {
-    Vec2F32 mouse = ui_mouse();
-    
-    // rjf: mouse y => index
-    U64 mouse_y_line_idx = (U64)((mouse.y - text_container_box->rect.y0) / params->line_height_px);
-    
-    // rjf: index => line num
-    S64 line_num = (params->line_num_range.min + mouse_y_line_idx);
-    String8 line_string = (params->line_num_range.min <= line_num && line_num <= params->line_num_range.max) ? (params->line_text[mouse_y_line_idx]) : str8_zero();
-    
-    // rjf: mouse x * string => column
-    S64 column = fnt_char_pos_from_tag_size_string_p(params->font, params->font_size, 0, params->tab_size, line_string, mouse.x-text_container_box->rect.x0-params->line_num_width_px-line_num_padding_px)+1;
-    
-    // rjf: bundle
-    mouse_pt = txt_pt(line_num, column);
-    
-    // rjf: clamp
-    {
-      U64 last_line_size = params->line_text[dim_1s64(params->line_num_range)].size;
-      TxtRng legal_pt_rng = txt_rng(txt_pt(params->line_num_range.min, 1),
-                                    txt_pt(params->line_num_range.max, last_line_size+1));
-      if(txt_pt_less_than(mouse_pt, legal_pt_rng.min))
-      {
-        mouse_pt = legal_pt_rng.min;
-      }
-      if(txt_pt_less_than(legal_pt_rng.max, mouse_pt))
-      {
-        mouse_pt = legal_pt_rng.max;
-      }
-    }
-    
-    result.mouse_pt = mouse_pt;
-  }
-  
-  //////////////////////////////
-  //- rjf: mouse point -> mouse token range, mouse line range
-  //
-  TxtRng mouse_token_rng = txt_rng(mouse_pt, mouse_pt);
-  TxtRng mouse_line_rng = txt_rng(mouse_pt, mouse_pt);
-  if(contains_1s64(params->line_num_range, mouse_pt.line))
-  {
-    TXT_TokenArray *line_tokens = &params->line_tokens[mouse_pt.line-params->line_num_range.min];
-    Rng1U64 line_range = params->line_ranges[mouse_pt.line-params->line_num_range.min];
-    U64 mouse_pt_off = (mouse_pt.column-1) + line_range.min;
-    for(U64 line_token_idx = 0; line_token_idx < line_tokens->count; line_token_idx += 1)
-    {
-      TXT_Token *line_token = &line_tokens->v[line_token_idx];
-      if(contains_1u64(line_token->range, mouse_pt_off))
-      {
-        Rng1U64 line_token_range_clamped = intersect_1u64(line_token->range, line_range);
-        mouse_token_rng = txt_rng(txt_pt(mouse_pt.line, 1+line_token_range_clamped.min-line_range.min), txt_pt(mouse_pt.line, 1+line_token_range_clamped.max-line_range.min));
-        break;
-      }
-    }
-    mouse_line_rng = txt_rng(txt_pt(mouse_pt.line, 1), txt_pt(mouse_pt.line, 1+(line_range.max-line_range.min)));
-  }
-  
-  //////////////////////////////
   //- rjf: interact with margin box & text box
   //
   B32 search_query_invalidated = 0;
@@ -2300,6 +2225,7 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
         vaddr = params->line_vaddrs[cursor->line - params->line_num_range.min];
         lines = params->line_infos[cursor->line - params->line_num_range.min];
       }
+      rd_cmd(RD_CmdKind_FocusPanel);
       rd_cmd(RD_CmdKind_PushQuery,
              .expr = txt_pt_match(*cursor, *mark) ? str8_lit("query:text_pt_commands") : str8_lit("query:text_range_commands"),
              .do_implicit_root = 1,
@@ -2364,6 +2290,212 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
     
     //- rjf: commit text container signal to main output
     result.base = text_container_sig;
+  }
+  
+  //////////////////////////////
+  //- rjf: cursor -> scope info
+  //
+  TXT_ScopeNode *cursor_scope_node = &txt_scope_node_nil;
+  if(params->text_info != 0)
+  {
+    cursor_scope_node = txt_scope_node_from_info_pt(params->text_info, rd_regs()->cursor);
+  }
+  
+  //////////////////////////////
+  //- rjf: produce fancy strings for each line
+  //
+  DR_FStrList *lines_fstrs = push_array(scratch.arena, DR_FStrList, dim_1s64(params->line_num_range)+1);
+  {
+    DR_FStrParams fstr_params =
+    {
+      params->font,
+      rd_raster_flags_from_slot(RD_FontSlot_Code),
+      rd_rgba_from_code_color_slot(RD_CodeColorSlot_CodeDefault),
+      params->font_size,
+    };
+    U64 line_idx = 0;
+    for(S64 line_num = params->line_num_range.min;
+        line_num <= params->line_num_range.max;
+        line_num += 1, line_idx += 1)
+    {
+      String8 line_string = params->line_text[line_idx];
+      Rng1U64 line_range = params->line_ranges[line_idx];
+      TXT_TokenArray *line_tokens = &params->line_tokens[line_idx];
+      DR_FStrList fstrs = {0};
+      if(line_tokens->count == 0)
+      {
+        dr_fstrs_push_new(scratch.arena, &fstrs, &fstr_params, line_string);
+      }
+      else
+      {
+        TXT_Token *line_tokens_first = line_tokens->v;
+        TXT_Token *line_tokens_opl = line_tokens->v + line_tokens->count;
+        for(TXT_Token *token = line_tokens_first; token < line_tokens_opl; token += 1)
+        {
+          // rjf: token -> token string
+          String8 token_string = {0};
+          {
+            Rng1U64 token_range = r1u64(0, line_string.size);
+            if(token->range.min > line_range.min)
+            {
+              token_range.min += token->range.min-line_range.min;
+            }
+            if(token->range.max < line_range.max)
+            {
+              token_range.max = token->range.max-line_range.min;
+            }
+            token_string = str8_substr(line_string, token_range);
+          }
+          
+          // rjf: token -> token color
+          RD_CodeColorSlot token_color_slot = rd_code_color_slot_from_txt_token_kind(token->kind);
+          RD_CodeColorSlot lookup_color_slot = rd_code_color_slot_from_txt_token_kind_lookup_string(token->kind, token_string);
+          Vec4F32 token_color = rd_rgba_from_code_color_slot(token_color_slot);
+          if(lookup_color_slot != RD_CodeColorSlot_CodeDefault)
+          {
+            Vec4F32 lookup_color = rd_rgba_from_code_color_slot(lookup_color_slot);
+            F32 lookup_color_mix_t = ui_anim(ui_key_from_stringf(ui_key_zero(), "%S_lookup", token_string), 1.f);
+            token_color = mix_4f32(token_color, lookup_color, lookup_color_mix_t);
+          }
+          
+          // rjf: scope endpoints enclosing cursor -> highlight
+          for(TXT_ScopeNode *scope_n = cursor_scope_node;
+              scope_n != &txt_scope_node_nil;
+              scope_n = txt_scope_node_from_info_num(params->text_info, scope_n->parent_num))
+          {
+            if(params->text_info->tokens.v[scope_n->token_idx_range.min].range.min == token->range.min ||
+               params->text_info->tokens.v[scope_n->token_idx_range.max].range.min == token->range.min)
+            {
+              token_color = highlight_color;
+              break;
+            }
+          }
+          
+          // rjf: push fancy string
+          dr_fstrs_push_new(scratch.arena, &fstrs, &fstr_params, token_string, .color = token_color);
+        }
+      }
+      lines_fstrs[line_idx] = fstrs;
+    }
+  }
+  
+  //////////////////////////////
+  //- rjf: equip cursor scope rendering info
+  //
+  if(do_scope_lines && cursor_scope_node != &txt_scope_node_nil)
+  {
+    Vec4F32 scope_line_color = highlight_color;
+    scope_line_color.w *= 0.25f;
+    DR_Bucket *bucket = dr_bucket_make();
+    DR_BucketScope(bucket)
+    {
+      Vec2F32 text_base_pos = v2f32(text_container_box->rect.x0 + params->line_num_width_px + line_num_padding_px,
+                                    text_container_box->rect.y0);
+      for(TXT_ScopeNode *scope_n = cursor_scope_node;
+          scope_n != &txt_scope_node_nil;
+          scope_n = txt_scope_node_from_info_num(params->text_info, scope_n->parent_num))
+      {
+        Rng1U64 token_idx_range = scope_n->token_idx_range;
+        Rng1U64 off_range = r1u64(params->text_info->tokens.v[token_idx_range.min].range.min, params->text_info->tokens.v[token_idx_range.max].range.min);
+        TxtRng txt_range = txt_rng(txt_pt_from_info_off__linear_scan(params->text_info, off_range.min), txt_pt_from_info_off__linear_scan(params->text_info, off_range.max));
+        
+        //- rjf: single-line scopes (underline)
+        if(txt_range.min.line == txt_range.max.line && contains_1s64(params->line_num_range, txt_range.min.line))
+        {
+          S64 line_num = txt_range.min.line;
+          U64 line_idx = (U64)(line_num - params->line_num_range.min);
+          String8 line_string = params->line_text[line_idx];
+          Rng1U64 line_off_range = r1u64(off_range.min - params->line_ranges[line_idx].min, off_range.max+1 - params->line_ranges[line_idx].min);
+          Rng1F32 x_px_range = r1f32(fnt_dim_from_tag_size_string(params->font, params->font_size, 0, params->tab_size, str8_prefix(line_string, line_off_range.min)).x,
+                                     fnt_dim_from_tag_size_string(params->font, params->font_size, 0, params->tab_size, str8_prefix(line_string, line_off_range.max)).x);
+          F32 line_y = line_idx*params->line_height_px;
+          Rng2F32 underline_rect = r2f32p(text_base_pos.x + x_px_range.min,
+                                          text_base_pos.y + line_y + params->line_height_px*0.5f,
+                                          text_base_pos.x + x_px_range.max+1,
+                                          text_base_pos.y + line_y + params->line_height_px + params->font_size*0.1f);
+          F32 midpoint = center_1f32(r1f32(underline_rect.x0, underline_rect.x1));
+          F32 t = ui_anim(ui_key_from_stringf(text_container_box->key, "###scope_%I64x_%I64x", scope_n->token_idx_range.min, scope_n->token_idx_range.max), 1.f, .rate = rd_state->catchall_animation_rate);
+          Rng2F32 underline_clip = {0};
+          underline_clip.x0 = mix_1f32(midpoint, underline_rect.x0 - params->font_size, t);
+          underline_clip.x1 = mix_1f32(midpoint, underline_rect.x1 + params->font_size, t);
+          underline_clip.y0 = underline_rect.y0 + (underline_rect.y1 - underline_rect.y0) * 0.65f;
+          underline_clip.y1 = 10000;
+          DR_ClipScope(underline_clip)
+          {
+            dr_rect(underline_rect, scope_line_color, params->font_size*0.1f, 1.f, 1.f);
+          }
+        }
+        
+        //- rjf: cross-line scopes
+        if(txt_range.min.line != txt_range.max.line && params->line_num_range.max > txt_range.min.line && params->line_num_range.min < txt_range.max.line)
+        {
+          String8 opener_line = txt_string_from_info_data_line_num(params->text_info, params->text_data, txt_range.min.line);
+          String8 closer_line = txt_string_from_info_data_line_num(params->text_info, params->text_data, txt_range.max.line);
+          String8 opener_line_pre_opener = str8_prefix(opener_line, txt_range.min.column-1);
+          String8 closer_line_pre_closer = str8_prefix(closer_line, txt_range.max.column-1);
+          F32 opener_line_pre_opener_px = fnt_dim_from_tag_size_string(params->font, params->font_size, 0, params->tab_size, opener_line_pre_opener).x;
+          F32 closer_line_pre_closer_px = fnt_dim_from_tag_size_string(params->font, params->font_size, 0, params->tab_size, closer_line_pre_closer).x;
+          F32 indent_depth_px = Min(opener_line_pre_opener_px, closer_line_pre_closer_px);
+          Rng1F32 scope_range_y_px = r1f32(0, dim_2f32(text_container_box->rect).y);
+          if(contains_1s64(params->line_num_range, txt_range.min.line))
+          {
+            scope_range_y_px.min = (txt_range.min.line - params->line_num_range.min) * params->line_height_px;
+          }
+          if(contains_1s64(params->line_num_range, txt_range.max.line))
+          {
+            scope_range_y_px.max = ((txt_range.max.line - params->line_num_range.min) + 1) * params->line_height_px;
+          }
+          F32 midpoint = center_1f32(scope_range_y_px);
+          F32 t = ui_anim(ui_key_from_stringf(text_container_box->key, "###scope_%I64x_%I64x", scope_n->token_idx_range.min, scope_n->token_idx_range.max), 1.f, .rate = rd_state->catchall_animation_rate);
+          Rng2F32 scope_rect = r2f32p(text_base_pos.x + indent_depth_px - params->font_size*0.2f,
+                                      text_base_pos.y + scope_range_y_px.min,
+                                      text_base_pos.x + indent_depth_px - params->font_size*0.2f + params->font_size*1.f,
+                                      text_base_pos.y + scope_range_y_px.max);
+          Rng2F32 scope_clip_rect = {0};
+          {
+            scope_clip_rect.x0 = scope_rect.x0 - params->font_size*10.f;
+            scope_clip_rect.x1 = scope_rect.x0 + (scope_rect.x1 - scope_rect.x0)*0.4f;
+            scope_clip_rect.y0 = mix_1f32(midpoint, scope_rect.y0 - params->font_size*0.1f, t);
+            scope_clip_rect.y1 = mix_1f32(midpoint, scope_rect.y1 + params->font_size*0.1f, t);
+          }
+          DR_ClipScope(scope_clip_rect)
+          {
+            dr_rect(scope_rect, scope_line_color, params->font_size*0.1f, 1.f, 1.f);
+          }
+        }
+      }
+    }
+    ui_box_equip_draw_bucket(text_container_box, bucket);
+  }
+  
+  //////////////////////////////
+  //- rjf: build exception annotations
+  //
+  UI_Focus(UI_FocusKind_Off)
+  {
+    U64 line_idx = 0;
+    for(S64 line_num = params->line_num_range.min;
+        line_num < params->line_num_range.max;
+        line_num += 1, line_idx += 1)
+    {
+      CTRL_EntityList threads = params->line_ips[line_idx];
+      for(CTRL_EntityNode *n = threads.first; n != 0; n = n->next)
+      {
+        CTRL_Entity *thread = n->v;
+        if(thread == stopper_thread &&
+           (stop_event.cause == CTRL_EventCause_InterruptedByException ||
+            stop_event.cause == CTRL_EventCause_InterruptedByTrap))
+        {
+          DR_FStrList explanation_fstrs = rd_stop_explanation_fstrs_from_ctrl_event(scratch.arena, &stop_event);
+          UI_Parent(line_extras_boxes[line_idx]) UI_PrefWidth(ui_text_dim(10, 1)) UI_TextAlignment(UI_TextAlign_Center) UI_PrefHeight(ui_px(params->line_height_px, 1.f))
+            UI_TagF("bad_pop")
+          {
+            UI_Box *box = ui_build_box_from_stringf(UI_BoxFlag_DrawText, "###exception_info");
+            ui_box_equip_display_fstrs(box, &explanation_fstrs);
+          }
+        }
+      }
+    }
   }
   
   //////////////////////////////
@@ -2434,7 +2566,9 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
   if(!ui_dragging(text_container_sig) && text_container_sig.event_flags == 0 && mouse_expr.size != 0)
   {
     E_Eval eval = e_eval_from_string(mouse_expr);
-    if(eval.msgs.max_kind == E_MsgKind_Null && (eval.irtree.mode != E_Mode_Null || mouse_expr_is_explicit))
+    B32 eval_implicit_hover = (eval.irtree.mode != E_Mode_Null &&
+                               eval.space.kind == RD_EvalSpaceKind_CtrlEntity);
+    if(eval.msgs.max_kind == E_MsgKind_Null && (eval_implicit_hover || mouse_expr_is_explicit))
     {
       U64 line_vaddr = 0;
       if(contains_1s64(params->line_num_range, mouse_pt.line))

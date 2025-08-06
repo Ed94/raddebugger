@@ -1,6 +1,19 @@
 // Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
+internal String8
+mscrt_delay_load_helper_name_from_machine(COFF_MachineType machine)
+{
+  String8 delay_load_helper_name = str8_zero();
+  switch (machine) {
+  case COFF_MachineType_Unknown: break;
+  case COFF_MachineType_X86: delay_load_helper_name = str8_cstring(MSCRT_DELAY_LOAD_HELPER2_X86_SYMBOL_NAME); break;
+  case COFF_MachineType_X64: delay_load_helper_name = str8_cstring(MSCRT_DELAY_LOAD_HELPER2_SYMBOL_NAME);     break;
+  default: { NotImplemented; } break;
+  }
+  return delay_load_helper_name;
+}
+
 internal U64
 mscrt_parse_func_info(Arena              *arena,
                       String8             raw_data,
@@ -486,3 +499,36 @@ mscrt_catch_blocks_from_data_x8664(Arena              *arena,
   return result;
 }
 
+////////////////////////////////
+//~ rjf: Enum -> String
+
+internal String8
+mscrt_string_from_eh_adjectives(Arena *arena, MSCRT_EhHandlerTypeFlags adjectives)
+{
+  Temp scratch = scratch_begin(&arena, 1);
+  String8List adj_list = {0};
+  if (adjectives & MSCRT_EhHandlerTypeFlag_IsConst) {
+    str8_list_pushf(scratch.arena, &adj_list, "Const");
+  }
+  if (adjectives & MSCRT_EhHandlerTypeFlag_IsVolatile) {
+    str8_list_pushf(scratch.arena, &adj_list, "Volatile");
+  }
+  if (adjectives & MSCRT_EhHandlerTypeFlag_IsUnaligned) {
+    str8_list_pushf(scratch.arena, &adj_list, "Unaligned");
+  }
+  if (adjectives & MSCRT_EhHandlerTypeFlag_IsReference) {
+    str8_list_pushf(scratch.arena, &adj_list, "Reference");
+  }
+  if (adjectives & MSCRT_EhHandlerTypeFlag_IsResumable) {
+    str8_list_pushf(scratch.arena, &adj_list, "Resumable");
+  }
+  if (adjectives & MSCRT_EhHandlerTypeFlag_IsStdDotDot) {
+    str8_list_pushf(scratch.arena, &adj_list, "StdDotDot");
+  }
+  if (adjectives & MSCRT_EhHandlerTypeFlag_IsComplusEH) {
+    str8_list_pushf(scratch.arena, &adj_list, "ComplusEH");
+  }
+  String8 result = str8_list_join(arena, &adj_list, &(StringJoin){.sep=str8_lit(", ")});
+  scratch_end(scratch);
+  return result;
+}

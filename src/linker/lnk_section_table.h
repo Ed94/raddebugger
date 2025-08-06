@@ -1,43 +1,66 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) 2025 Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #pragma once
 
+typedef struct LNK_SectionContrib
+{
+  String8Node  first_data_node; // most contributions require at least one data node, so preallocate it here
+  String8Node *last_data_node;  // list of data nodes that contribute to final section
+  union {
+    // used to sort sections to get deterministic output
+    struct {
+      U32 obj_idx;      // index of the input obj that contributes to the image section
+      U32 obj_sect_idx; // index into contributing obj's section table
+    };
+
+    // used after section layout is finalized
+    struct {
+      U32 off;      // contribution offset within the image section
+      U16 sect_idx; // section index in the image
+      U8  unused[2];
+    };
+  } u;
+  U16 align; // contribution alignment in the image
+  B8 hotpatch;
+} LNK_SectionContrib;
+
+typedef struct LNK_SectionContribChunk
+{
+  struct LNK_SectionContribChunk *next;
+  U64                             count;
+  U64                             cap;
+  String8                         sort_idx;
+  LNK_SectionContrib            **v;
+  LNK_SectionContrib             *v2;
+} LNK_SectionContribChunk;
+
+typedef struct LNK_SectionContribChunkList
+{
+  U64                      chunk_count;
+  LNK_SectionContribChunk *first;
+  LNK_SectionContribChunk *last;
+} LNK_SectionContribChunkList;
+
 typedef struct LNK_Section
 {
-  Arena            *arena;
-  U64               id;
-  String8           name;
-  String8           symbol_name;
-  COFF_SectionFlags flags;
-  String8           sort_index;
+  String8                     name;
+  COFF_SectionFlags           flags;
+  LNK_SectionContribChunkList contribs;
 
-  LNK_ChunkManager *cman;
-  LNK_Chunk        *root;
+  struct LNK_Section *merge_dst;
 
-  // overwhelming number of chunks don't have sort index and grouping
-  // them speeds up sort step
-  LNK_Chunk *nosort_chunk;
-
-  LNK_RelocList reloc_list;
-
-  B32 emit_header; // TODO: this is a hack to make reloc serializer work in resource converter
-  B32 has_layout;
-  B32 is_loose;
-
-  B32  is_merged;
-  U64  merge_sect_id;
-  U64 *id_map;
-
-  U64             isect;
-  U64             virt_off;
-  U64             file_off;
-  LNK_ChunkLayout layout;
+  U64 voff;
+  U64 vsize;
+  U64 fsize;
+  U64 foff;
+  U64 sect_idx;
 } LNK_Section;
 
 typedef struct LNK_SectionNode
 {
   struct LNK_SectionNode *next;
+  struct LNK_SectionNode *prev;
   LNK_Section             data;
 } LNK_SectionNode;
 
@@ -50,102 +73,58 @@ typedef struct LNK_SectionList
 
 typedef struct LNK_SectionArray
 {
-  U64          count;
-  LNK_Section *v;
-} LNK_SectionArray;
-
-typedef struct LNK_SectionPtrArray
-{
   U64           count;
   LNK_Section **v;
-} LNK_SectionPtrArray;
+} LNK_SectionArray;
 
 typedef struct LNK_SectionTable
 {
   Arena           *arena;
-  U64              section_virt_off;
-  U64              sect_align;
-  U64              file_align;
-  U64              id_max;
   LNK_SectionList  list;
   LNK_SectionList  merge_list;
-  LNK_SectionList  empties_list;
-  LNK_SectionNode *null_sect;
+  HashTable       *sect_ht;        // (name * COFF_SectionFlags) -> LNK_Section *
+  U64              next_sect_idx;
 } LNK_SectionTable;
 
-////////////////////////////////
+// --- Section Contrib Chunk List ----------------------------------------------
 
-typedef struct
-{
-  COFF_MachineType  machine;
-  Rng1U64          *range_arr;
-  LNK_Section      **sect_arr;
-} LNK_SectionDataBuilder;
+internal LNK_SectionContrib *       lnk_section_contrib_chunk_push(LNK_SectionContribChunk *chunk, U64 count);
+internal LNK_SectionContrib *       lnk_section_contrib_chunk_push_atomic(LNK_SectionContribChunk *chunk, U64 count);
+internal LNK_SectionContribChunk *  lnk_section_contrib_chunk_list_push_chunk(Arena *arena, LNK_SectionContribChunkList *list, U64 cap, String8 sort_idx);
+internal void                       lnk_section_contrib_chunk_list_concat_in_place(LNK_SectionContribChunkList *list, LNK_SectionContribChunkList *to_concat);
+internal LNK_SectionContribChunk ** lnk_array_from_section_contrib_chunk_list(Arena *arena, LNK_SectionContribChunkList list);
 
-////////////////////////////////
+// --- Section List ------------------------------------------------------------
 
-internal LNK_SectionNode * lnk_section_list_remove(LNK_SectionList *list, String8 name);
-internal LNK_SectionNode * lnk_section_list_search_node(LNK_SectionList *list, String8 name);
-internal LNK_Section     * lnk_section_list_search(LNK_SectionList *list, String8 name);
+internal LNK_SectionArray lnk_section_array_from_list(Arena *arena, LNK_SectionList list);
 
-internal LNK_SectionArray    lnk_section_array_from_list(Arena *arena, LNK_SectionList list);
-internal LNK_SectionPtrArray lnk_section_ptr_array_from_list(Arena *arena, LNK_SectionList list);
+// --- Section Table -----------------------------------------------------------
 
-internal void lnk_section_associate_chunks(LNK_Section *sect, LNK_Chunk *head, LNK_Chunk *associate);
+internal String8 lnk_make_name_with_flags(Arena *arena, String8 name, COFF_SectionFlags flags);
 
-internal LNK_Reloc * lnk_section_push_reloc(LNK_Section *sect, LNK_Chunk *chunk, LNK_RelocType type, U64 apply_off, LNK_Symbol *symbol);
-internal LNK_Reloc * lnk_section_push_reloc_undefined(LNK_Section *sect, LNK_Chunk *chunk, LNK_RelocType type, U64 apply_off, String8 undefined_symbol_name, LNK_SymbolScopeFlags scope_flags);
-
-internal void lnk_section_merge(LNK_Section *dst, LNK_Section *src);
-internal void lnk_section_build_data(LNK_Section *sect, COFF_MachineType machine);
-
-internal String8 lnk_make_section_sort_index(Arena *arena, String8 name, COFF_SectionFlags flags, U64 section_index);
-
-internal LNK_Chunk *   lnk_section_push_chunk_raw(LNK_Section *sect, LNK_Chunk *parent, void *data_ptr, U64 data_size, String8 sort_index);
-internal LNK_Chunk *   lnk_section_push_chunk_data(LNK_Section *sect, LNK_Chunk *parent, String8 data, String8 sort_index);
-internal LNK_Chunk *   lnk_section_push_chunk_u32(LNK_Section *sect, LNK_Chunk *parent, U32 value, String8 sort_index);
-internal LNK_Chunk *   lnk_section_push_chunk_u64(LNK_Section *sect, LNK_Chunk *parent, U32 value, String8 sort_index);
-internal LNK_Chunk *   lnk_section_push_chunk_bss(LNK_Section *sect, LNK_Chunk *parent, U64 size, String8 sort_index);
-internal LNK_Chunk *   lnk_section_push_chunk_list(LNK_Section *sect, LNK_Chunk *parent, String8 sort_index);
-
-internal LNK_SectionTable *  lnk_section_table_alloc(U64 section_virt_off, U64 sect_align, U64 file_align);
-internal void                lnk_section_table_release(LNK_SectionTable **st_ptr);
+internal LNK_SectionTable *  lnk_section_table_alloc(void);
+internal void                lnk_section_table_release(LNK_SectionTable **sectab_ptr);
 internal LNK_Section *       lnk_section_table_push(LNK_SectionTable *sectab, String8 name, COFF_SectionFlags flags);
-internal LNK_Section *       lnk_section_table_push_null(LNK_SectionTable *sectab);
-internal void                lnk_section_table_remove(LNK_SectionTable *sectab, LNK_SymbolTable *symtab, String8 name);
-internal LNK_Section *       lnk_section_table_search(LNK_SectionTable *sectab, String8 name);
-internal LNK_Section *       lnk_section_table_search_id(LNK_SectionTable *sectab, U64 id);
+internal LNK_SectionNode *   lnk_section_table_remove(LNK_SectionTable *sectab, String8 name);
+internal LNK_Section *       lnk_section_table_search(LNK_SectionTable *sectab, String8 name, COFF_SectionFlags flags);
+internal LNK_SectionArray    lnk_section_table_search_many(Arena *arena, LNK_SectionTable *sectab, String8 full_or_partial_name);
 internal void                lnk_section_table_merge(LNK_SectionTable *sectab, LNK_MergeDirectiveList merge_list);
-internal void                lnk_section_table_remove_empties(LNK_SectionTable *sectab, LNK_SymbolTable *symtab);
-internal void                lnk_section_table_build_data(TP_Context *tp, LNK_SectionTable *sectab, COFF_MachineType machine);
-internal void                lnk_section_table_assign_virtual_offsets(LNK_SectionTable *sectab);
-internal void                lnk_section_table_assign_file_offsets(LNK_SectionTable *sectab);
-internal void                lnk_section_table_assign_indices(LNK_SectionTable *sectab);
-internal String8             lnk_section_table_serialize(TP_Context *tp, Arena *arena, LNK_SectionTable *sectab, COFF_MachineType machine);
 
-internal LNK_ChunkPtr ** lnk_chunk_id_map_from_section_table(Arena *arena, LNK_SectionTable *sectab);
-internal LNK_Section **  lnk_sect_id_map_from_section_table(Arena *arena, LNK_SectionTable *sectab);
-internal LNK_ChunkRef    lnk_get_final_chunk_ref(LNK_Section **sect_id_map, LNK_ChunkRef chunk_ref);
-internal LNK_Section *   lnk_sect_from_chunk_ref(LNK_Section **sect_id_map, LNK_ChunkRef chunk_ref);
-internal LNK_Chunk *     lnk_chunk_from_chunk_ref(LNK_Section **sect_id_map, LNK_ChunkPtr **chunk_id_map, LNK_ChunkRef chunk_ref);
-internal U64             lnk_isect_from_chunk_ref(LNK_Section **sect_id_map, LNK_ChunkRef chunk_ref);
-internal U64             lnk_off_from_chunk_ref(LNK_Section **sect_id_map, LNK_ChunkRef chunk_ref);
-internal U64             lnk_virt_off_from_chunk_ref(LNK_Section **sect_id_map, LNK_ChunkRef chunk_ref);
-internal U64             lnk_file_off_from_chunk_ref(LNK_Section **sect_id_map, LNK_ChunkRef chunk_ref);
-internal U64             lnk_virt_size_from_chunk_ref(LNK_Section **sect_id_map, LNK_ChunkRef chunk_ref);
-internal U64             lnk_file_size_from_chunk_ref(LNK_Section **sect_id_map, LNK_ChunkRef chunk_ref);
-internal String8         lnk_data_from_chunk_ref(LNK_Section **sect_id_map, String8 image_data, LNK_ChunkRef chunk_ref);
-internal String8         lnk_data_from_chunk_ref_no_pad(LNK_Section **sect_id_map, String8 image_data, LNK_ChunkRef chunk_ref);
-internal ISectOff        lnk_sc_from_chunk_ref(LNK_Section **sect_id_map, LNK_ChunkRef chunk_ref);
-internal U64             lnk_virt_off_from_reloc(LNK_Section **sect_id_map, LNK_Reloc *reloc);
-internal U64             lnk_isect_from_symbol(LNK_Section **sect_id_map, LNK_Symbol *symbol);
-internal U64             lnk_sect_off_from_symbol(LNK_Section **sect_id_map, LNK_Symbol *symbol);
-internal U64             lnk_virt_off_from_symbol(LNK_Section **sect_id_map, LNK_Symbol *symbol);
-internal U64             lnk_file_off_from_symbol(LNK_Section **sect_id_map, LNK_Symbol *symbol);
-internal U64             lnk_virt_size_from_symbol(LNK_Section **sect_id_map, LNK_Symbol *symbol);
-internal U64             lnk_file_size_from_symbol(LNK_Section **sect_id_map, LNK_Symbol *symbol);
+// --- Section Finalization ----------------------------------------------------
 
-#if LNK_DEBUG_CHUNKS
-internal void lnk_dump_chunks(LNK_SectionTable *sectab);
-#endif
+internal void lnk_finalize_section_layout     (LNK_Section *sect, U64 file_align, U64 pad_size);
+internal void lnk_assign_section_index        (LNK_Section *sect, U64 sect_idx);
+internal void lnk_assign_section_virtual_space(LNK_Section *sect, U64 sect_align, U64 *voff_cursor);
+internal void lnk_assign_section_file_space   (LNK_Section *sect, U64 *foff_cursor);
 
+// --- Section Contribution ----------------------------------------------------
+
+internal U64 lnk_size_from_section_contrib(LNK_SectionContrib *sc);
+internal U64 lnk_voff_from_section_contrib(COFF_SectionHeader **image_section_table, LNK_SectionContrib *sc);
+internal U64 lnk_foff_from_section_contrib(COFF_SectionHeader **image_section_table, LNK_SectionContrib *sc);
+internal U64 lnk_fopl_from_section_contrib(COFF_SectionHeader **image_section_table, LNK_SectionContrib *sc);
+
+internal LNK_SectionContrib * lnk_get_first_section_contrib(LNK_Section *sect);
+internal LNK_SectionContrib * lnk_get_last_section_contrib(LNK_Section *sect);
+internal U64                  lnk_get_section_contrib_size(LNK_Section *sect);
+internal U64                  lnk_get_first_section_contrib_voff(COFF_SectionHeader **image_section_table, LNK_Section *sect);

@@ -57,9 +57,11 @@ union E_Value
   U64 u64;
   U32 u32;
   U16 u16;
+  U8 u8;
   S64 s64;
   S32 s32;
-  S32 s16;
+  S16 s16;
+  S8 s8;
   F64 f64;
   F32 f32;
 };
@@ -760,6 +762,7 @@ struct E_BaseCtx
   E_Module *modules;
   U64 modules_count;
   E_Module *primary_module;
+  DI_MatchStore *dbgi_match_store;
   
   // rjf: space hooks
   void *space_rw_user_data;
@@ -1291,8 +1294,7 @@ internal E_Key e_key_wrapf(E_Key key, char *fmt, ...);
 ////////////////////////////////
 //~ rjf: Eval Info Extraction
 
-internal U64 e_base_offset_from_eval(E_Eval eval);
-internal U64 e_range_size_from_eval(E_Eval eval);
+internal Rng1U64 e_range_from_eval(E_Eval eval);
 
 ////////////////////////////////
 //~ rjf: Debug Functions

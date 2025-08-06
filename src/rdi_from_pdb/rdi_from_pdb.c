@@ -39,124 +39,6 @@ p2r_hash_from_voff(U64 voff)
 }
 
 ////////////////////////////////
-//~ rjf: Command Line -> Conversion Inputs
-
-#if 0
-internal P2R_ConvertParams *
-p2r_user2convert_from_cmdln(Arena *arena, CmdLine *cmdline)
-{
-  P2R_ConvertParams *result = push_array(arena, P2R_ConvertParams, 1);
-  
-  //- rjf: get input pdb
-  {
-    String8 input_name = cmd_line_string(cmdline, str8_lit("pdb"));
-    if(input_name.size == 0)
-    {
-      str8_list_push(arena, &result->errors, str8_lit("Missing required parameter: '--pdb:<pdb_file>'"));
-    }
-    if(input_name.size > 0)
-    {
-      String8 input_data = os_data_from_file_path(arena, input_name);
-      if(input_data.size == 0)
-      {
-        str8_list_pushf(arena, &result->errors, "Could not load input PDB file from '%S'", input_name);
-      }
-      if(input_data.size != 0)
-      {
-        result->input_pdb_name = input_name;
-        result->input_pdb_data = input_data;
-      }
-    }
-  }
-  
-  //- rjf: get input exe
-  {
-    String8 input_name = cmd_line_string(cmdline, str8_lit("exe"));
-    if(input_name.size > 0)
-    {
-      String8 input_data = os_data_from_file_path(arena, input_name);
-      if(input_data.size == 0)
-      {
-        str8_list_pushf(arena, &result->errors, "Could not load input EXE file from '%S'", input_name);
-      }
-      if(input_data.size != 0)
-      {
-        result->input_exe_name = input_name;
-        result->input_exe_data = input_data;
-      }
-    }
-  }
-  
-  //- rjf: get output name
-  {
-    result->output_name = cmd_line_string(cmdline, str8_lit("out"));
-    if(result->output_name.size == 0)
-    {
-      str8_list_pushf(arena, &result->errors, "Missing required parameter: '--out:<output_path>'");
-    }
-  }
-  
-  //- rjf: define string -> section flag bits
-#define FlagNameMapXList \
-Case("sections",            BinarySections)\
-Case("units",               Units)\
-Case("procedures",          Procedures)\
-Case("globals",             GlobalVariables)\
-Case("threadvars",          ThreadVariables)\
-Case("scopes",              Scopes)\
-Case("locals",              Locals)\
-Case("types",               Types)\
-Case("udts",                UDTs)\
-Case("lines",               LineInfo)\
-Case("globals_name_map",    GlobalVariableNameMap)\
-Case("threadvars_name_map", ThreadVariableNameMap)\
-Case("procedure_name_map",  ProcedureNameMap)\
-Case("type_name_map",       TypeNameMap)\
-Case("link_name_map",       LinkNameProcedureNameMap)\
-Case("source_path_name_map",NormalSourcePathNameMap)\
-  
-  //- rjf: get section flags
-  {
-    result->flags = P2R_ConvertFlag_All;
-    String8List only_names = cmd_line_strings(cmdline, str8_lit("only"));
-    String8List omit_names = cmd_line_strings(cmdline, str8_lit("only"));
-    if(only_names.node_count != 0)
-    {
-      result->flags = 0;
-      for(String8Node *n = only_names.first; n != 0; n = n->next)
-      {
-        String8 string = n->string;
-#define Case(str, flag) if(str8_match(string, str8_lit(str), StringMatchFlag_CaseInsensitive)) {result->flags |= P2R_ConvertFlag_##flag;}
-        FlagNameMapXList;
-#undef Case
-      }
-    }
-    if(omit_names.node_count != 0)
-    {
-      for(String8Node *n = omit_names.first; n != 0; n = n->next)
-      {
-        String8 string = n->string;
-#define Case(str, flag) if(str8_match(string, str8_lit(str), StringMatchFlag_CaseInsensitive)) {result->flags &= ~P2R_ConvertFlag_##flag;}
-        FlagNameMapXList;
-#undef Case
-      }
-    }
-  }
-  
-  //- rjf: get other flags
-  {
-    if(cmd_line_has_flag(cmdline, str8_lit("deterministic")))
-    {
-      result->flags |= P2R_ConvertFlag_Deterministic;
-    }
-  }
-  
-#undef FlagNameMapXList
-  return result;
-}
-#endif
-
-////////////////////////////////
 //~ rjf: COFF <-> RDI Canonical Conversions
 
 internal RDI_BinarySectionFlags
@@ -643,30 +525,30 @@ ASYNC_WORK_DEF(p2r_gather_unit_src_file_work)
             lines_n != 0;
             lines_n = lines_n->next)
         {
-          // rjf: file name -> normalized file path
+          // rjf: file name -> sanitized file path
           String8 file_path = lines_n->v.file_name;
-          String8 file_path_normalized = lower_from_str8(scratch.arena, str8_skip_chop_whitespace(file_path));
+          String8 file_path_sanitized = str8_copy(scratch.arena, str8_skip_chop_whitespace(file_path));
           {
-            PathStyle file_path_normalized_style = path_style_from_str8(file_path_normalized);
-            String8List file_path_normalized_parts = str8_split_path(scratch.arena, file_path_normalized);
-            if(file_path_normalized_style == PathStyle_Relative)
+            PathStyle file_path_sanitized_style = path_style_from_str8(file_path_sanitized);
+            String8List file_path_sanitized_parts = str8_split_path(scratch.arena, file_path_sanitized);
+            if(file_path_sanitized_style == PathStyle_Relative)
             {
               String8List obj_folder_path_parts = str8_split_path(scratch.arena, obj_folder_path);
-              str8_list_concat_in_place(&obj_folder_path_parts, &file_path_normalized_parts);
-              file_path_normalized_parts = obj_folder_path_parts;
-              file_path_normalized_style = path_style_from_str8(obj_folder_path);
+              str8_list_concat_in_place(&obj_folder_path_parts, &file_path_sanitized_parts);
+              file_path_sanitized_parts = obj_folder_path_parts;
+              file_path_sanitized_style = path_style_from_str8(obj_folder_path);
             }
-            str8_path_list_resolve_dots_in_place(&file_path_normalized_parts, file_path_normalized_style);
-            file_path_normalized = str8_path_list_join_by_style(scratch.arena, &file_path_normalized_parts, file_path_normalized_style);
+            str8_path_list_resolve_dots_in_place(&file_path_sanitized_parts, file_path_sanitized_style);
+            file_path_sanitized = str8_path_list_join_by_style(scratch.arena, &file_path_sanitized_parts, file_path_sanitized_style);
           }
           
-          // rjf: normalized file path -> source file node
-          U64 file_path_normalized_hash = rdi_hash(file_path_normalized.str, file_path_normalized.size);
-          U64 hit_path_slot = file_path_normalized_hash%hit_path_slots_count;
+          // rjf: sanitized file path -> source file node
+          U64 file_path_sanitized_hash = rdi_hash(file_path_sanitized.str, file_path_sanitized.size);
+          U64 hit_path_slot = file_path_sanitized_hash%hit_path_slots_count;
           String8Node *hit_path_node = 0;
           for(String8Node *n = hit_path_slots[hit_path_slot]; n != 0; n = n->next)
           {
-            if(str8_match(n->string, file_path_normalized, 0))
+            if(str8_match(n->string, file_path_sanitized, 0))
             {
               hit_path_node = n;
               break;
@@ -676,8 +558,8 @@ ASYNC_WORK_DEF(p2r_gather_unit_src_file_work)
           {
             hit_path_node = push_array(scratch.arena, String8Node, 1);
             SLLStackPush(hit_path_slots[hit_path_slot], hit_path_node);
-            hit_path_node->string = file_path_normalized;
-            str8_list_push(scratch.arena, &src_file_paths, push_str8_copy(arena, file_path_normalized));
+            hit_path_node->string = file_path_sanitized;
+            str8_list_push(scratch.arena, &src_file_paths, push_str8_copy(arena, file_path_sanitized));
           }
         }
       }
@@ -906,32 +788,32 @@ ASYNC_WORK_DEF(p2r_unit_convert_work)
         {
           CV_C13LinesParsed *lines = &lines_n->v;
           
-          // rjf: file name -> normalized file path
+          // rjf: file name -> sanitized file path
           String8 file_path = lines->file_name;
-          String8 file_path_normalized = lower_from_str8(scratch.arena, str8_skip_chop_whitespace(file_path));
+          String8 file_path_sanitized = str8_copy(scratch.arena, str8_skip_chop_whitespace(file_path));
           {
-            PathStyle file_path_normalized_style = path_style_from_str8(file_path_normalized);
-            String8List file_path_normalized_parts = str8_split_path(scratch.arena, file_path_normalized);
-            if(file_path_normalized_style == PathStyle_Relative)
+            PathStyle file_path_sanitized_style = path_style_from_str8(file_path_sanitized);
+            String8List file_path_sanitized_parts = str8_split_path(scratch.arena, file_path_sanitized);
+            if(file_path_sanitized_style == PathStyle_Relative)
             {
               String8List obj_folder_path_parts = str8_split_path(scratch.arena, obj_folder_path);
-              str8_list_concat_in_place(&obj_folder_path_parts, &file_path_normalized_parts);
-              file_path_normalized_parts = obj_folder_path_parts;
-              file_path_normalized_style = path_style_from_str8(obj_folder_path);
+              str8_list_concat_in_place(&obj_folder_path_parts, &file_path_sanitized_parts);
+              file_path_sanitized_parts = obj_folder_path_parts;
+              file_path_sanitized_style = path_style_from_str8(obj_folder_path);
             }
-            str8_path_list_resolve_dots_in_place(&file_path_normalized_parts, file_path_normalized_style);
-            file_path_normalized = str8_path_list_join_by_style(scratch.arena, &file_path_normalized_parts, file_path_normalized_style);
+            str8_path_list_resolve_dots_in_place(&file_path_sanitized_parts, file_path_sanitized_style);
+            file_path_sanitized = str8_path_list_join_by_style(scratch.arena, &file_path_sanitized_parts, file_path_sanitized_style);
           }
           
-          // rjf: normalized file path -> source file node
-          U64 file_path_normalized_hash = rdi_hash(file_path_normalized.str, file_path_normalized.size);
-          U64 src_file_slot = file_path_normalized_hash%in->src_file_map->slots_count;
+          // rjf: sanitized file path -> source file node
+          U64 file_path_sanitized_hash = rdi_hash(file_path_sanitized.str, file_path_sanitized.size);
+          U64 src_file_slot = file_path_sanitized_hash%in->src_file_map->slots_count;
           P2R_SrcFileNode *src_file_node = 0;
           if(lines->line_count != 0)
           {
             for(P2R_SrcFileNode *n = in->src_file_map->slots[src_file_slot]; n != 0; n = n->next)
             {
-              if(str8_match(n->src_file->normal_full_path, file_path_normalized, 0))
+              if(str8_match(n->src_file->path, file_path_sanitized, 0))
               {
                 src_file_node = n;
                 break;
@@ -1102,30 +984,30 @@ ASYNC_WORK_DEF(p2r_unit_convert_work)
                   seq_file_name = pdb_strtbl_string_from_off(in->pdb_strtbl, name_off);
                 }
                 
-                // rjf: file name -> normalized file path
+                // rjf: file name -> sanitized file path
                 String8 file_path            = seq_file_name;
-                String8 file_path_normalized = lower_from_str8(scratch.arena, str8_skip_chop_whitespace(file_path));
+                String8 file_path_sanitized  = str8_copy(scratch.arena, str8_skip_chop_whitespace(file_path));
                 {
-                  PathStyle file_path_normalized_style = path_style_from_str8(file_path_normalized);
-                  String8List file_path_normalized_parts = str8_split_path(scratch.arena, file_path_normalized);
-                  if(file_path_normalized_style == PathStyle_Relative)
+                  PathStyle file_path_sanitized_style = path_style_from_str8(file_path_sanitized);
+                  String8List file_path_sanitized_parts = str8_split_path(scratch.arena, file_path_sanitized);
+                  if(file_path_sanitized_style == PathStyle_Relative)
                   {
                     String8List obj_folder_path_parts = str8_split_path(scratch.arena, obj_folder_path);
-                    str8_list_concat_in_place(&obj_folder_path_parts, &file_path_normalized_parts);
-                    file_path_normalized_parts = obj_folder_path_parts;
-                    file_path_normalized_style = path_style_from_str8(obj_folder_path);
+                    str8_list_concat_in_place(&obj_folder_path_parts, &file_path_sanitized_parts);
+                    file_path_sanitized_parts = obj_folder_path_parts;
+                    file_path_sanitized_style = path_style_from_str8(obj_folder_path);
                   }
-                  str8_path_list_resolve_dots_in_place(&file_path_normalized_parts, file_path_normalized_style);
-                  file_path_normalized = str8_path_list_join_by_style(scratch.arena, &file_path_normalized_parts, file_path_normalized_style);
+                  str8_path_list_resolve_dots_in_place(&file_path_sanitized_parts, file_path_sanitized_style);
+                  file_path_sanitized = str8_path_list_join_by_style(scratch.arena, &file_path_sanitized_parts, file_path_sanitized_style);
                 }
                 
-                // rjf: normalized file path -> source file node
-                U64              file_path_normalized_hash = rdi_hash(file_path_normalized.str, file_path_normalized.size);
-                U64              src_file_slot             = file_path_normalized_hash%in->src_file_map->slots_count;
+                // rjf: sanitized file path -> source file node
+                U64              file_path_sanitized_hash = rdi_hash(file_path_sanitized.str, file_path_sanitized.size);
+                U64              src_file_slot             = file_path_sanitized_hash%in->src_file_map->slots_count;
                 P2R_SrcFileNode *src_file_node             = 0;
                 for(P2R_SrcFileNode *n = in->src_file_map->slots[src_file_slot]; n != 0; n = n->next)
                 {
-                  if(str8_match(n->src_file->normal_full_path, file_path_normalized, 0))
+                  if(str8_match(n->src_file->path, file_path_sanitized, 0))
                   {
                     src_file_node = n;
                     break;
@@ -3636,13 +3518,13 @@ p2r_convert(Arena *arena, ASYNC_Root *async_root, P2R_ConvertParams *in)
     {
       for EachIndex(path_idx, tasks_outputs[idx].src_file_paths.count)
       {
-        String8 file_path_normalized = tasks_outputs[idx].src_file_paths.v[path_idx];
-        U64 file_path_normalized_hash = rdi_hash(file_path_normalized.str, file_path_normalized.size);
-        U64 src_file_slot = file_path_normalized_hash%src_file_map.slots_count;
+        String8 file_path_sanitized = tasks_outputs[idx].src_file_paths.v[path_idx];
+        U64 file_path_sanitized_hash = rdi_hash(file_path_sanitized.str, file_path_sanitized.size);
+        U64 src_file_slot = file_path_sanitized_hash%src_file_map.slots_count;
         P2R_SrcFileNode *src_file_node = 0;
         for(P2R_SrcFileNode *n = src_file_map.slots[src_file_slot]; n != 0; n = n->next)
         {
-          if(str8_match(n->src_file->normal_full_path, file_path_normalized, 0))
+          if(str8_match(n->src_file->path, file_path_sanitized, 0))
           {
             src_file_node = n;
             break;
@@ -3653,7 +3535,7 @@ p2r_convert(Arena *arena, ASYNC_Root *async_root, P2R_ConvertParams *in)
           src_file_node = push_array(scratch.arena, P2R_SrcFileNode, 1);
           SLLStackPush(src_file_map.slots[src_file_slot], src_file_node);
           src_file_node->src_file = rdim_src_file_chunk_list_push(arena, &all_src_files__sequenceless, total_path_count);
-          src_file_node->src_file->normal_full_path = push_str8_copy(arena, file_path_normalized);
+          src_file_node->src_file->path = push_str8_copy(arena, file_path_sanitized);
         }
       }
     }
@@ -3826,25 +3708,43 @@ p2r_convert(Arena *arena, ASYNC_Root *async_root, P2R_ConvertParams *in)
   // from regular type info.
   //
   RDIM_Type **itype_type_ptrs = 0;
-  RDIM_TypeChunkList all_types = rdim_init_type_chunk_list(arena, top_level_info.arch);
+  RDIM_Type **basic_type_ptrs = 0;
+  RDIM_TypeChunkList all_types = {0};
+#define p2r_builtin_type_ptr_from_kind(kind) ((basic_type_ptrs && RDI_TypeKind_FirstBuiltIn <= (kind) && (kind) <= RDI_TypeKind_LastBuiltIn) ? (basic_type_ptrs[(kind) - RDI_TypeKind_FirstBuiltIn]) : 0)
 #define p2r_type_ptr_from_itype(itype) ((itype_type_ptrs && (itype) < itype_opl) ? (itype_type_ptrs[(itype_fwd_map[(itype)] ? itype_fwd_map[(itype)] : (itype))]) : 0)
   if(in->subset_flags & RDIM_SubsetFlag_Types) ProfScope("types pass 3: construct all root/stub types from TPI")
   {
     itype_type_ptrs = push_array(arena, RDIM_Type *, (U64)(itype_opl));
+    basic_type_ptrs = push_array(arena, RDIM_Type *, (RDI_TypeKind_LastBuiltIn - RDI_TypeKind_FirstBuiltIn + 1));
     
-    //////////////////////////
-    //- basic type aliases
+    ////////////////////////////
+    //- rjf: build basic types
     //
     {
-      RDIM_DataModel data_model = rdim_infer_data_model(OperatingSystem_Windows, top_level_info.arch);
-      RDI_TypeKind short_type      = rdim_short_type_from_data_model(data_model);
-      RDI_TypeKind ushort_type     = rdim_unsigned_short_type_from_data_model(data_model);
-      RDI_TypeKind long_type       = rdim_long_type_from_data_model(data_model);
-      RDI_TypeKind ulong_type      = rdim_unsigned_long_type_from_data_model(data_model);
-      RDI_TypeKind long_long_type  = rdim_long_long_type_from_data_model(data_model);
-      RDI_TypeKind ulong_long_type = rdim_unsigned_long_long_type_from_data_model(data_model);
-      RDI_TypeKind ptr_type        = rdim_pointer_size_t_type_from_data_model(data_model);
-      
+      for(RDI_TypeKind type_kind = RDI_TypeKind_FirstBuiltIn;
+          type_kind <= RDI_TypeKind_LastBuiltIn;
+          type_kind += 1)
+      {
+        RDIM_Type *type = rdim_type_chunk_list_push(arena, &all_types, 512);
+        type->name.str  = rdi_string_from_type_kind(type_kind, &type->name.size);
+        type->kind      = type_kind;
+        type->byte_size = rdi_size_from_basic_type_kind(type_kind);
+        basic_type_ptrs[type_kind - RDI_TypeKind_FirstBuiltIn] = type;
+      }
+    }
+    
+    ////////////////////////////
+    //- rjf: build basic type aliases
+    //
+    {
+      RDIM_DataModel data_model = rdim_data_model_from_os_arch(OperatingSystem_Windows, top_level_info.arch);
+      RDI_TypeKind short_type      = rdim_short_type_kind_from_data_model(data_model);
+      RDI_TypeKind ushort_type     = rdim_unsigned_short_type_kind_from_data_model(data_model);
+      RDI_TypeKind long_type       = rdim_long_type_kind_from_data_model(data_model);
+      RDI_TypeKind ulong_type      = rdim_unsigned_long_type_kind_from_data_model(data_model);
+      RDI_TypeKind long_long_type  = rdim_long_long_type_kind_from_data_model(data_model);
+      RDI_TypeKind ulong_long_type = rdim_unsigned_long_long_type_kind_from_data_model(data_model);
+      RDI_TypeKind ptr_type        = rdim_pointer_size_t_type_kind_from_data_model(data_model);
       struct
       {
         char *       name;
@@ -3894,22 +3794,22 @@ p2r_convert(Arena *arena, ASYNC_Root *async_root, P2R_ConvertParams *in)
         { "char32_t"             , RDI_TypeKind_Char32     , CV_BasicType_CHAR32     }, // always UTF-32
         { "__pointer"            , ptr_type                , CV_BasicType_PTR        }
       };
-      
-      itype_type_ptrs[CV_BasicType_NOTYPE]  = rdim_builtin_type_from_kind(all_types, RDI_TypeKind_NULL);
-      itype_type_ptrs[CV_BasicType_HRESULT] = rdim_builtin_type_from_kind(all_types, RDI_TypeKind_HResult);
-      itype_type_ptrs[CV_BasicType_VOID]    = rdim_builtin_type_from_kind(all_types, RDI_TypeKind_Void);
-      
-      for(U64 i = 0; i < ArrayCount(table); i += 1)
+      for EachElement(idx, table)
       {
         RDIM_Type *builtin_alias   = rdim_type_chunk_list_push(arena, &all_types, tpi_leaf->itype_opl);
         builtin_alias->kind        = RDI_TypeKind_Alias;
-        builtin_alias->name        = str8_cstring(table[i].name);
-        builtin_alias->direct_type = rdim_builtin_type_from_kind(all_types, table[i].kind_rdi);
-        builtin_alias->byte_size   = rdi_size_from_basic_type_kind(table[i].kind_rdi);
-        itype_type_ptrs[table[i].kind_cv] = builtin_alias;
+        builtin_alias->name        = str8_cstring(table[idx].name);
+        builtin_alias->direct_type = p2r_builtin_type_ptr_from_kind(table[idx].kind_rdi);
+        builtin_alias->byte_size   = rdi_size_from_basic_type_kind(table[idx].kind_rdi);
+        itype_type_ptrs[table[idx].kind_cv] = builtin_alias;
       }
+      itype_type_ptrs[CV_BasicType_HRESULT] = basic_type_ptrs[RDI_TypeKind_HResult - RDI_TypeKind_FirstBuiltIn];
+      itype_type_ptrs[CV_BasicType_VOID]    = basic_type_ptrs[RDI_TypeKind_Void - RDI_TypeKind_FirstBuiltIn];
     }
     
+    ////////////////////////////
+    //- rjf: build types from TPI
+    //
     for(CV_TypeId root_itype = 0; root_itype < itype_opl; root_itype += 1)
     {
       for(P2R_TypeIdChain *itype_chain = itype_chains[root_itype];
@@ -4340,6 +4240,8 @@ p2r_convert(Arena *arena, ASYNC_Root *async_root, P2R_ConvertParams *in)
       }
     }
   }
+#undef p2r_type_ptr_from_itype
+#undef p2r_builtin_type_ptr_from_kind
   
   //////////////////////////////////////////////////////////////
   //- rjf: types pass 4: kick off UDT build
@@ -4504,96 +4406,4 @@ p2r_convert(Arena *arena, ASYNC_Root *async_root, P2R_ConvertParams *in)
 }
 
 ////////////////////////////////
-
-internal B32
-p2r_has_symbol_ref(String8 msf_data, String8List symbol_list, MSF_RawStreamTable *st)
-{
-  Temp scratch = scratch_begin(0,0);
-  
-  B32 has_ref = 0;
-  
-  String8        dbi_data = msf_data_from_stream_number(scratch.arena, msf_data, st, PDB_FixedStream_Dbi);
-  PDB_DbiParsed *dbi      = pdb_dbi_from_data(scratch.arena, dbi_data);
-  if(dbi)
-  {
-    String8        gsi_data   = msf_data_from_stream_number(scratch.arena, msf_data, st, dbi->gsi_sn);
-    PDB_GsiParsed *gsi_parsed = pdb_gsi_from_data(scratch.arena, gsi_data);
-    if(gsi_parsed)
-    {
-      String8 symbol_data = msf_data_from_stream_number(scratch.arena, msf_data, st, dbi->sym_sn);
-      
-      for(String8Node *symbol_n = symbol_list.first; symbol_n != 0; symbol_n = symbol_n->next)
-      {
-        U64 symbol_off = pdb_gsi_symbol_from_string(gsi_parsed, symbol_data, symbol_n->string);
-        if(symbol_off < symbol_data.size)
-        {
-          has_ref = 1;
-          break;
-        }
-      }
-    }
-  }
-  
-  scratch_end(scratch);
-  return has_ref;
-}
-
-internal B32
-p2r_has_file_ref(String8 msf_data, String8List file_list, MSF_RawStreamTable *st)
-{
-  Temp scratch = scratch_begin(0,0);
-  
-  B32 has_ref = 0;
-  
-  String8   info_data = msf_data_from_stream_number(scratch.arena, msf_data, st, PDB_FixedStream_Info);
-  PDB_Info *info      = pdb_info_from_data(scratch.arena, info_data);
-  if(info)
-  {
-    PDB_NamedStreamTable *named_streams = pdb_named_stream_table_from_info(scratch.arena, info);
-    if(named_streams)
-    {
-      MSF_StreamNumber  strtbl_sn   = named_streams->sn[PDB_NamedStream_StringTable];
-      String8           strtbl_data = msf_data_from_stream_number(scratch.arena, msf_data, st, strtbl_sn);
-      PDB_Strtbl       *strtbl      = pdb_strtbl_from_data(scratch.arena, strtbl_data);
-      if(strtbl)
-      {
-        for(String8Node *file_n = file_list.first; file_n != 0; file_n = file_n->next)
-        {
-          U32 off = pdb_strtbl_off_from_string(strtbl, file_n->string);
-          if(off != max_U32)
-          {
-            has_ref = 1;
-            break;
-          }
-        }
-      }
-    }
-  }
-  
-  scratch_end(scratch);
-  return has_ref;
-}
-
-internal B32
-p2r_has_symbol_or_file_ref(String8 msf_data, String8List symbol_list, String8List file_list)
-{
-  Temp scratch = scratch_begin(0,0);
-  
-  B32 has_ref = 0;
-  
-  MSF_RawStreamTable *st = msf_raw_stream_table_from_data(scratch.arena, msf_data);
-  
-  if(!has_ref && symbol_list.node_count)
-  {
-    has_ref = p2r_has_symbol_ref(msf_data, symbol_list, st);
-  }
-  
-  if(!has_ref && file_list.node_count)
-  {
-    has_ref = p2r_has_file_ref(msf_data, file_list, st);
-  }
-  
-  scratch_end(scratch);
-  return has_ref;
-}
 

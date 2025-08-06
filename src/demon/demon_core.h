@@ -139,6 +139,7 @@ struct DMN_TrapChunkList
 typedef struct DMN_RunCtrls DMN_RunCtrls;
 struct DMN_RunCtrls
 {
+  DMN_Handle priority_thread;
   DMN_Handle single_step_thread;
   B8 ignore_previous_exception;
   B8 run_entities_are_unfrozen;
@@ -220,11 +221,6 @@ internal void dmn_halt(U64 code, U64 user_data);
 
 ////////////////////////////////
 //~ rjf: @dmn_os_hooks Introspection Functions (Implemented Per-OS)
-
-//- rjf: run/memory/register counters
-internal U64 dmn_run_gen(void);
-internal U64 dmn_mem_gen(void);
-internal U64 dmn_reg_gen(void);
 
 //- rjf: non-blocking-control-thread access barriers
 internal B32 dmn_access_open(void);

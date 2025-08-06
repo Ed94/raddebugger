@@ -2,7 +2,10 @@
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 ////////////////////////////////
-//~ rjf: post-0.9.19 TODO notes
+//~ rjf: post-0.9.20 TODO notes
+//
+//- urgent fixes
+// [ ] hardware breakpoints regression (global eval in ctrl)
 //
 //- memory view
 // [ ] have smaller visible range than entire memory
@@ -31,6 +34,8 @@
 //     a way we can defer to the underlying shell in a non-horrible way...?
 //
 //- stepping or breakpoint oddness/fixes
+// [ ] halting during a spoof-ridden step leaves the spoofs in place!!!
+//     (repro via LOTS of code on one line & halting)
 // [ ] stepping-onto a line with a conditional breakpoint, which fails, causes a
 // single step over the first instruction of that line, even if the thread
 // would've stopped at the first instruction due to the step, were that bp not
@@ -106,7 +111,6 @@
 //- eval improvements
 // [ ] maybe add extra caching layer to process memory querying? we pay a pretty
 //     heavy cost even to just read 8 bytes...
-// [ ] evaluate `foo.bar` symbol names without escape hatch?
 // [ ] serializing eval view maps (?)
 // [ ] EVAL LOOKUP RULES -> currently going 0 -> rdis_count, but we need
 //  to prioritize the primary rdi
@@ -140,7 +144,6 @@
 // [ ] investigate wide-conversion performance
 //  [ ] oversubscribing cores?
 //  [ ] conversion crashes?
-//  [ ] fastpath lookup to determine debug info relevance?
 // [ ] live++ investigations - ctrl+alt+f11 in UE?
 //
 //- memory usage improvements
@@ -180,6 +183,12 @@
 //     is not correctly incremented.
 // [x] output: add option for scroll-to-bottom - ensure this shows up in universal ctx menu
 // [x] auto-annotations for non-locals
+// [x] []string being sized by [0], due to `.` applying to first ^string
+// [x] process memory cache sometimes is not correctly updating - best repro
+//     case so far is (for some reason?) only hover evaluation - only spotted
+//     on laptop in debug builds. g0 ctrl_bindings.bindings initialization.
+// [x] evaluate `foo.bar` symbol names without escape hatch?
+//  [x] fastpath lookup to determine debug info relevance?
 
 ////////////////////////////////
 //~ rjf: Build Options
@@ -197,23 +206,18 @@
 ////////////////////////////////
 //~ rjf: Includes
 
-//- rjf: [lib]
-#include "third_party/rad_lzb_simple/rad_lzb_simple.h"
-#include "third_party/rad_lzb_simple/rad_lzb_simple.c"
-
 //- rjf: [h]
 #include "base/base_inc.h"
 #include "linker/hash_table.h"
 #include "os/os_inc.h"
 #include "async/async.h"
-#include "rdi_format/rdi_format_local.h"
+#include "rdi/rdi_local.h"
 #include "rdi_make/rdi_make_local.h"
 #include "mdesk/mdesk.h"
 #include "hash_store/hash_store.h"
 #include "file_stream/file_stream.h"
 #include "text_cache/text_cache.h"
 #include "mutable_text/mutable_text.h"
-#include "path/path.h"
 #include "coff/coff.h"
 #include "coff/coff_parse.h"
 #include "pe/pe.h"
@@ -226,10 +230,7 @@
 #include "pdb/pdb.h"
 #include "pdb/pdb_parse.h"
 #include "pdb/pdb_stringize.h"
-#include "dwarf/dwarf.h"
-#include "dwarf/dwarf_parse.h"
-#include "dwarf/dwarf_coff.h"
-#include "dwarf/dwarf_elf.h"
+#include "dwarf/dwarf_inc.h"
 #include "rdi_from_coff/rdi_from_coff.h"
 #include "rdi_from_elf/rdi_from_elf.h"
 #include "rdi_from_pdb/rdi_from_pdb.h"
@@ -260,14 +261,13 @@
 #include "linker/hash_table.c"
 #include "os/os_inc.c"
 #include "async/async.c"
-#include "rdi_format/rdi_format_local.c"
+#include "rdi/rdi_local.c"
 #include "rdi_make/rdi_make_local.c"
 #include "mdesk/mdesk.c"
 #include "hash_store/hash_store.c"
 #include "file_stream/file_stream.c"
 #include "text_cache/text_cache.c"
 #include "mutable_text/mutable_text.c"
-#include "path/path.c"
 #include "coff/coff.c"
 #include "coff/coff_parse.c"
 #include "pe/pe.c"
@@ -280,10 +280,7 @@
 #include "pdb/pdb.c"
 #include "pdb/pdb_parse.c"
 #include "pdb/pdb_stringize.c"
-#include "dwarf/dwarf.c"
-#include "dwarf/dwarf_parse.c"
-#include "dwarf/dwarf_coff.c"
-#include "dwarf/dwarf_elf.c"
+#include "dwarf/dwarf_inc.c"
 #include "rdi_from_coff/rdi_from_coff.c"
 #include "rdi_from_elf/rdi_from_elf.c"
 #include "rdi_from_pdb/rdi_from_pdb.c"
@@ -497,83 +494,6 @@ entry_point(CmdLine *cmd_line)
         rd_init(cmd_line);
       }
       
-      //- rjf: setup initial target from command line args
-      {
-        Temp scratch = scratch_begin(0, 0);
-        String8List target_args = {0};
-        {
-          B32 after_first_non_flag = 0;
-          for(U64 idx = 1; idx < cmd_line->argc; idx += 1)
-          {
-            String8 arg = str8_cstring(cmd_line->argv[idx]);
-            if(!str8_match(str8_prefix(arg, 1), str8_lit("-"), 0) &&
-               !str8_match(str8_prefix(arg, 1), str8_lit("--"), 0) &&
-               !str8_match(str8_prefix(arg, 1), str8_lit("/"), 0))
-            {
-              after_first_non_flag = 1;
-            }
-            if(after_first_non_flag)
-            {
-              str8_list_push(scratch.arena, &target_args, arg);
-            }
-          }
-        }
-        if(target_args.node_count > 0 && target_args.first->string.size != 0)
-        {
-          //- rjf: unpack command line inputs
-          String8 executable_name_string = {0};
-          String8 arguments_string = {0};
-          String8 working_directory_string = {0};
-          {
-            // rjf: unpack full executable path
-            if(target_args.first->string.size != 0)
-            {
-              String8 exe_name = target_args.first->string;
-              PathStyle style = path_style_from_str8(exe_name);
-              if(style == PathStyle_Relative)
-              {
-                String8 current_path = os_get_current_path(scratch.arena);
-                exe_name = push_str8f(scratch.arena, "%S/%S", current_path, exe_name);
-                exe_name = path_normalized_from_string(scratch.arena, exe_name);
-              }
-              executable_name_string = exe_name;
-            }
-            
-            // rjf: unpack working directory
-            if(target_args.first->string.size != 0)
-            {
-              String8 path_part_of_arg = str8_chop_last_slash(target_args.first->string);
-              if(path_part_of_arg.size != 0)
-              {
-                String8 path = push_str8f(scratch.arena, "%S/", path_part_of_arg);
-                working_directory_string = path;
-              }
-            }
-            
-            // rjf: unpack arguments
-            String8List passthrough_args_list = {0};
-            for(String8Node *n = target_args.first->next; n != 0; n = n->next)
-            {
-              str8_list_push(scratch.arena, &passthrough_args_list, n->string);
-            }
-            StringJoin join = {str8_lit(""), str8_lit(" "), str8_lit("")};
-            arguments_string = str8_list_join(scratch.arena, &passthrough_args_list, &join);
-          }
-          
-          //- rjf: build config tree
-          RD_Cfg *command_line_root = rd_cfg_child_from_string(rd_state->root_cfg, str8_lit("command_line"));
-          RD_Cfg *target = rd_cfg_new(command_line_root, str8_lit("target"));
-          RD_Cfg *exe    = rd_cfg_new(target, str8_lit("executable"));
-          RD_Cfg *args   = rd_cfg_new(target, str8_lit("arguments"));
-          RD_Cfg *wdir   = rd_cfg_new(target, str8_lit("working_directory"));
-          rd_cfg_new(exe, executable_name_string);
-          rd_cfg_new(args, arguments_string);
-          rd_cfg_new(wdir, working_directory_string);
-          rd_cmd(RD_CmdKind_SelectTarget, .cfg = target->id);
-        }
-        scratch_end(scratch);
-      }
-      
       //- rjf: set up shared resources for ipc to this instance; launch IPC signaler thread
       {
         Temp scratch = scratch_begin(0, 0);
@@ -652,11 +572,7 @@ entry_point(CmdLine *cmd_line)
               if(dst_ws != &rd_nil_window_state)
               {
                 dst_ws->window_temporarily_focused_ipc = 1;
-                U64 first_space_pos = str8_find_needle(msg, 0, str8_lit(" "), 0);
-                String8 cmd_kind_name_string = str8_prefix(msg, first_space_pos);
-                String8 cmd_args_string = str8_skip_chop_whitespace(str8_skip(msg, first_space_pos));
-                RD_CmdKindInfo *cmd_kind_info = rd_cmd_kind_info_from_string(cmd_kind_name_string);
-                if(cmd_kind_info != &rd_nil_cmd_kind_info) RD_RegsScope()
+                RD_RegsScope()
                 {
                   if(dst_ws->cfg_id != rd_regs()->window)
                   {
@@ -668,13 +584,7 @@ entry_point(CmdLine *cmd_line)
                     rd_regs()->view   = panel_tree.focused->selected_tab->id;
                     scratch_end(scratch);
                   }
-                  rd_regs_fill_slot_from_string(cmd_kind_info->query.slot, cmd_args_string);
-                  rd_push_cmd(cmd_kind_name_string, rd_regs());
-                  rd_request_frame();
-                }
-                else
-                {
-                  log_user_errorf("\"%S\" is not a command.", cmd_kind_name_string);
+                  rd_cmd(RD_CmdKind_RunExternalDriverTextCommand, .string = msg);
                   rd_request_frame();
                 }
               }
@@ -782,15 +692,17 @@ entry_point(CmdLine *cmd_line)
       
       //- rjf: got resources -> write message
       B32 wrote_message = 0;
-      if(ipc_sender2main_shared_memory_base != 0 &&
+      if(dst_pid != 0 &&
+         ipc_sender2main_shared_memory_base != 0 &&
          os_semaphore_take(ipc_sender2main_lock_semaphore, max_U64))
       {
         wrote_message = 1;
         IPCInfo *ipc_info = (IPCInfo *)ipc_sender2main_shared_memory_base;
         U8 *buffer = (U8 *)(ipc_info+1);
         U64 buffer_max = IPC_SHARED_MEMORY_BUFFER_SIZE - sizeof(IPCInfo);
+        String8List parts = os_string_list_from_argcv(scratch.arena, cmd_line->argc - 1, cmd_line->argv + 1);
         StringJoin join = {str8_lit(""), str8_lit(" "), str8_lit("")};
-        String8 msg = str8_list_join(scratch.arena, &cmd_line->inputs, &join);
+        String8 msg = str8_list_join(scratch.arena, &parts, &join);
         ipc_info->msg_size = Min(buffer_max, msg.size);
         MemoryCopy(buffer, msg.str, ipc_info->msg_size);
         os_semaphore_drop(ipc_sender2main_signal_semaphore);

@@ -1,13 +1,7 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) 2025 Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #pragma once
-
-#define MemoryCopyStr8(dst, s) MemoryCopy(dst, (s).str, (s).size)
-
-internal int str8_compar(String8 a, String8 b, B32 ignore_case);
-internal int str8_compar_ignore_case(const void *a, const void *b);
-internal int str8_compar_case_sensitive(const void *a, const void *b);
 
 #define str8_list_push_struct(a,l,d) str8_list_push_raw(a, l, d, sizeof(*d))
 internal String8Node * str8_list_push_raw(Arena *arena, String8List *list, void *data_ptr, U64 data_size);

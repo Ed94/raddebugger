@@ -187,29 +187,6 @@ internal void            rd_print_disasm           (Arena *arena, String8List *o
 internal String8 rd_format_hex_array(Arena *arena, U8 *ptr, U64 size);
 internal void    rd_print_raw_data  (Arena *arena, String8List *out, String8 indent, U64 bytes_per_row, U64 marker_count, RD_Marker *markers, String8 raw_data);
 
-// DWARF
-
-internal String8List dw_string_list_from_expression  (Arena *arena, String8 raw_data, U64 cu_base, U64 address_size, Arch arch, DW_Version ver, DW_Ext ext, DW_Format format);
-internal String8     dw_format_expression_single_line(Arena *arena, String8 raw_data, U64 cu_base, U64 address_size, Arch arch, DW_Version ver, DW_Ext ext, DW_Format format);
-internal String8     dw_format_eh_ptr_enc            (Arena *arena, DW_EhPtrEnc enc);
-internal void        dw_print_cfi_program            (Arena *arena, String8List *out, String8 indent, String8 raw_data, DW_CIEUnpacked *cie, DW_EhPtrCtx *ptr_ctx, Arch arch, DW_Version ver, DW_Ext ext, DW_Format format);
-
-internal void dw_print_eh_frame         (Arena *arena, String8List *out, String8 indent, String8 raw_eh_frame, Arch arch, DW_Version ver, DW_Ext ext, DW_EhPtrCtx *ptr_ctx);
-internal void dw_print_debug_info       (Arena *arena, String8List *out, String8 indent, DW_Input *input, DW_ListUnitInput lu_input, Arch arch, B32 relaxed);
-internal void dw_print_debug_abbrev     (Arena *arena, String8List *out, String8 indent, DW_Input *input);
-internal void dw_print_debug_line       (Arena *arena, String8List *out, String8 indent, DW_Input *input, DW_ListUnitInput lu_input, B32 relaxed);
-internal void dw_print_debug_str        (Arena *arena, String8List *out, String8 indent, DW_Input *input);
-internal void dw_print_debug_loc        (Arena *arena, String8List *out, String8 indent, DW_Input *input, Arch arch, ExecutableImageKind image_type, B32 relaxed);
-internal void dw_print_debug_ranges     (Arena *arena, String8List *out, String8 indent, DW_Input *input, Arch arch, ExecutableImageKind image_type, B32 relaxed);
-internal void dw_print_debug_aranges    (Arena *arena, String8List *out, String8 indent, DW_Input *input);
-internal void dw_print_debug_addr       (Arena *arena, String8List *out, String8 indent, DW_Input *input);
-internal void dw_print_debug_loclists   (Arena *arena, String8List *out, String8 indent, DW_Input *input, Rng1U64Array segment_vranges, Arch arch);
-internal void dw_print_debug_rnglists   (Arena *arena, String8List *out, String8 indent, DW_Input *input, Rng1U64Array segment_vranges);
-internal void dw_print_debug_pubnames   (Arena *arena, String8List *out, String8 indent, DW_Input *input);
-internal void dw_print_debug_pubtypes   (Arena *arena, String8List *out, String8 indent, DW_Input *input);
-internal void dw_print_debug_line_str   (Arena *arena, String8List *out, String8 indent, DW_Input *input);
-internal void dw_print_debug_str_offsets(Arena *arena, String8List *out, String8 indent, DW_Input *input);
-
 // CodeView
 
 internal void cv_print_binary_annots  (Arena *arena, String8List *out, String8 indent, CV_Arch arch, String8 raw_data);
@@ -225,21 +202,6 @@ internal void cv_print_file_checksums (Arena *arena, String8List *out, String8 i
 internal void cv_print_string_table   (Arena *arena, String8List *out, String8 indent, String8 raw_strtab);
 internal void cv_print_inlinee_lines  (Arena *arena, String8List *out, String8 indent, String8 raw_data);
 internal void cv_print_symbols_section(Arena *arena, String8List *out, String8 indent, CV_Arch arch, String8 raw_ss);
-
-// COFF
-
-internal void coff_print_archive_member_header(Arena *arena, String8List *out, String8 indent, COFF_ParsedArchiveMemberHeader header, String8 long_names);
-internal void coff_print_section_table        (Arena *arena, String8List *out, String8 indent, String8 string_table, COFF_Symbol32Array symbols, U64 sect_count, COFF_SectionHeader *sect_headers);
-internal void coff_disasm_sections            (Arena *arena, String8List *out, String8 indent, String8 raw_data, COFF_MachineType machine, U64 image_base, B32 is_obj, RD_MarkerArray *section_markers, U64 section_count, COFF_SectionHeader *sections);
-internal void coff_raw_data_sections          (Arena *arena, String8List *out, String8 indent, String8 raw_data, B32 is_obj, RD_MarkerArray *section_markers, U64 section_count, COFF_SectionHeader *sections);
-internal void coff_print_relocs               (Arena *arena, String8List *out, String8 indent, String8 raw_data, String8 string_table, COFF_MachineType machine, U64 sect_count, COFF_SectionHeader *sect_headers, COFF_Symbol32Array symbols);
-internal void coff_print_symbol_table         (Arena *arena, String8List *out, String8 indent, String8 raw_data, B32 is_big_obj, String8 string_table, COFF_Symbol32Array symbols);
-internal void coff_print_big_obj_header       (Arena *arena, String8List *out, String8 indent, COFF_BigObjHeader *header);
-internal void coff_print_file_header          (Arena *arena, String8List *out, String8 indent, COFF_FileHeader *header);
-internal void coff_print_import               (Arena *arena, String8List *out, String8 indent, COFF_ParsedArchiveImportHeader *header);
-internal void coff_print_big_obj              (Arena *arena, String8List *out, String8 indent, String8 raw_data, RD_Option opts);
-internal void coff_print_obj                  (Arena *arena, String8List *out, String8 indent, String8 raw_data, RD_Option opts);
-internal void coff_print_archive              (Arena *arena, String8List *out, String8 indent, String8 raw_archive, RD_Option opts);
 
 // MSVC CRT
 

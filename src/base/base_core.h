@@ -148,6 +148,7 @@
 #define MemoryCopyStruct(d,s)  MemoryCopy((d),(s),sizeof(*(d)))
 #define MemoryCopyArray(d,s)   MemoryCopy((d),(s),sizeof(d))
 #define MemoryCopyTyped(d,s,c) MemoryCopy((d),(s),sizeof(*(d))*(c))
+#define MemoryCopyStr8(dst, s) MemoryCopy(dst, (s).str, (s).size)
 
 #define MemoryZero(s,z)       memset((s),0,(z))
 #define MemoryZeroStruct(s)   MemoryZero((s),sizeof(*(s)))
@@ -314,7 +315,6 @@ CheckNil(nil,p) ? \
 #endif
 
 #if ASAN_ENABLED
-#pragma comment(lib, "clang_rt.asan-x86_64.lib")
 C_LINKAGE void __asan_poison_memory_region(void const volatile *addr, size_t size);
 C_LINKAGE void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
 # define AsanPoisonMemoryRegion(addr, size)   __asan_poison_memory_region((addr), (size))
@@ -348,7 +348,8 @@ C_LINKAGE void __asan_unpoison_memory_region(void const volatile *addr, size_t s
 #endif
 #define PtrFromInt(i) (void*)(i)
 
-#define Compose64Bit(a,b)  ((((U64)a) << 32) | ((U64)b));
+#define Compose64Bit(a,b)  ((((U64)a) << 32) | ((U64)b))
+#define Compose32Bit(a,b)  ((((U32)a) << 16) | ((U32)b))
 #define AlignPow2(x,b)     (((x) + (b) - 1)&(~((b) - 1)))
 #define AlignDownPow2(x,b) ((x)&(~((b) - 1)))
 #define AlignPadPow2(x,b)  ((0-(x)) & ((b) - 1))
@@ -923,5 +924,10 @@ internal U64 ring_read(U8 *ring_base, U64 ring_size, U64 ring_pos, void *dst_dat
 ////////////////////////////////
 
 internal U64 u64_array_bsearch(U64 *arr, U64 count, U64 value);
+
+////////////////////////////////
+
+internal U64 index_of_zero_u32(U32 *ptr, U64 count);
+internal U64 index_of_zero_u64(U64 *ptr, U64 count);
 
 #endif // BASE_CORE_H

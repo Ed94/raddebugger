@@ -528,6 +528,18 @@ ev_block_tree_from_eval(Arena *arena, EV_View *view, String8 filter, E_Eval root
       // rjf: unpack eval
       E_Mode mode = t->eval.irtree.mode;
       E_Eval eval = t->eval;
+      
+      // rjf: pointers/reference evaluations -> dereference for expansion
+      {
+        E_TypeKey type_key = e_type_key_unwrap(eval.irtree.type_key, E_TypeUnwrapFlag_Modifiers|E_TypeUnwrapFlag_Meta);
+        E_TypeKind type_kind = e_type_kind_from_key(type_key);
+        if(e_type_kind_is_pointer_or_ref(type_kind))
+        {
+          eval = e_eval_wrapf(eval, "*($)");
+        }
+      }
+      
+      // rjf: unpack type key we'll use for expanding this eval
       E_TypeKey expansion_type_key = ev_expansion_type_from_key(eval.irtree.type_key);
       if(!e_type_key_match(expansion_type_key, e_type_key_zero()))
       {
@@ -1292,6 +1304,8 @@ ev_string_from_simple_typed_eval(Arena *arena, EV_StringParams *params, E_Eval e
   {
     digit_group_separator = 0;
   }
+  S64 s64 = 0;
+  U64 u64 = 0;
   F64 f64 = 0;
   switch(type_kind)
   {
@@ -1366,20 +1380,22 @@ ev_string_from_simple_typed_eval(Arena *arena, EV_StringParams *params, E_Eval e
       }
     }break;
     
-    case E_TypeKind_S8:
-    case E_TypeKind_S16:
-    case E_TypeKind_S32:
-    case E_TypeKind_S64:
+    case E_TypeKind_S8:  s64 = (S64)eval.value.s8; goto sint_path;
+    case E_TypeKind_S16: s64 = (S64)eval.value.s16; goto sint_path;
+    case E_TypeKind_S32: s64 = (S64)eval.value.s32; goto sint_path;
+    case E_TypeKind_S64: s64 = (S64)eval.value.s64; goto sint_path;
+    sint_path:;
     {
-      result = str8_from_s64(arena, eval.value.s64, params->radix, params->min_digits, digit_group_separator);
+      result = str8_from_s64(arena, s64, params->radix, params->min_digits, digit_group_separator);
     }break;
     
-    case E_TypeKind_U8:
-    case E_TypeKind_U16:
-    case E_TypeKind_U32:
-    case E_TypeKind_U64:
+    case E_TypeKind_U8:  u64 = (U64)eval.value.u8; goto uint_path;
+    case E_TypeKind_U16: u64 = (U64)eval.value.u16; goto uint_path;
+    case E_TypeKind_U32: u64 = (U64)eval.value.u32; goto uint_path;
+    case E_TypeKind_U64: u64 = (U64)eval.value.u64; goto uint_path;
+    uint_path:;
     {
-      result = str8_from_u64(arena, eval.value.u64, params->radix, params->min_digits, digit_group_separator);
+      result = str8_from_u64(arena, u64, params->radix, params->min_digits, digit_group_separator);
     }break;
     
     case E_TypeKind_U128:
@@ -1776,6 +1792,7 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
           B32 ptee_has_content;
           B32 ptee_has_string;
           B32 did_prefix_content;
+          B32 did_prefix_string;
           B32 did_redirect;
         };
         EV_StringPtrData *ptr_data = it->top_task->user_data;
@@ -1849,6 +1866,10 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
               {
                 string = str8_prefix(string, params->limit_strings_size);
               }
+              else if(type_kind == E_TypeKind_Array && ptr_data->type->count != 0)
+              {
+                string = str8_prefix(string, ptr_data->type->count);
+              }
               
               // rjf: escape and quote
               B32 string__is_escaped_and_quoted = (!(params->flags & EV_StringFlag_DisableStringQuotes) || depth > 0);
@@ -1862,6 +1883,7 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
               // rjf: report
               *out_string = push_str8_copy(arena, string__escaped_and_quoted);
               ptr_data->did_prefix_content = 1;
+              ptr_data->did_prefix_string = 1;
               
               scratch_end(scratch);
             }
@@ -1929,7 +1951,8 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
                   }
                   if(inline_site != 0)
                   {
-                    E_TypeKey type = e_type_key_ext(E_TypeKind_Function, inline_site->type_idx, module_idx);
+                    RDI_TypeNode *type_node = rdi_element_from_name_idx(rdi, TypeNodes, inline_site->type_idx);
+                    E_TypeKey type = e_type_key_ext(e_type_kind_from_rdi(type_node->kind), inline_site->type_idx, module_idx);
                     String8 name = {0};
                     name.str = rdi_string_from_idx(rdi, inline_site->name_string_idx, &name.size);
                     if(inline_site->type_idx != 0)
@@ -1958,7 +1981,8 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
                   RDI_Scope *scope = rdi_element_from_name_idx(rdi, Scopes, scope_idx);
                   U64 proc_idx = scope->proc_idx;
                   RDI_Procedure *procedure = rdi_element_from_name_idx(rdi, Procedures, proc_idx);
-                  E_TypeKey type = e_type_key_ext(E_TypeKind_Function, procedure->type_idx, module_idx);
+                  RDI_TypeNode *type_node = rdi_element_from_name_idx(rdi, TypeNodes, procedure->type_idx);
+                  E_TypeKey type = e_type_key_ext(e_type_kind_from_rdi(type_node->kind), procedure->type_idx, module_idx);
                   String8 name = {0};
                   name.str = rdi_string_from_idx(rdi, procedure->name_string_idx, &name.size);
                   if(procedure->type_idx != 0)
@@ -2043,7 +2067,9 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
             //
             
             // rjf: [read only] if we did prefix content, do a parenthesized pointer value
-            if(!(params->flags & EV_StringFlag_DisableAddresses) && params->flags & EV_StringFlag_ReadOnlyDisplayRules && ptr_data->did_prefix_content)
+            if(!(params->flags & EV_StringFlag_DisableAddresses) && params->flags & EV_StringFlag_ReadOnlyDisplayRules &&
+               ptr_data->did_prefix_content &&
+               (!ptr_data->did_prefix_string || ptr_data->value_eval.value.u64 == 0))
             {
               *out_string = push_str8f(arena, " (%S)", ptr_value_string);
             }

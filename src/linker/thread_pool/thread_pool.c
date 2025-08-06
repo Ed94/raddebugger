@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) 2025 Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 internal void
@@ -31,7 +31,6 @@ tp_run_tasks(TP_Context *pool, TP_Worker *worker)
 internal void
 tp_worker_main(void *raw_worker)
 {
-  TCTX        tctx_; tctx_init_and_equip(&tctx_);
   TP_Worker  *worker = raw_worker;
   TP_Context *pool   = worker->pool;
   for (; pool->is_live; ) {
@@ -44,7 +43,6 @@ tp_worker_main(void *raw_worker)
 internal void
 tp_worker_main_shared(void *raw_worker)
 {
-  TCTX        tctx_; tctx_init_and_equip(&tctx_);
   TP_Worker  *worker = raw_worker;
   TP_Context *pool   = worker->pool;
   for (; pool->is_live; ) {

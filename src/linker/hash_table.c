@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) 2025 Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 internal void
@@ -237,13 +237,6 @@ hash_table_search_path_raw(HashTable *ht, String8 path)
   return kv ? kv->value_raw : 0;
 }
 
-internal void *
-hash_table_(HashTable *ht, String8 path)
-{
-  KeyValuePair *result = hash_table_search_path(ht, path);
-  return result ? result->value_raw : 0;
-}
-
 internal B32
 hash_table_search_path_u64(HashTable *ht, String8 key, U64 *value_out)
 {
@@ -270,22 +263,50 @@ hash_table_search_string_u64(HashTable *ht, String8 key, U64 *value_out)
   return 0;
 }
 
+internal B32
+hash_table_search_string_raw(HashTable *ht, String8 key, void *value_out)
+{
+  KeyValuePair *result = hash_table_search_string(ht, key);
+  if (result) {
+    if (value_out) {
+      (*(void **)value_out) = result->value_raw;
+    }
+    return 1;
+  }
+  return 0;
+}
+
+internal B32
+hash_table_search_string_string(HashTable *ht, String8 key, String8 *value_out)
+{
+  KeyValuePair *result = hash_table_search_string(ht, key);
+  if (result) {
+    if (value_out) {
+      *value_out = result->value_string;
+    }
+    return 1;
+  }
+  return 0;
+}
+
 ////////////////////////////////
 
 internal int
-key_value_pair_is_before_u32(void *raw_a, void *raw_b)
+key_value_pair_is_before_u32(void *a, void *b)
 {
-  KeyValuePair *a = raw_a;
-  KeyValuePair *b = raw_b;
-  return a->key_u32 < b->key_u32;
+  return ((KeyValuePair *)a)->key_u32 < ((KeyValuePair *)b)->key_u32;
 }
 
 internal int
-key_value_pair_is_before_u64(void *raw_a, void *raw_b)
+key_value_pair_is_before_u64(void *a, void *b)
 {
-  KeyValuePair *a = raw_a;
-  KeyValuePair *b = raw_b;
-  return a->key_u64 < b->key_u64;
+  return ((KeyValuePair *)a)->key_u64 < ((KeyValuePair *)b)->key_u64;
+}
+
+internal int
+key_value_pair_is_before_string_sensitive(void *a, void *b)
+{
+  return str8_compar_case_sensitive(&((KeyValuePair*)a)->key_string, &((KeyValuePair*)b)->key_string) < 0;
 }
 
 internal U32 *
@@ -314,6 +335,19 @@ keys_from_hash_table_u64(Arena *arena, HashTable *ht)
   return result;
 }
 
+internal String8 *
+keys_from_hash_table_string(Arena *arena, HashTable *ht)
+{
+  String8 *result = push_array_no_zero(arena, String8, ht->count);
+  for (U64 bucket_idx = 0, cursor = 0; bucket_idx < ht->cap; ++bucket_idx) {
+    for (BucketNode *n = ht->buckets[bucket_idx].first; n != 0; n = n->next) {
+      Assert(cursor < ht->count);
+      result[cursor++] = n->v.key_string;
+    }
+  }
+  return result;
+}
+
 internal KeyValuePair *
 key_value_pairs_from_hash_table(Arena *arena, HashTable *ht)
 {
@@ -327,6 +361,18 @@ key_value_pairs_from_hash_table(Arena *arena, HashTable *ht)
   return pairs;
 }
 
+internal void *
+values_from_hash_table_raw(Arena *arena, HashTable *ht)
+{
+  void **result = push_array(arena, void *, ht->count);
+  for (U64 bucket_idx = 0, cursor = 0; bucket_idx < ht->cap; ++bucket_idx) {
+    for (BucketNode *n = ht->buckets[bucket_idx].first; n != 0; n = n->next) {
+      Assert(cursor < ht->count);
+      result[cursor++] = n->v.value_raw;
+    }
+  }
+  return result;
+}
 #include "third_party/radsort/radsort.h"
 
 internal void
@@ -339,6 +385,12 @@ internal void
 sort_key_value_pairs_as_u64(KeyValuePair *pairs, U64 count)
 {
   radsort(pairs, count, key_value_pair_is_before_u64);
+}
+
+internal void
+sort_key_value_pairs_as_string_sensitive(KeyValuePair *pairs, U64 count)
+{
+  radsort(pairs, count, key_value_pair_is_before_string_sensitive);
 }
 
 internal U64Array
@@ -382,3 +434,4 @@ remove_duplicates_str8_list(Arena *arena, String8List list)
   scratch_end(scratch);
   return result;
 }
+

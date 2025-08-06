@@ -5,10 +5,15 @@
 //~ rjf: Embedded Data
 
 @embed_file rd_icon_font_bytes:         "../data/icons.ttf"
-@embed_file rd_default_main_font_bytes: "../data/Roboto-Regular.ttf"
+
+//@embed_file rd_default_main_font_bytes: "../data/Roboto-Regular.ttf"
+@embed_file rd_default_main_font_bytes: "../data/segoeui.ttf"
+
 //@embed_file rd_default_main_font_bytes: "../data/seguisb.ttf"
-@embed_file rd_default_code_font_bytes: "../data/liberation-mono.ttf"
+//@embed_file rd_default_code_font_bytes: "../data/liberation-.ttf"
 //@embed_file rd_default_code_font_bytes: "../data/Inconsolata-Regular.ttf"
+@embed_file rd_default_code_font_bytes: "../data/JetBrainsMono-Regular.ttf"
+
 @embed_file rd_icon_file_bytes:         "../data/logo.ico"
 
 ////////////////////////////////
@@ -251,6 +256,10 @@ RD_VocabTable:
       @display_name('View Call Argument Helper') @description("Enables the view call argument helper, which shows view arguments and documentation, while typing expressions.") @default(1)
         'view_call_argument_helper': bool,
       
+      //- rjf: scope decorations
+      @default(1) @display_name('Cursor Scope Lines') @description("Controls whether or not scopes containing the cursor in text views are drawn.")
+        'cursor_scope_lines': bool,
+      
       //- rjf: thread & breakpoint decorations
       @default(1) @display_name('Thread Lines') @description("Controls whether or not a long horizontal line is drawn before the next line or instruction that the selected thread will execute in source and disassembly views.")
         'thread_lines': bool,
@@ -464,7 +473,7 @@ RD_VocabTable:
   {
     text,
     ```
-      @inherit(tab) x:
+      @inherit(tab) @expand_commands(@output clear_output) x:
     {
       @description("An expression to describe data which should be viewed as text or code.")
         'expression': expr_string,
@@ -499,6 +508,7 @@ RD_VocabTable:
         'show_symbol_names': bool,
       @no_callee_helper @default(1) @description("Controls whether or not line numbers are shown.")
         'show_line_numbers': bool,
+      
     }
     ```
   }
@@ -753,7 +763,6 @@ RD_RegTable:
   {Dir2              dir2             Dir2          }
   {String8           string           String        }
   {String8           cmd_name         CmdName       }
-  {`MD_Node *`       params_tree      ParamsTree    }
   {`OS_Event *`      os_event         OSEvent       }
 }
 
@@ -767,6 +776,12 @@ RD_RegTable:
 @struct RD_Regs:
 {
   @expand(RD_RegTable a) `$(a.c_type) $(a.name_lower)`
+}
+
+@data(String8) rd_reg_slot_code_name_table:
+{
+  `{0}`,
+  @expand(RD_RegTable a) `str8_lit_comp("$(a.name_lower)")`
 }
 
 @data(Rng1U64) rd_reg_slot_range_table:
@@ -796,8 +811,9 @@ RD_CmdTable:    //               |        |              |                |     
   //- rjf: palette
   {OpenPalette                    1        1              0                0               ""                                               Null               null              Nil                     Null       0  0  0  0  0  0  0                                                           List                  "open_palette"                "Open Palette"                                "Opens the palette."                                                                                               "help,cmd,lister"                ""                                                               }
   
-  //- rjf: command runner
+  //- rjf: command runners
   {RunCommand                     1        1              0                0               "query:commands"                                 CmdName            commands          Nil                     Null       0  0  0  0  0  1  1                                                           Null                  "run_command"                 "Run Command"                                 "Runs a command from the command palette."                                                                         "help,cmd"                       ""                                                               }
+  {RunExternalDriverTextCommand   0        0              0                0               ""                                               Null               null              Nil                     Null       0  0  0  0  0  1  1                                                           Null                  "run_ext_driver_text_command" "Run External Driver Text Command"            ""                                                                                                                 ""                               ""                                                               }
   
   //- rjf: os event passthrough
   {OSEvent                        0        0              0                0               ""                                               Null               null              Nil                     Null       0  0  0  0  0  0  0                                                           Null                  "os_event"                    "OS Event"                                    ""                                                                                                                 ""                               ""                                                               }
@@ -882,7 +898,7 @@ RD_CmdTable:    //               |        |              |                |     
   //- rjf: files
   {SetCurrentPath                 0        1              0                0               ""                                               Null               null              Nil                     Null       0  0  0  0  0  0  0                                                           FileOutline           "set_current_path"            "Set Current Path"                            "Sets the debugger's current path, which is used as a starting point when browsing for files."                     ""                               ""                                                               }
   {Open                           1        1              0                0               `folder:\\"$input\\"`                            FilePath           null              Nil                     Null       1  0  0  0  0  1  1                                                           FileOutline           "open"                        "Open"                                        "Opens a file."                                                                                                    "code,source,file"               ""                                                               }
-  {Switch                         1        0              0                0               "query:recent_files"                             Cfg                null              RecentFile              Null       0  0  0  0  0  1  1                                                           FileOutline           "switch"                      "Switch"                                      "Switches to a recent file."                                                                                       "code,source,file"               ""                                                               }
+  {Switch                         1        0              0                0               "query:recent_files, query:source_files"         Cfg                null              RecentFile              Null       0  0  0  0  0  1  1                                                           FileOutline           "switch"                      "Switch"                                      "Switches to a recent file."                                                                                       "code,source,file"               ""                                                               }
   {SwitchToPartnerFile            1        1              0                0               ""                                               Null               null              Nil                     Null       0  0  0  0  0  0  0                                                           FileOutline           "switch_to_partner_file"      "Switch To Partner File"                      "Switches to the focused file's partner; or from header to implementation or vice versa."                          "code,source,file"               ""                                                               }
   {RecordFileInProject            0        0              0                0               ""                                               Null               null              Nil                     Null       0  0  0  0  0  0  0                                                           FileOutline           "record_file_in_project"      "Record File In Project"                      "Records the passed file path as a recent file in the currently loaded project."                                   ""                               ""                                                               }
   {ShowFileInExplorer             1        1              0                0               ""                                               Null               null              Nil                     Null       0  0  0  0  0  0  0                                                           FolderClosedFilled    "show_file_in_explorer"       "Show File In Explorer"                       "Opens the operating system's file explorer and shows the selected file."                                          ""                               "$file,"                                                         }
@@ -1001,9 +1017,14 @@ RD_CmdTable:    //               |        |              |                |     
   {AddAddressBreakpoint           1        0              0                0               ""                                               Expr               null              Nil                     Null       0  0  0  0  1  1  1                                                           CircleFilled          "add_address_breakpoint"      "Add Address Breakpoint"                      "Places a breakpoint on the specified address."                                                                    ""                               "$breakpoints,"                                                  }
   {AddFunctionBreakpoint          1        0              0                0               "query:procedures"                               String             null              Nil                     Null       0  0  0  0  1  1  1                                                           CircleFilled          "add_function_breakpoint"     "Add Function Breakpoint"                     "Places a breakpoint on the first address of the specified function."                                              ""                               "$breakpoints,"                                                  }
   {ToggleBreakpoint               1        1              1                0               ""                                               Null               null              Nil                     Null       0  0  0  0  0  0  0                                                           CircleFilled          "toggle_breakpoint"           "Toggle Line Breakpoint"                      "Places or removes a breakpoint at a given location (file path and line number, address, or symbol name)."         ""                               "$text_pt,"                                                      }
+  {RemoveBreakpoint               1        0              0                0               "query:breakpoints"                              Cfg                null              Nil                     Null       0  0  0  0  1  1  1                                                           Trash                 "remove_breakpoint"           "Remove Breakpoint"                           "Removes an existing breakpoint."                                                                                  "delete"                         "$breakpoints,"                                                  }
   {EnableBreakpoint               1        1              0                0               "query:breakpoints"                              Cfg                null              Breakpoint              Null       0  0  0  0  1  1  1                                                           CheckFilled           "enable_breakpoint"           "Enable Breakpoint"                           "Enables a breakpoint."                                                                                            ""                               ""                                                               }
   {DisableBreakpoint              1        1              0                0               "query:breakpoints"                              Cfg                null              Breakpoint              Null       0  0  0  0  1  1  1                                                           CheckHollow           "disable_breakpoint"          "Disable Breakpoint"                          "Disables a breakpoint."                                                                                           ""                               ""                                                               }
   {ClearBreakpoints               1        1              0                0               ""                                               Null               null              Nil                     Null       0  0  0  0  0  0  0                                                           Trash                 "clear_breakpoints"           "Clear Breakpoints"                           "Removes all breakpoints."                                                                                         ""                               ""                                                               }
+  {ListBreakpoints                0        1              0                0               ""                                               Null               null              Nil                     Null       0  0  0  0  0  0  0                                                           Null                  "list_breakpoints"            "List Breakpoints"                            "Lists all breakpoints."                                                                                           ""                               ""                                                               }
+  
+  //- rjf: output
+  {ClearOutput                    1        1              0                0               ""                                               Null               null              Nil                     Null       0  0  0  0  0  0  0                                                           Null                  "clear_output"                "Clear Output"                                "Clears all output."                                                                                               ""                               ""                                                               }
   
   //- rjf: watch pins
   {AddWatchPin                    1        1              0                0               ""                                               Expr               null              Nil                     Null       0  0  0  0  1  1  1                                                           Pin                   "add_watch_pin"               "Add Watch Pin"                               "Places a watch pin at a given location (file path and line number or address)."                                   ""                               "$watch_pins,"                                                   }
@@ -1031,6 +1052,7 @@ RD_CmdTable:    //               |        |              |                |     
   {SelectTarget                   1        1              0                0               "query:targets"                                  Cfg                null              Target                  Null       0  0  0  0  0  1  1                                                           Target                "select_target"               "Select Target"                               "Selects a target."                                                                                                ""                               ""                                                               }
   {EnableTarget                   1        1              0                0               "query:targets"                                  Cfg                null              Target                  Null       0  0  0  0  0  1  1                                                           CheckFilled           "enable_target"               "Enable Target"                               "Enables a target, in addition to all targets currently enabled."                                                  ""                               ""                                                               }
   {DisableTarget                  1        1              0                0               "query:targets"                                  Cfg                null              Target                  Null       0  0  0  0  0  1  1                                                           CheckHollow           "disable_target"              "Disable Target"                              "Disables a target."                                                                                               ""                               ""                                                               }
+  {RemoveTarget                   1        1              0                0               "query:targets"                                  Cfg                null              Target                  Null       0  0  0  0  0  1  1                                                           Trash                 "remove_target"               "Remove Target"                               "Removes a target."                                                                                                "delete"                         ""                                                               }
   
   //- rjf: attaching
   {RegisterAsJITDebugger          1        1              0                0               ""                                               Null               null              Nil                     Null       0  0  0  0  0  0  0                                                           Null                  "register_as_jit_debugger"    "Register As Just-In-Time (JIT) Debugger"     "Registers the RAD debugger as the just-in-time (JIT) debugger used by the operating system."                      ""                               ""                                                               }
@@ -1052,6 +1074,10 @@ RD_CmdTable:    //               |        |              |                |     
   {CompleteQuery                  0        0              0                0               ""                                               Null               null              Nil                     Null       0  0  0  0  0  0  0                                                           Null                  "complete_query"              "Complete Query"                              "Completes and closes a query."                                                                                    ""                               ""                                                               }
   {CancelQuery                    0        0              0                0               ""                                               Null               null              Nil                     Null       0  0  0  0  0  0  0                                                           Null                  "cancel_query"                "Cancel Query"                                "Closes a query."                                                                                                  ""                               ""                                                               }
   {UpdateQuery                    0        0              0                0               ""                                               Null               null              Nil                     Null       0  0  0  0  0  0  0                                                           Null                  "update_query"                "Update Query"                                "Updates a query input."                                                                                           ""                               ""                                                               }
+  
+  //- rjf: event buffers
+  {OpenEventBuffer                0        1              0                0               ""                                               Null               null              Nil                     Null       0  0  0  0  0  0  0                                                           Null                  "open_event_buffer"           "Open Event Buffer"                           "Opens a new event buffer, to which debugger events will be written, for external processing."                     ""                               ""                                                               }
+  {CloseEventBuffer               0        1              0                0               ""                                               Cfg                null              Nil                     Null       0  0  0  0  0  0  0                                                           Null                  "close_event_buffer"          "Close Event Buffer"                          "Closes an existing event buffer."                                                                                 ""                               ""                                                               }
   
   //- rjf: developer commands
   {ToggleDevMenu                  1        1              0                0               ""                                               Null               null              Nil                     Null       0  0  0  0  0  0  0                                                           Null                  "toggle_dev_menu"             "Toggle Developer Menu"                       "Opens and closes the developer menu."                                                                             ""                               ""                                                               }

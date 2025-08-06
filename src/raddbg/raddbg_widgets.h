@@ -105,6 +105,8 @@ struct RD_CodeSliceParams
   U64 *line_vaddrs;
   D_LineList *line_infos;
   DI_KeyList relevant_dbgi_keys;
+  TXT_TextInfo *text_info;
+  String8 text_data;
   
   // rjf: visual parameters
   FNT_Tag font;
@@ -135,7 +137,7 @@ struct RD_CodeSliceSignal
 ////////////////////////////////
 //~ rjf: UI Widgets: Fancy Title Strings
 
-internal DR_FStrList rd_title_fstrs_from_cfg(Arena *arena, RD_Cfg *cfg);
+internal DR_FStrList rd_title_fstrs_from_cfg(Arena *arena, RD_Cfg *cfg, B32 include_extras);
 internal DR_FStrList rd_title_fstrs_from_ctrl_entity(Arena *arena, CTRL_Entity *entity, B32 include_extras);
 internal DR_FStrList rd_title_fstrs_from_code_name(Arena *arena, String8 code_name);
 internal DR_FStrList rd_title_fstrs_from_file_path(Arena *arena, String8 file_path);
@@ -158,6 +160,7 @@ internal UI_Signal rd_icon_buttonf(RD_IconKind kind, FuzzyMatchRangeList *matche
 ////////////////////////////////
 //~ rjf: UI Widgets: Text View
 
+internal UI_BOX_CUSTOM_DRAW(rd_code_slice_text_draw_extensions);
 internal UI_BOX_CUSTOM_DRAW(rd_thread_box_draw_extensions);
 internal UI_BOX_CUSTOM_DRAW(rd_bp_box_draw_extensions);
 internal RD_CodeSliceSignal rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *preferred_column, String8 string);

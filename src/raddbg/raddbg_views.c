@@ -207,6 +207,8 @@ rd_code_view_build(Arena *arena, RD_CodeViewState *cv, RD_CodeViewBuildFlags fla
     code_slice_params.line_pins                 = push_array(scratch.arena, RD_CfgList, visible_line_count);
     code_slice_params.line_vaddrs               = push_array(scratch.arena, U64, visible_line_count);
     code_slice_params.line_infos                = push_array(scratch.arena, D_LineList, visible_line_count);
+    code_slice_params.text_info                 = text_info;
+    code_slice_params.text_data                 = text_data;
     code_slice_params.font                      = code_font;
     code_slice_params.font_size                 = code_font_size;
     code_slice_params.tab_size                  = code_tab_size;
@@ -945,6 +947,7 @@ rd_watch_row_info_from_row(Arena *arena, EV_Row *row)
     E_Type *row_type = e_type_from_key(row->eval.irtree.type_key);
     EV_Key key = row->key;
     EV_Block *block = row->block;
+    B32 block_is_root = (block->parent == &ev_nil_block);
     E_Eval block_eval = e_eval_from_key(row->block->eval.key);
     E_TypeKey block_type_key = e_type_key_unwrap(block_eval.irtree.type_key, E_TypeUnwrapFlag_Meta);
     E_TypeKind block_type_kind = e_type_kind_from_key(block_type_key);
@@ -1027,46 +1030,58 @@ rd_watch_row_info_from_row(Arena *arena, EV_Row *row)
     ////////////////////////////
     //- rjf: fill row's ctrl entity
     //
-    if(block_type_kind == E_TypeKind_Set && (block_eval.space.kind == RD_EvalSpaceKind_MetaQuery ||
-                                             block_eval.space.kind == RD_EvalSpaceKind_MetaCtrlEntity))
+    if(!block_is_root)
     {
-      info.group_entity = rd_ctrl_entity_from_eval_space(row->eval.space);
+      if(block_type_kind == E_TypeKind_Set && (block_eval.space.kind == RD_EvalSpaceKind_MetaQuery ||
+                                               block_eval.space.kind == RD_EvalSpaceKind_MetaCtrlEntity))
+      {
+        info.group_entity = rd_ctrl_entity_from_eval_space(row->eval.space);
+      }
     }
     
     ////////////////////////////
     //- rjf: fill row's cfg group name / parent
     //
-    if(block_type_kind == E_TypeKind_Set && (block_eval.space.kind == RD_EvalSpaceKind_MetaQuery ||
-                                             block_eval.space.kind == RD_EvalSpaceKind_MetaCfg))
+    if(!block_is_root)
     {
-      info.group_cfg_parent = rd_cfg_from_eval_space(block_eval.space);
+      if(block_type_kind == E_TypeKind_Set && (block_eval.space.kind == RD_EvalSpaceKind_MetaQuery ||
+                                               block_eval.space.kind == RD_EvalSpaceKind_MetaCfg))
+      {
+        info.group_cfg_parent = rd_cfg_from_eval_space(block_eval.space);
+      }
     }
     
     ////////////////////////////
     //- rjf: fill row's group cfg name
     //
-    if(block_type_kind == E_TypeKind_Set)
+    if(!block_is_root)
     {
-      String8 singular_name = rd_singular_from_code_name_plural(block_type->name);
-      if(singular_name.size != 0)
+      if(block_type_kind == E_TypeKind_Set)
       {
-        info.group_cfg_name = singular_name;
-      }
-      else
-      {
-        info.group_cfg_name = block_type->name;
+        String8 singular_name = rd_singular_from_code_name_plural(block_type->name);
+        if(singular_name.size != 0)
+        {
+          info.group_cfg_name = singular_name;
+        }
+        else
+        {
+          info.group_cfg_name = block_type->name;
+        }
       }
     }
     
     ////////////////////////////
     //- rjf: fill row's group cfg
     //
-    if(info.group_cfg_name.size != 0 && (block_type->expand.id_from_num == E_TYPE_EXPAND_ID_FROM_NUM_FUNCTION_NAME(cfgs_slice) ||
-                                         block_type->expand.id_from_num == E_TYPE_EXPAND_ID_FROM_NUM_FUNCTION_NAME(watches) ||
-                                         block_type->expand.id_from_num == E_TYPE_EXPAND_ID_FROM_NUM_FUNCTION_NAME(environment)))
+    if(!block_is_root)
     {
-      RD_CfgID id = row->key.child_id;
-      info.group_cfg_child = rd_cfg_from_id(id);
+      if(info.group_cfg_name.size != 0 && (block_type->expand.id_from_num == E_TYPE_EXPAND_ID_FROM_NUM_FUNCTION_NAME(cfgs_slice) ||
+                                           block_type->expand.id_from_num == E_TYPE_EXPAND_ID_FROM_NUM_FUNCTION_NAME(watches) ||
+                                           block_type->expand.id_from_num == E_TYPE_EXPAND_ID_FROM_NUM_FUNCTION_NAME(environment)))
+      {
+        RD_CfgID id = row->key.child_id;
+        info.group_cfg_child = rd_cfg_from_id(id);
+      }
     }
     
     ////////////////////////////
@@ -1642,7 +1657,7 @@ rd_info_from_watch_row_cell(Arena *arena, EV_Row *row, EV_StringFlags string_fla
       //- rjf: cfg evaluation -> button for cfg
       else if(result.cfg != &rd_nil_cfg)
       {
-        result.expr_fstrs = rd_title_fstrs_from_cfg(arena, result.cfg);
+        result.expr_fstrs = rd_title_fstrs_from_cfg(arena, result.cfg, 0);
         result.flags |= RD_WatchCellFlag_Button;
       }
       
@@ -2048,13 +2063,7 @@ RD_VIEW_UI_FUNCTION_DEF(text)
   if(rd_regs()->cursor.column == 0) { rd_regs()->cursor.column = 1; }
   if(rd_regs()->mark.line == 0)     { rd_regs()->mark.line = 1; }
   if(rd_regs()->mark.column == 0)   { rd_regs()->mark.column = 1; }
-  U64 base_offset = e_base_offset_from_eval(eval);
-  U64 size = rd_view_setting_value_from_name(str8_lit("size")).u64;
-  if(size == 0)
-  {
-    size = e_range_size_from_eval(eval);
-  }
-  Rng1U64 range = r1u64(base_offset, base_offset+size);
+  Rng1U64 range = rd_space_range_from_eval(eval);
   rd_regs()->text_key = rd_key_from_eval_space_range(eval.space, range, 1);
   String8 lang = rd_view_setting_from_name(str8_lit("lang"));
   if(lang.size == 0)
@@ -2333,13 +2342,7 @@ RD_VIEW_UI_FUNCTION_DEF(disasm)
   {
     space = auto_space;
   }
-  U64 base_offset = e_base_offset_from_eval(eval);
-  U64 size = rd_view_setting_value_from_name(str8_lit("size")).u64;
-  if(size == 0)
-  {
-    size = e_range_size_from_eval(eval);
-  }
-  Rng1U64 range = r1u64(base_offset, base_offset+size);
+  Rng1U64 range = rd_space_range_from_eval(eval);
   Arch arch = rd_arch_from_eval(eval);
   CTRL_Entity *space_entity = rd_ctrl_entity_from_eval_space(space);
   CTRL_Entity *dasm_module = &ctrl_entity_nil;
@@ -2522,21 +2525,11 @@ RD_VIEW_UI_FUNCTION_DEF(memory)
   Vec4F32 main_tx_color_rgba = ui_color_from_name(str8_lit("text"));
   Vec4F32 main_tx_color_hsva = hsva_from_rgba(main_tx_color_rgba);
   F32 main_font_size = ui_bottom_font_size();
-  U64 base_offset = e_base_offset_from_eval(eval);
-  U64 size = rd_view_setting_value_from_name(str8_lit("size")).u64;
-  if(size == 0)
-  {
-    size = e_range_size_from_eval(eval);
-  }
-  Rng1U64 view_range = r1u64(base_offset, base_offset+size);
+  Rng1U64 view_range = rd_space_range_from_eval(eval);
   if(eval.space.kind == 0)
   {
     eval.space = rd_eval_space_from_ctrl_entity(ctrl_entity_from_handle(&d_state->ctrl_entity_store->ctx, rd_regs()->process), RD_EvalSpaceKind_CtrlEntity);
     view_range = rd_whole_range_from_eval_space(eval.space);
-  }
-  if(eval.space.kind == RD_EvalSpaceKind_CtrlEntity && dim_1u64(view_range) == KB(16))
-  {
-    view_range = r1u64(0, 0x7FFFFFFFFFFFull);
   }
   U64 cursor_base_vaddr = rd_view_setting_u64_from_name(str8_lit("cursor"));
   U64 mark_base_vaddr   = rd_view_setting_u64_from_name(str8_lit("mark"));
@@ -2956,7 +2949,7 @@ RD_VIEW_UI_FUNCTION_DEF(memory)
           CTRL_Entity *module = ctrl_module_from_process_vaddr(selected_process, f_rip_vaddr);
           U64 f_rip_voff = ctrl_voff_from_vaddr(module, f_rip_vaddr);
           DI_Key dbgi_key = ctrl_dbgi_key_from_module(module);
-          RDI_Parsed *rdi = di_rdi_from_key(scope, &dbgi_key, 0);
+          RDI_Parsed *rdi = di_rdi_from_key(scope, &dbgi_key, 1, 0);
           RDI_Procedure *procedure = rdi_procedure_from_voff(rdi, f_rip_voff);
           String8 procedure_name = {0};
           procedure_name.str = rdi_string_from_idx(rdi, procedure->name_string_idx, &procedure_name.size);
@@ -3071,7 +3064,7 @@ RD_VIEW_UI_FUNCTION_DEF(memory)
         {
           U64 voff = ctrl_voff_from_vaddr(module, vaddr);
           DI_Key dbgi_key = ctrl_dbgi_key_from_module(module);
-          RDI_Parsed *rdi = di_rdi_from_key(scope, &dbgi_key, 0);
+          RDI_Parsed *rdi = di_rdi_from_key(scope, &dbgi_key, 1, 0);
           RDI_Procedure *procedure = rdi_procedure_from_voff(rdi, voff);
           RDI_Scope *root_scope = rdi_element_from_name_idx(rdi, Scopes, procedure->root_scope_idx);
           if(procedure->root_scope_idx != 0)
@@ -3128,7 +3121,7 @@ RD_VIEW_UI_FUNCTION_DEF(memory)
         {
           U64 voff = ctrl_voff_from_vaddr(module, vaddr);
           DI_Key dbgi_key = ctrl_dbgi_key_from_module(module);
-          RDI_Parsed *rdi = di_rdi_from_key(scope, &dbgi_key, 0);
+          RDI_Parsed *rdi = di_rdi_from_key(scope, &dbgi_key, 1, 0);
           RDI_GlobalVariable *gvar = rdi_global_variable_from_voff(rdi, voff);
           if(gvar->voff != 0)
           {
@@ -3835,7 +3828,8 @@ RD_VIEW_UI_FUNCTION_DEF(bitmap)
       break;
     }
   }
-  U64 base_offset = e_base_offset_from_eval(eval);
+  Rng1U64 eval_range = e_range_from_eval(eval);
+  U64 base_offset = eval_range.min;
   U64 expected_size = dim.x*dim.y*r_tex2d_format_bytes_per_pixel_table[fmt];
   Rng1U64 offset_range = r1u64(base_offset, base_offset + expected_size);
   
@@ -3952,7 +3946,7 @@ RD_VIEW_UI_FUNCTION_DEF(bitmap)
   //- rjf: image-region canvas interaction
   //
   Vec2S32 mouse_bmp = {-1, -1};
-  if(ui_hovering(canvas_sig) && !ui_dragging(canvas_sig)) RD_Font(RD_FontSlot_Code)
+  if(ui_hovering(canvas_sig) && !ui_dragging(canvas_sig))
   {
     Vec2F32 mouse_scr = sub_2f32(ui_mouse(), rect.p0);
     Vec2F32 mouse_cvs = rd_bitmap_canvas_from_screen_pos(view_center_pos, zoom, canvas_rect, mouse_scr);
@@ -3964,6 +3958,9 @@ RD_VIEW_UI_FUNCTION_DEF(bitmap)
       if(0 <= off_bytes && off_bytes+r_tex2d_format_bytes_per_pixel_table[topology.fmt] <= data.size &&
          r_tex2d_format_bytes_per_pixel_table[topology.fmt] != 0)
       {
+        RD_RegsScope(.vaddr_range = r1u64(offset_range.min + off_bytes, offset_range.min + off_bytes + r_tex2d_format_bytes_per_pixel_table[topology.fmt]),
+                     .eval_space = eval.space)
+          rd_set_hover_regs(RD_RegSlot_VaddrRange);
         B32 color_is_good = 1;
         Vec4F32 color = {0};
         switch(topology.fmt)
@@ -4348,7 +4345,8 @@ RD_VIEW_UI_FUNCTION_DEF(geo3d)
   //////////////////////////////
   //- rjf: evaluate & unpack expression
   //
-  U64 base_offset = e_base_offset_from_eval(eval);
+  Rng1U64 eval_range = e_range_from_eval(eval);
+  U64 base_offset = eval_range.min;
   Rng1U64 idxs_range = r1u64(base_offset, base_offset+count*sizeof(U32));
   Rng1U64 vtxs_range = r1u64(vtx_base_off, vtx_base_off+vtx_size);
   HS_Key idxs_key = rd_key_from_eval_space_range(eval.space, idxs_range, 0);

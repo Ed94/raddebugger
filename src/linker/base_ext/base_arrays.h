@@ -1,7 +1,13 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) 2025 Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #pragma once
+
+typedef struct U32Node
+{
+  struct U32Node *next;
+  U32             data;
+} U32Node;
 
 typedef struct U64Node
 {

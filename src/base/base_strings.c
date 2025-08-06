@@ -480,28 +480,30 @@ str8_skip_chop_slashes(String8 string)
 //~ rjf: String Formatting & Copying
 
 internal String8
-push_str8_cat(Arena *arena, String8 s1, String8 s2){
+str8_cat(Arena *arena, String8 s1, String8 s2)
+{
   String8 str;
   str.size = s1.size + s2.size;
   str.str = push_array_no_zero(arena, U8, str.size + 1);
   MemoryCopy(str.str, s1.str, s1.size);
   MemoryCopy(str.str + s1.size, s2.str, s2.size);
   str.str[str.size] = 0;
-  return(str);
+  return str;
 }
 
 internal String8
-push_str8_copy(Arena *arena, String8 s){
+str8_copy(Arena *arena, String8 s)
+{
   String8 str;
   str.size = s.size;
   str.str = push_array_no_zero(arena, U8, str.size + 1);
   MemoryCopy(str.str, s.str, s.size);
   str.str[str.size] = 0;
-  return(str);
+  return str;
 }
 
 internal String8
-push_str8fv(Arena *arena, char *fmt, va_list args){
+str8fv(Arena *arena, char *fmt, va_list args){
   va_list args2;
   va_copy(args2, args);
   U32 needed_bytes = raddbg_vsnprintf(0, 0, fmt, args) + 1;
@@ -510,16 +512,28 @@ push_str8fv(Arena *arena, char *fmt, va_list args){
   result.size = raddbg_vsnprintf((char*)result.str, needed_bytes, fmt, args2);
   result.str[result.size] = 0;
   va_end(args2);
-  return(result);
+  return result;
 }
 
 internal String8
-push_str8f(Arena *arena, char *fmt, ...){
+str8f(Arena *arena, char *fmt, ...)
+{
   va_list args;
   va_start(args, fmt);
   String8 result = push_str8fv(arena, fmt, args);
   va_end(args);
-  return(result);
+  return result;
+}
+
+internal String8
+push_cstr(Arena *arena, String8 str)
+{
+  U64 buffer_size = str.size + 1;
+  U8 *buffer = push_array_no_zero(arena, U8, buffer_size);
+  MemoryCopy(buffer, str.str, str.size);
+  buffer[str.size] = 0;
+  String8 result = str8(buffer, buffer_size);
+  return result;
 }
 
 ////////////////////////////////
@@ -605,36 +619,35 @@ s32_from_str8(String8 string, U32 radix)
 internal B32
 try_u64_from_str8_c_rules(String8 string, U64 *x)
 {
-  B32 is_integer = 0;
-  if(str8_is_integer(string, 10) && !str8_match(str8_prefix(string, 1), str8_lit("0"), 0))
+  U64 radix, prefix_size;
+  // hex
+  if(str8_match(str8_prefix(string, 2), str8_lit("0x"), StringMatchFlag_CaseInsensitive))
   {
-    is_integer = 1;
-    *x = u64_from_str8(string, 10);
+    radix = 0x10, prefix_size = 2;
   }
+  // binary
+  else if(str8_match(str8_prefix(string, 2), str8_lit("0b"), StringMatchFlag_CaseInsensitive))
+  {
+    radix = 2, prefix_size = 2;
+  }
+  // octal
+  else if(str8_match(str8_prefix(string, 1), str8_lit("0"), StringMatchFlag_CaseInsensitive) && string.size > 1)
+  {
+    radix = 010, prefix_size = 1;
+  }
+  // decimal
   else
   {
-    String8 hex_string = str8_skip(string, 2);
-    if(str8_match(str8_prefix(string, 2), str8_lit("0x"), 0) &&
-       str8_is_integer(hex_string, 0x10))
-    {
-      is_integer = 1;
-      *x = u64_from_str8(hex_string, 0x10);
-    }
-    else if(str8_match(str8_prefix(string, 2), str8_lit("0b"), 0) && str8_is_integer(hex_string, 2))
-    {
-      is_integer = 1;
-      *x = u64_from_str8(hex_string, 2);
-    }
-    else
-    {
-      String8 oct_string = str8_skip(string, 1);
-      if(str8_match(str8_prefix(string, 1), str8_lit("0"), 0) && str8_is_integer(hex_string, 010))
-      {
-        is_integer = 1;
-        *x = u64_from_str8(oct_string, 010);
-      }
-    }
+    radix = 10, prefix_size = 0;
   }
+  
+  String8 integer    = str8_skip(string, prefix_size);
+  B32     is_integer = str8_is_integer(integer, radix);
+  if(is_integer)
+  {
+    *x = u64_from_str8(integer, radix);
+  }
+  
   return is_integer;
 }
 
@@ -971,6 +984,15 @@ str8_list_push(Arena *arena, String8List *list, String8 string){
   return(node);
 }
 
+internal String8Node *
+str8_list_push_cstr(Arena *arena, String8List *list, String8 string)
+{
+  String8Node *node = str8_list_push(arena, list, string);
+  local_persist String8 null = str8_lit_comp("\0");
+  str8_list_push(arena, list, null);
+  return node;
+}
+
 internal String8Node*
 str8_list_push_front(Arena *arena, String8List *list, String8 string){
   String8Node *node = push_array_no_zero(arena, String8Node, 1);
@@ -1148,6 +1170,23 @@ str8_list_from_flags(Arena *arena, String8List *list,
 }
 
 ////////////////////////////////
+//~ rjf: Basic Data Structure Stringification Helpers
+
+internal String8List
+numeric_str8_list_from_data(Arena *arena, U32 radix, String8 data, U64 stride)
+{
+  String8List strs = {0};
+  U64 count = data.size/stride;
+  for EachIndex(idx, count)
+  {
+    U64 val = 0;
+    MemoryCopy(&val, data.str + idx*stride, stride);
+    str8_list_push(arena, &strs, str8_from_u64(arena, val, radix, 0, 0));
+  }
+  return strs;
+}
+
+////////////////////////////////
 //~ rjf; String Arrays
 
 internal String8Array
@@ -1169,6 +1208,16 @@ str8_array_from_list(Arena *arena, String8List *list)
     array.v[idx] = n->string;
   }
   return array;
+}
+
+internal String8Array *
+str8_array_from_list_arr(Arena *arena, String8List *lists, U64 count)
+{
+  String8Array *result = push_array(arena, String8Array, count);
+  for (U64 idx = 0; idx < count; idx += 1) {
+    result[idx] = str8_array_from_list(arena, &lists[idx]);
+  }
+  return result;
 }
 
 internal String8Array
@@ -1424,7 +1473,8 @@ str8_path_list_resolve_dots_in_place(String8List *path, PathStyle style)
 }
 
 internal String8
-str8_path_list_join_by_style(Arena *arena, String8List *path, PathStyle style){
+str8_path_list_join_by_style(Arena *arena, String8List *path, PathStyle style)
+{
   StringJoin params = {0};
   switch(style)
   {
@@ -1495,6 +1545,228 @@ str8_txt_pt_pair_from_string(String8 string)
     if(pair.pt.column == 0) { pair.pt.column = 1; }
   }
   return pair;
+}
+
+////////////////////////////////
+//~ rjf: Relative <-> Absolute Path
+
+internal String8
+path_relative_dst_from_absolute_dst_src(Arena *arena, String8 dst, String8 src)
+{
+  Temp scratch = scratch_begin(&arena, 1);
+  
+  // rjf: gather path parts
+  String8 dst_name = str8_skip_last_slash(dst);
+  String8 src_folder = src;
+  String8 dst_folder = str8_chop_last_slash(dst);
+  String8List src_folders = str8_split_path(scratch.arena, src_folder);
+  String8List dst_folders = str8_split_path(scratch.arena, dst_folder);
+  
+  // rjf: count # of backtracks to get from src -> dest
+  U64 num_backtracks = src_folders.node_count;
+  for(String8Node *src_n = src_folders.first, *bp_n = dst_folders.first;
+      src_n != 0 && bp_n != 0;
+      src_n = src_n->next, bp_n = bp_n->next)
+  {
+    if(str8_match(src_n->string, bp_n->string, path_match_flags_from_os(operating_system_from_context())))
+    {
+      num_backtracks -= 1;
+    }
+    else
+    {
+      break;
+    }
+  }
+  
+  // rjf: only build relative string if # of backtracks is not the entire `src`.
+  // if getting to `dst` from `src` requires erasing the entire `src`, then the
+  // only possible way to get to `dst` from `src` is via absolute path.
+  String8 dst_path = {0};
+  if(num_backtracks >= src_folders.node_count)
+  {
+    dst_path = dst;
+  }
+  else
+  {
+    // rjf: build backtrack parts
+    String8List dst_path_strs = {0};
+    for(U64 idx = 0; idx < num_backtracks; idx += 1)
+    {
+      str8_list_push(scratch.arena, &dst_path_strs, str8_lit(".."));
+    }
+    
+    // rjf: build parts of dst which are unique from src
+    {
+      B32 unique_from_src = 0;
+      for(String8Node *src_n = src_folders.first, *bp_n = dst_folders.first;
+          bp_n != 0;
+          bp_n = bp_n->next)
+      {
+        if(!unique_from_src && (src_n == 0 || !str8_match(src_n->string, bp_n->string, path_match_flags_from_os(operating_system_from_context()))))
+        {
+          unique_from_src = 1;
+        }
+        if(unique_from_src)
+        {
+          str8_list_push(scratch.arena, &dst_path_strs, bp_n->string);
+        }
+        if(src_n != 0)
+        {
+          src_n = src_n->next;
+        }
+      }
+    }
+    
+    // rjf: build file name
+    str8_list_push(scratch.arena, &dst_path_strs, dst_name);
+    
+    // rjf: join
+    StringJoin join = {0};
+    {
+      join.sep = str8_lit("/");
+    }
+    dst_path = str8_list_join(arena, &dst_path_strs, &join);
+  }
+  scratch_end(scratch);
+  return dst_path;
+}
+
+internal String8
+path_absolute_dst_from_relative_dst_src(Arena *arena, String8 dst, String8 src)
+{
+  String8 result = dst;
+  PathStyle dst_style = path_style_from_str8(dst);
+  if(dst.size != 0 && dst_style == PathStyle_Relative)
+  {
+    Temp scratch = scratch_begin(&arena, 1);
+    String8 dst_from_src_absolute = push_str8f(scratch.arena, "%S/%S", src, dst);
+    String8List dst_from_src_absolute_parts = str8_split_path(scratch.arena, dst_from_src_absolute);
+    PathStyle dst_from_src_absolute_style = path_style_from_str8(src);
+    str8_path_list_resolve_dots_in_place(&dst_from_src_absolute_parts, dst_from_src_absolute_style);
+    result = str8_path_list_join_by_style(arena, &dst_from_src_absolute_parts, dst_from_src_absolute_style);
+    scratch_end(scratch);
+  }
+  return result;
+}
+
+////////////////////////////////
+//~ rjf: Path Normalization
+
+internal String8List
+path_normalized_list_from_string(Arena *arena, String8 path_string, PathStyle *style_out)
+{
+  // rjf: analyze path
+  PathStyle path_style = path_style_from_str8(path_string);
+  String8List path = str8_split_path(arena, path_string);
+  
+  // rjf: resolve dots
+  str8_path_list_resolve_dots_in_place(&path, path_style);
+  
+  // rjf: return
+  if(style_out != 0)
+  {
+    *style_out = path_style;
+  }
+  return path;
+}
+
+internal String8
+path_normalized_from_string(Arena *arena, String8 path_string)
+{
+  Temp scratch = scratch_begin(&arena, 1);
+  PathStyle style = PathStyle_Relative;
+  String8List path = path_normalized_list_from_string(scratch.arena, path_string, &style);
+  String8 result = str8_path_list_join_by_style(arena, &path, style);
+  scratch_end(scratch);
+  return result;
+}
+
+internal B32
+path_match_normalized(String8 left, String8 right)
+{
+  Temp scratch = scratch_begin(0, 0);
+  String8 left_normalized = path_normalized_from_string(scratch.arena, left);
+  String8 right_normalized = path_normalized_from_string(scratch.arena, right);
+  B32 result = str8_match(left_normalized, right_normalized, StringMatchFlag_CaseInsensitive);
+  scratch_end(scratch);
+  return result;
+}
+
+////////////////////////////////
+//~ rjf: Misc. Path Helpers
+
+internal PathStyle
+path_style_from_string(String8 string)
+{
+  for (U64 i = 0; i < ArrayCount(g_path_style_map); ++i)
+  {
+    if(str8_match(g_path_style_map[i].string, string, StringMatchFlag_CaseInsensitive))
+    {
+      return g_path_style_map[i].path_style;
+    }
+  }
+  return PathStyle_Null;
+}
+
+internal String8
+string_from_path_style(PathStyle style)
+{
+  Assert(style < ArrayCount(g_path_style_map));
+  return g_path_style_map[style].string;
+}
+
+internal String8
+path_separator_string_from_style(PathStyle style)
+{
+  String8 result = str8_zero();
+  switch (style)
+  {
+    case PathStyle_Null:     break;
+    case PathStyle_Relative: break;
+    case PathStyle_WindowsAbsolute: result = str8_lit("\\"); break;
+    case PathStyle_UnixAbsolute:    result = str8_lit("/");  break;
+  }
+  return result;
+}
+
+internal StringMatchFlags
+path_match_flags_from_os(OperatingSystem os)
+{
+  StringMatchFlags flags = StringMatchFlag_SlashInsensitive;
+  switch(os)
+  {
+    default:{}break;
+    case OperatingSystem_Windows:
+    {
+      flags |= StringMatchFlag_CaseInsensitive;
+    }break;
+    case OperatingSystem_Linux:
+    case OperatingSystem_Mac:
+    {
+      // NOTE(rjf): no-op
+    }break;
+  }
+  return flags;
+}
+
+internal String8
+path_convert_slashes(Arena *arena, String8 path, PathStyle path_style)
+{
+  Temp scratch = scratch_begin(&arena, 1);
+  String8List list = str8_split_path(scratch.arena, path);
+  StringJoin join = {0};
+  join.sep = path_separator_string_from_style(path_style);
+  String8 result = str8_list_join(arena, &list, &join);
+  scratch_end(scratch);
+  return result;
+}
+
+internal String8
+path_replace_file_extension(Arena *arena, String8 file_name, String8 ext)
+{
+  String8 file_name_no_ext = str8_chop_last_dot(file_name);
+  String8 result           = push_str8f(arena, "%S.%S", file_name_no_ext, ext);
+  return result;
 }
 
 ////////////////////////////////
@@ -2219,7 +2491,7 @@ fuzzy_match_find(Arena *arena, String8 needle, String8 haystack)
     U64 find_pos = 0;
     for(;find_pos < haystack.size;)
     {
-      find_pos = str8_find_needle(haystack, find_pos, needle_n->string, StringMatchFlag_CaseInsensitive);
+      find_pos = str8_find_needle(haystack, find_pos, needle_n->string, StringMatchFlag_CaseInsensitive|StringMatchFlag_SlashInsensitive);
       B32 is_in_gathered_ranges = 0;
       for(FuzzyMatchRangeNode *n = result.first; n != 0; n = n->next)
       {
@@ -2486,6 +2758,67 @@ str8_deserial_read_block(String8 string, U64 off, U64 size, String8 *block_out)
 }
 
 ////////////////////////////////
+
+internal int
+str8_compar(String8 a, String8 b, B32 ignore_case)
+{
+  int cmp = 0;
+  U64 size = Min(a.size, b.size);
+  if (ignore_case) {
+    for (U64 i = 0; i < size; ++i) {
+      U8 la = char_to_lower(a.str[i]);
+      U8 lb = char_to_lower(b.str[i]);
+      if (la < lb) {
+        cmp = -1;
+        break;
+      } else if (la > lb) {
+        cmp = +1;
+        break;
+      }
+    } 
+  } else {
+    for (U64 i = 0; i < size; ++i) {
+      if (a.str[i] < b.str[i]) {
+        cmp = -1;
+        break;
+      } else if (a.str[i] > b.str[i]) {
+        cmp = +1;
+        break;
+      }
+    } 
+  }
+  
+  if (cmp == 0) {
+    // shorter prefix must precede longer prefixes
+    if (a.size > b.size) {
+      cmp = +1;
+    } else if (b.size > a.size) {
+      cmp = -1;
+    }
+  }
+  
+  return cmp;
+}
+
+internal int
+str8_compar_ignore_case(const void *a, const void *b)
+{
+  return str8_compar(*(String8*)a, *(String8*)b, 1);
+}
+
+internal int
+str8_compar_case_sensitive(const void *a, const void *b)
+{
+  return str8_compar(*(String8*)a, *(String8*)b, 0);
+}
+
+internal int
+str8_is_before_case_sensitive(const void *a, const void *b)
+{
+  int cmp = str8_compar_case_sensitive(a, b);
+  return cmp < 0;
+}
+
 //~ rjf: Basic String Hashes
 
 #if !defined(XXH_IMPLEMENTATION)

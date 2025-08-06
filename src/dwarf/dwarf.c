@@ -70,10 +70,10 @@ dw_reg_pos_from_code(Arch arch, DW_Reg reg_code)
 }
 
 internal DW_AttribClass
-dw_attrib_class_from_attrib_kind_v2(DW_AttribKind k)
+dw_attrib_class_from_attrib_v2(DW_AttribKind k)
 {
   switch (k) {
-#define X(_N,_C) case DW_Attrib_##_N: return _C;
+#define X(_N,_C) case DW_AttribKind_##_N: return _C;
     DW_AttribKind_ClassFlags_V2_XList(X)
 #undef X
   }
@@ -81,10 +81,10 @@ dw_attrib_class_from_attrib_kind_v2(DW_AttribKind k)
 }
 
 internal DW_AttribClass
-dw_attrib_class_from_attrib_kind_v3(DW_AttribKind k)
+dw_attrib_class_from_attrib_v3(DW_AttribKind k)
 {
   switch (k) {
-#define X(_N,_C) case DW_Attrib_##_N: return _C;
+#define X(_N,_C) case DW_AttribKind_##_N: return _C;
     DW_AttribKind_ClassFlags_V3_XList(X)
 #undef X
   }
@@ -92,10 +92,10 @@ dw_attrib_class_from_attrib_kind_v3(DW_AttribKind k)
 }
 
 internal DW_AttribClass
-dw_attrib_class_from_attrib_kind_v4(DW_AttribKind k)
+dw_attrib_class_from_attrib_v4(DW_AttribKind k)
 {
   switch (k) {
-#define X(_N,_C) case DW_Attrib_##_N: return _C;
+#define X(_N,_C) case DW_AttribKind_##_N: return _C;
     DW_AttribKind_ClassFlags_V4_XList(X)
 #undef X
   }
@@ -103,10 +103,10 @@ dw_attrib_class_from_attrib_kind_v4(DW_AttribKind k)
 }
 
 internal DW_AttribClass
-dw_attrib_class_from_attrib_kind_v5(DW_AttribKind k)
+dw_attrib_class_from_attrib_v5(DW_AttribKind k)
 {
   switch (k) {
-#define X(_N,_C) case DW_Attrib_##_N: return _C;
+#define X(_N,_C) case DW_AttribKind_##_N: return _C;
     DW_AttribKind_ClassFlags_V5_XList(X)
 #undef X
   }
@@ -114,10 +114,10 @@ dw_attrib_class_from_attrib_kind_v5(DW_AttribKind k)
 }
 
 internal DW_AttribClass
-dw_attrib_class_from_attrib_kind_gnu(DW_AttribKind k)
+dw_attrib_class_from_attrib_gnu(DW_AttribKind k)
 {
   switch (k) {
-#define X(_N,_C) case DW_Attrib_##_N: return _C;
+#define X(_N,_C) case DW_AttribKind_##_N: return _C;
     DW_AttribKind_ClassFlags_GNU_XList(X)
 #undef X
   }
@@ -125,10 +125,10 @@ dw_attrib_class_from_attrib_kind_gnu(DW_AttribKind k)
 }
 
 internal DW_AttribClass
-dw_attrib_class_from_attrib_kind_llvm(DW_AttribKind k)
+dw_attrib_class_from_attrib_llvm(DW_AttribKind k)
 {
   switch (k) {
-#define X(_N,_C) case DW_Attrib_##_N: return _C;
+#define X(_N,_C) case DW_AttribKind_##_N: return _C;
     DW_AttribKind_ClassFlags_LLVM_XList(X)
 #undef X
   }
@@ -136,10 +136,10 @@ dw_attrib_class_from_attrib_kind_llvm(DW_AttribKind k)
 }
 
 internal DW_AttribClass
-dw_attrib_class_from_attrib_kind_apple(DW_AttribKind k)
+dw_attrib_class_from_attrib_apple(DW_AttribKind k)
 {
   switch (k) {
-#define X(_N,_C) case DW_Attrib_##_N: return _C;
+#define X(_N,_C) case DW_AttribKind_##_N: return _C;
     DW_AttribKind_ClassFlags_APPLE_XList(X)
 #undef X
   }
@@ -147,10 +147,10 @@ dw_attrib_class_from_attrib_kind_apple(DW_AttribKind k)
 }
 
 internal DW_AttribClass
-dw_attrib_class_from_attrib_kind_mips(DW_AttribKind k)
+dw_attrib_class_from_attrib_mips(DW_AttribKind k)
 {
   switch (k) {
-#define X(_N,_C) case DW_Attrib_##_N: return _C;
+#define X(_N,_C) case DW_AttribKind_##_N: return _C;
     DW_AttribKind_ClassFlags_MIPS_XList(X)
 #undef X
   }
@@ -158,7 +158,7 @@ dw_attrib_class_from_attrib_kind_mips(DW_AttribKind k)
 }
 
 internal DW_AttribClass
-dw_attrib_class_from_attrib_kind(DW_Version ver, DW_Ext ext, DW_AttribKind k)
+dw_attrib_class_from_attrib(DW_Version ver, DW_Ext ext, DW_AttribKind k)
 {
   DW_AttribClass result = DW_AttribClass_Null;
   
@@ -172,10 +172,10 @@ dw_attrib_class_from_attrib_kind(DW_Version ver, DW_Ext ext, DW_AttribKind k)
     
     switch (flag) {
       case DW_Ext_Null: break;
-      case DW_Ext_GNU:   result = dw_attrib_class_from_attrib_kind_gnu(k);   break;
-      case DW_Ext_LLVM:  result = dw_attrib_class_from_attrib_kind_llvm(k);  break;
-      case DW_Ext_APPLE: result = dw_attrib_class_from_attrib_kind_apple(k); break;
-      case DW_Ext_MIPS:  result = dw_attrib_class_from_attrib_kind_mips(k);  break;
+      case DW_Ext_GNU:   result = dw_attrib_class_from_attrib_gnu(k);   break;
+      case DW_Ext_LLVM:  result = dw_attrib_class_from_attrib_llvm(k);  break;
+      case DW_Ext_APPLE: result = dw_attrib_class_from_attrib_apple(k); break;
+      case DW_Ext_MIPS:  result = dw_attrib_class_from_attrib_mips(k);  break;
       default: InvalidPath; break;
     }
     
@@ -188,10 +188,10 @@ dw_attrib_class_from_attrib_kind(DW_Version ver, DW_Ext ext, DW_AttribKind k)
     switch (ver) {
       case DW_Version_Null: break;
       case DW_Version_1:    AssertAlways(!"DWARF V1 is not supported");      break;
-      case DW_Version_2:    result = dw_attrib_class_from_attrib_kind_v2(k); break;
-      case DW_Version_3:    result = dw_attrib_class_from_attrib_kind_v3(k); break;
-      case DW_Version_4:    result = dw_attrib_class_from_attrib_kind_v4(k); break;
-      case DW_Version_5:    result = dw_attrib_class_from_attrib_kind_v5(k); break;
+      case DW_Version_2:    result = dw_attrib_class_from_attrib_v2(k); break;
+      case DW_Version_3:    result = dw_attrib_class_from_attrib_v3(k); break;
+      case DW_Version_4:    result = dw_attrib_class_from_attrib_v4(k); break;
+      case DW_Version_5:    result = dw_attrib_class_from_attrib_v5(k); break;
       default: InvalidPath; break;
     }
   }
@@ -302,14 +302,14 @@ dw_pick_attrib_value_class(DW_Version ver, DW_Ext ext, B32 relaxed, DW_AttribKin
   // This function's purpose is to find the overlapping class between an
   // DW_AttribKind and DW_FormKind.
   
-  DW_AttribClass attrib_class = dw_attrib_class_from_attrib_kind(ver, ext, attrib_kind);
+  DW_AttribClass attrib_class = dw_attrib_class_from_attrib(ver, ext, attrib_kind);
   DW_AttribClass form_class   = dw_attrib_class_from_form_kind(ver, form_kind);
   
   if(relaxed)
   {
     if(attrib_class == DW_AttribClass_Null || form_class == DW_AttribClass_Null)
     {
-      attrib_class = dw_attrib_class_from_attrib_kind(DW_Version_Last, ext, attrib_kind);
+      attrib_class = dw_attrib_class_from_attrib(DW_Version_Last, ext, attrib_kind);
       form_class   = dw_attrib_class_from_form_kind(DW_Version_Last, form_kind);
     }
   }
@@ -386,3 +386,276 @@ dw_pick_default_lower_bound(DW_Language lang)
   return lower_bound;
 }
 
+////////////////////////////////
+//~ rjf: String <=> Enum
+
+internal String8
+dw_string_from_expr_op(Arena *arena, DW_Version ver, DW_Ext ext, DW_ExprOp op)
+{
+  String8 result = {0};
+  
+#define X(_N,...) case DW_ExprOp_##_N: result = str8_lit(Stringify(_N)); goto exit;
+  if (ext & DW_Ext_GNU) {
+    switch (op) {
+      DW_Expr_GNU_XList(X); 
+    }
+  }
+  
+  switch (ver) {
+    case DW_Version_5: {
+      switch (op) {
+        DW_Expr_V5_XList(X)
+      }
+    } // fall-through
+    case DW_Version_4: {
+      switch (op) {
+        DW_Expr_V4_XList(X)
+      }
+    } // fall-through
+    case DW_Version_3: {
+      switch (op) {
+        DW_Expr_V3_XList(X)
+      }
+    } // fall-through
+    case DW_Version_2:
+    case DW_Version_1:
+    case DW_Version_Null:
+    break;
+  }
+#undef X
+  
+  result = push_str8f(arena, "%x", op);
+  
+  exit:;
+  return result;
+}
+
+internal String8
+dw_string_from_tag_kind(Arena *arena, DW_TagKind kind)
+{
+  switch (kind) {
+    case DW_TagKind_Null: return str8_lit("Null");
+#define X(_N,_ID) case DW_TagKind_##_N: return str8_lit(Stringify(_N));
+    DW_TagKind_V3_XList(X)
+      DW_TagKind_V5_XList(X)
+      DW_TagKind_GNU_XList(X)
+#undef X
+  }
+  return push_str8f(arena, "%llx", kind);
+}
+
+internal String8
+dw_string_from_attrib_kind(Arena *arena, DW_Version ver, DW_Ext ext, DW_AttribKind kind)
+{
+#define X(_N,...) case DW_AttribKind_##_N:{result = str8_lit(Stringify(_N));}break;
+  String8 result = {0};
+  
+  //- rjf: try extensions
+  if(result.size != 0)
+  {
+    while(ext)
+    {
+      U64 z = 64-clz64(ext);
+      if(z == 0)
+      {
+        break;
+      }
+      U64 flag = 1 << (z-1);
+      ext &= ~flag;
+      switch(flag)
+      {
+        default:{}break;
+        case DW_Ext_Null:  break;
+        case DW_Ext_GNU:   switch (kind) { DW_AttribKind_GNU_XList(X)   } break;
+        case DW_Ext_LLVM:  switch (kind) { DW_AttribKind_LLVM_XList(X)  } break;
+        case DW_Ext_APPLE: switch (kind) { DW_AttribKind_APPLE_XList(X) } break;
+        case DW_Ext_MIPS:  switch (kind) { DW_AttribKind_MIPS_XList(X)  } break;
+      }
+    }
+  }
+  
+  //- rjf: try version
+  if(result.size == 0)
+  {
+    for(U64 retry = 0; retry < 2; retry += 1)
+    {
+      DW_Version version = retry ? DW_Version_5 : ver;
+      switch(version)
+      {
+        case DW_Version_5: { switch(kind) { DW_AttribKind_V5_XList(X) } } // fall-through
+        case DW_Version_4: { switch(kind) { DW_AttribKind_V4_XList(X) } } // fall-through
+        case DW_Version_3: { switch(kind) { DW_AttribKind_V3_XList(X) } } // fall-through
+        case DW_Version_2: { switch(kind) { DW_AttribKind_V2_XList(X) } } // fall-through
+        case DW_Version_1: {}break;
+        case DW_Version_Null:{}break;
+        default:{}break;
+      }
+    }
+  }
+  
+  //- rjf: fallback
+  if(result.size == 0)
+  {
+    result = push_str8f(arena, "#%u", kind);
+  }
+  
+#undef X
+  return result;
+}
+
+internal String8
+dw_string_from_form_kind(Arena *arena, DW_Version ver, DW_FormKind kind)
+{
+#define X(_N,...) case DW_Form_##_N: return str8_lit(Stringify(_N));
+  switch (ver) {
+    case DW_Version_5: {
+      switch (kind) {
+        DW_Form_V5_XList(X)
+      }
+    } // fall-through
+    case DW_Version_4: {
+      switch (kind) {
+        DW_Form_V4_XList(X)
+      }
+    } // fall-through
+    case DW_Version_3: 
+    case DW_Version_2: {
+      switch (kind) {
+        DW_Form_V2_XList(X)
+      }
+    } // fall-through
+    case DW_Version_Null: break;
+  }
+#undef X
+  String8 result = push_str8f(arena, "%x", kind);
+  return result;
+}
+
+internal String8
+dw_string_from_language(Arena *arena, DW_Language kind)
+{
+  switch (kind) {
+#define X(_N,_ID) case DW_Language_##_N: return str8_lit(Stringify(_N));
+    DW_Language_XList(X)
+#undef X
+  }
+  return push_str8f(arena, "%x", kind);
+}
+
+internal String8
+dw_string_from_inl(Arena *arena, DW_InlKind kind)
+{
+  switch (kind) {
+#define X(_N,_ID) case _ID: return str8_lit(Stringify(_N));
+    DW_Inl_XList(X)
+#undef X
+  }
+  return push_str8f(arena, "%x", kind);
+}
+
+internal String8
+dw_string_from_access_kind(Arena *arena, DW_AccessKind kind)
+{
+  switch (kind) {
+#define X(_N,_ID) case _ID: return str8_lit(Stringify(_N));
+    DW_AccessKind_XList(X)
+#undef X
+  }
+  return push_str8f(arena, "%llx", kind);
+}
+
+internal String8
+dw_string_from_calling_convetion(Arena *arena, DW_CallingConventionKind kind)
+{
+  switch (kind) {
+#define X(_N,_ID) case _ID: return str8_lit(Stringify(_N));
+    DW_CallingConventionKind_XList(X)
+#undef X
+  }
+  return push_str8f(arena, "%llx", kind);
+}
+
+internal String8
+dw_string_from_attrib_type_encoding(Arena *arena, DW_ATE kind)
+{
+  switch (kind) {
+#define X(_N,_ID) case _ID: return str8_lit(Stringify(_N));
+    DW_ATE_XList(X)
+#undef X
+  }
+  return push_str8f(arena, "%llx", kind);
+}
+
+internal String8
+dw_string_from_std_opcode(Arena *arena, DW_StdOpcode kind)
+{
+  switch (kind) {
+#define X(_N,_ID) case DW_StdOpcode_##_N: return str8_lit(Stringify(_N));
+    DW_StdOpcode_XList(X)
+#undef X
+  }
+  return push_str8f(arena, "%x", kind);
+}
+
+internal String8
+dw_string_from_ext_opcode(Arena *arena, DW_ExtOpcode kind)
+{
+  switch (kind) {
+#define X(_N,_ID) case DW_ExtOpcode_##_N: return str8_lit(Stringify(_N));
+    DW_ExtOpcode_XList(X)
+#undef X
+    default: InvalidPath; break;
+  }
+  return push_str8f(arena, "%x", kind);
+}
+
+internal String8
+dw_string_from_loc_list_entry_kind(Arena *arena, DW_LLE kind)
+{
+  NotImplemented;
+  return str8_zero();
+}
+
+internal String8
+dw_string_from_section_kind(Arena *arena, DW_SectionKind kind)
+{
+  NotImplemented;
+  return str8_zero();
+}
+
+internal String8
+dw_string_from_rng_list_entry_kind(Arena *arena, DW_RLE kind)
+{
+  NotImplemented;
+  return str8_zero();
+}
+
+internal String8
+dw_string_from_register(Arena *arena, Arch arch, U64 reg_id)
+{
+  String8 reg_str = str8_zero();
+  switch (arch) {
+    case Arch_Null: break;
+    case Arch_x86: {
+      switch (reg_id) {
+#define X(_N, _ID, ...) case DW_RegX86_##_N: reg_str = str8_lit(Stringify(_N)); break;
+        DW_Regs_X86_XList(X)
+#undef X
+      }
+    } break;
+    case Arch_x64: {
+      switch (reg_id) {
+#define X(_N, _ID, ...) case DW_RegX64_##_N: reg_str = str8_lit(Stringify(_N)); break;
+        DW_Regs_X64_XList(X)
+#undef X
+      }
+    } break;
+    case Arch_arm32: NotImplemented; break;
+    case Arch_arm64: NotImplemented; break;
+    default: InvalidPath; break;
+  }
+  if (reg_str.size == 0) {
+    reg_str = push_str8f(arena, "%#llx", reg_id);
+  }
+  return reg_str;
+}

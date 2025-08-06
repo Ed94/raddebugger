@@ -5,6 +5,35 @@
 #define MSVC_CRT
 
 ////////////////////////////////
+// CRT Symbols
+
+// _load_config_used points to PE_LoadConfig32/PE_LoadConfig64
+// and symbols below are used to patch patricual fields of the struct.
+#define MSCRT_LOAD_CONFIG_SYMBOL_NAME         "_load_config_used"
+#define MSCRT_ENCLAVE_CONFIG_SYMBOL_NAME      "__enclave_config"
+#define MSCRT_GUARD_FLAGS_SYMBOL_NAME         "__guard_flags"
+#define MSCRT_GUARD_FIDS_TABLE_SYMBOL_NAME    "__guard_fids_table"
+#define MSCRT_GUARD_FIDS_COUNT_SYMBOL_NAME    "__guard_fids_count"
+#define MSCRT_GUARD_IAT_TABLE_SYMBOL_NAME     "__guard_iat_table"
+#define MSCRT_GUARD_IAT_COUNT_SYMBOL_NAME     "__guard_iat_count"
+#define MSCRT_GUARD_LONGJMP_TABLE_SYMBOL_NAME "__guard_longjmp_table"
+#define MSCRT_GUARD_LONGJMP_COUNT_SYMBOL_NAME "__guard_longjmp_count"
+#define MSCRT_GUARD_EHCONT_TABLE_SYMBOL_NAME  "__guard_eh_cont_table"
+#define MSCRT_GUARD_EHCONT_COUNT_SYMBOL_NAME  "__guard_eh_cont_count"
+
+// x86 load config fields
+#define MSCRT_SAFE_SE_HANDLER_TABLE_SYMBOL_NAME "__safe_se_handler_table"
+#define MSCRT_SAFE_SE_HANDLER_COUNT_SYMBOL_NAME "__safe_se_handler_count"
+
+// load symbols from delayimp.lib
+#define MSCRT_DELAY_LOAD_HELPER2_SYMBOL_NAME     "__delayLoadHelper2"
+#define MSCRT_DELAY_LOAD_HELPER2_X86_SYMBOL_NAME "___delayLoadHelper2@8"
+
+// _tls_used is a special section in CRT which has format of 
+// PE_TLSHeader32 or PE_TLSHeader64, according to machine type.
+#define MSCRT_TLS_SYMBOL_NAME "_tls_used"
+
+////////////////////////////////
 
 // feature flags in absolute symbol @feat.00
 enum
@@ -314,6 +343,10 @@ typedef struct MSCRT_ParsedFuncInfoV4
   MSCRT_IP2State32V4       ip2state_map;
 } MSCRT_ParsedFuncInfoV4;
 
+//- Delay Load Helper
+
+internal String8 mscrt_delay_load_helper_name_from_machine(COFF_MachineType machine);
+
 //- Exception info < v4
 
 internal U64 mscrt_parse_func_info(Arena *arena, String8 raw_data, U64 section_count, COFF_SectionHeader *sections, U64 off, MSCRT_FuncInfo *func_info);
@@ -327,6 +360,17 @@ internal U64 mscrt_parse_unwind_map_v4         (Arena *arena, String8 raw_data, 
 internal U64 mscrt_parse_try_block_map_array_v4(Arena *arena, String8 raw_data, U64 off, U64 section_count, COFF_SectionHeader *sections, U64 func_voff, MSCRT_TryBlockMapV4Array *map_out);
 internal U64 mscrt_parse_ip2state_map_v4       (Arena *arena, String8 raw_data, U64 off, U64 func_voff, MSCRT_IP2State32V4 *ip2state_map_out);
 internal U64 mscrt_parse_func_info_v4          (Arena *arena, String8 raw_data, U64 section_count, COFF_SectionHeader *sections, U64 off, U64 func_voff, MSCRT_ParsedFuncInfoV4 *func_info_out);
+internal Rng1U64List
+mscrt_catch_blocks_from_data_x8664(Arena              *arena,
+                                   String8             raw_data,
+                                   U64                 section_count,
+                                   COFF_SectionHeader *sections,
+                                   Rng1U64             except_frange);
+
+////////////////////////////////
+//~ rjf: Enum -> String
+
+internal String8 mscrt_string_from_eh_adjectives(Arena *arena, MSCRT_EhHandlerTypeFlags adjectives);
 
 #endif // MSVC_CRT
 

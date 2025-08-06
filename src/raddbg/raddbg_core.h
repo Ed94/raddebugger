@@ -570,10 +570,10 @@ struct RD_State
   F32 tooltip_animation_rate;
   
   // rjf: serialized config debug string keys
-  U128 user_cfg_string_key;
-  U128 project_cfg_string_key;
-  U128 cmdln_cfg_string_key;
-  U128 transient_cfg_string_key;
+  HS_Key user_cfg_string_key;
+  HS_Key project_cfg_string_key;
+  HS_Key cmdln_cfg_string_key;
+  HS_Key transient_cfg_string_key;
   
   // rjf: schema table
   MD_NodePtrList *schemas;
@@ -934,6 +934,7 @@ internal U64 rd_view_setting_u64_from_name(String8 string);
 internal F32 rd_view_setting_f32_from_name(String8 string);
 
 //- rjf: evaluation & tag (a view's 'call') parameter extraction
+internal Rng1U64 rd_space_range_from_eval(E_Eval eval);
 internal TXT_LangKind rd_lang_kind_from_eval(E_Eval eval);
 internal Arch rd_arch_from_eval(E_Eval eval);
 
@@ -1028,7 +1029,7 @@ internal RD_Regs *rd_push_regs_(RD_Regs *regs);
 #define rd_push_regs(...) rd_push_regs_(&(RD_Regs){rd_regs_lit_init_top __VA_ARGS__})
 internal RD_Regs *rd_pop_regs(void);
 #define RD_RegsScope(...) DeferLoop(rd_push_regs(__VA_ARGS__), rd_pop_regs())
-internal void rd_regs_fill_slot_from_string(RD_RegSlot slot, String8 string);
+internal void rd_regs_fill_slot_from_string(RD_RegSlot slot, String8 query_expr, String8 string);
 
 ////////////////////////////////
 //~ rjf: Commands

@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) 2025 Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #pragma once
@@ -16,7 +16,7 @@ typedef enum
   LNK_Error_IllData,
   LNK_Error_IllExport,
   LNK_Error_IncomatibleCmdOptions,
-  LNK_Error_IncompatibleObj,
+  LNK_Error_IncompatibleMachine,
   LNK_Error_InvalidPrecompLeafCount,
   LNK_Error_InvalidStartIndex,
   LNK_Error_NoAccess,
@@ -32,25 +32,33 @@ typedef enum
   LNK_Error_IO,
   LNK_Error_LargeAddrAwareRequired,
   LNK_Error_InvalidPath,
+  LNK_Error_MultiplyDefinedSymbol,
+  LNK_Error_SectRefsDiscardedMemory,
+  LNK_Error_IllegalSectionMerge,
+  LNK_Error_IllegalRelocation,
+  LNK_Error_CircularMerge,
+  LNK_Error_UnresolvedSymbol,
+  LNK_Error_AssociativeLoop,
+  LNK_Error_AlternateNameConflict,
+  LNK_Error_RelocationAgainstRemovedSection,
   LNK_Error_StopLast,
   
   LNK_Error_First,
   LNK_Error_AlreadyDefinedSymbol,
-  LNK_Error_AlternateNameConflict,
   LNK_Error_CvPrecomp,
-  LNK_Error_MultiplyDefinedSymbol,
   LNK_Error_Natvis,
   LNK_Error_TooManyFiles,
-  LNK_Error_UndefinedSymbol,
-  LNK_Error_UnresolvedSymbol,
   LNK_Error_UnableToOpenTypeServer,
   LNK_Error_UnexpectedCodePath,
   LNK_Error_CvIllSymbolData,
-  LNK_Error_IllegalAlternateNameRedifine,
   LNK_Error_InvalidTypeIndex,
+  LNK_Error_UndefinedIsWeak,
+  LNK_Error_WeakCycle,
+  LNK_Error_InvalidLib,
   LNK_Error_Last,
   
   LNK_Warning_First,
+  LNK_Warning_InvalidMergeDirectiveFormat,
   LNK_Warning_AmbiguousMerge,
   LNK_Warning_AtypicalStartIndex,
   LNK_Warning_Cmdl,
@@ -81,6 +89,8 @@ typedef enum
   LNK_Warning_UnknownSwitch,
   LNK_Warning_TLSAlign,
   LNK_Warning_DirectiveSectionWithRelocs,
+  LNK_Warning_NoLargeAddressAwarenessForDll,
+  LNK_Warning_TryingToExportEntryPoint,
   LNK_Warning_Last,
   
   LNK_Error_Count

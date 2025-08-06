@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Epic Games Tools
+// Copyright (c) 2025 Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 static LNK_ErrorMode g_error_mode_arr[LNK_Error_Count];
@@ -74,12 +74,12 @@ lnk_error_with_loc_fv(LNK_ErrorCode code, String8 obj_path, String8 lib_path, ch
   String8 text = push_str8fv(scratch.arena, fmt, args);
   if (obj_path.size) {
     if (lib_path.size) {
-      lnk_error(code, "%S(%S): %S", lib_path, obj_path, text);
+      lnk_error(code, "%S(%S): %S", lib_path, str8_skip_last_slash(obj_path), text);
     } else {
       lnk_error(code, "%S: %S", obj_path, text);
     }
   } else {
-    lnk_error(code, "%S", text);
+    lnk_error(code, "RADLINK: %S", text);
   }
   scratch_end(scratch);
 }

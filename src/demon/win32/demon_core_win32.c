@@ -320,7 +320,10 @@ dmn_w32_process_read(HANDLE process, Rng1U64 range, void *dst)
     SIZE_T actual_read = 0;
     if(!ReadProcessMemory(process, (LPCVOID)cursor, ptr, to_read, &actual_read))
     {
+      DWORD error = GetLastError();
+      log_infof("'Win32 ReadProcessMemory failure': { [0x%I64x, 0x%I64x), code: %i }\n", range.min, range.max, error);
       bytes_read += actual_read;
+      (void)error;
       break;
     }
     ptr += actual_read;
@@ -349,7 +352,6 @@ dmn_w32_process_write(HANDLE process, Rng1U64 range, void *src)
     ptr += actual_write;
     cursor += actual_write;
   }
-  ins_atomic_u64_inc_eval(&dmn_w32_shared->mem_gen);
   return result;
 }
 
@@ -766,8 +768,8 @@ dmn_w32_thread_read_reg_block(Arch arch, HANDLE thread, void *reg_block)
       dst->fop.u16 = xsave->ErrorOpcode;
       dst->fcs.u16 = xsave->ErrorSelector;
       dst->fds.u16 = xsave->DataSelector;
-      dst->fip.u32 = xsave->ErrorOffset;
-      dst->fdp.u32 = xsave->DataOffset;
+      dst->fip.u64 = xsave->ErrorOffset;
+      dst->fdp.u64 = xsave->DataOffset;
       dst->mxcsr.u32 = xsave->MxCsr;
       dst->mxcsr_mask.u32 = xsave->MxCsr_Mask;
       {
@@ -1035,8 +1037,8 @@ dmn_w32_thread_write_reg_block(Arch arch, HANDLE thread, void *reg_block)
       fxsave->ErrorOpcode = src->fop.u16;
       fxsave->ErrorSelector = src->fcs.u16;
       fxsave->DataSelector = src->fds.u16;
-      fxsave->ErrorOffset = src->fip.u32;
-      fxsave->DataOffset = src->fdp.u32;
+      fxsave->ErrorOffset = src->fip.u64;
+      fxsave->DataOffset = src->fdp.u64;
       {
         M128A *float_d = fxsave->FloatRegisters;
         REGS_Reg80 *float_s = &src->fpr0;
@@ -1112,7 +1114,6 @@ dmn_w32_thread_write_reg_block(Arch arch, HANDLE thread, void *reg_block)
       scratch_end(scratch);
     }break;
   }
-  ins_atomic_u64_inc_eval(&dmn_w32_shared->reg_gen);
   ProfEnd();
   return result;
 }
@@ -1541,7 +1542,6 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
               U64 new_rflags = rflags | 0x100;
               single_step_thread_ctx->EFlags = new_rflags;
               SetThreadContext(thread->handle, single_step_thread_ctx);
-              ins_atomic_u64_inc_eval(&dmn_w32_shared->reg_gen);
             }
           }break;
         }
@@ -1684,6 +1684,7 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
                           }break;
                           case DMN_TrapFlag_BreakOnRead|DMN_TrapFlag_BreakOnWrite|DMN_TrapFlag_BreakOnExecute:
                           case DMN_TrapFlag_BreakOnRead|DMN_TrapFlag_BreakOnWrite:
+                          case DMN_TrapFlag_BreakOnRead:
                           {
                             regs.dr7.u64 |= (((U64)bit17) << (trap_idx*4));
                             regs.dr7.u64 |= (((U64)bit18) << (trap_idx*4));
@@ -1802,45 +1803,67 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
       }
       
       //////////////////////////
-      //- rjf: resume threads which will run
-      //
-      ProfScope("resume threads which will run")
-      {
-        for(DMN_W32_EntityNode *n = first_run_thread; n != 0; n = n->next)
-        {
-          DMN_W32_Entity *thread = n->v;
-          DWORD resume_result = ResumeThread(thread->handle);
-          switch(resume_result)
-          {
-            case 0xffffffffu:
-            {
-              // TODO(rjf): error - unknown cause. need to do GetLastError, FormatMessage
-            }break;
-            default:
-            {
-              DWORD desired_counter = 0;
-              DWORD current_counter = resume_result - 1;
-              if(current_counter != desired_counter)
-              {
-                // NOTE(rjf): Warning. The user has manually suspended this thread,
-                // so even though from Demon's perspective it thinks this thread
-                // should run, it will not, because the user has manually called
-                // SuspendThread or used CREATE_SUSPENDED or whatever.
-              }
-            }break;
-          }
-        }
-      }
-      
-      //////////////////////////
       //- rjf: loop, consume win32 debug events until we produce the relevant demon events
       //
+      B32 priority_mode = !dmn_handle_match(dmn_handle_zero(), ctrls->priority_thread);
+      B32 did_priority_mode = priority_mode;
+      B32 do_threads_resume = 1;
+      DMN_W32_EntityNode *first_ran_thread = 0;
+      DMN_W32_EntityNode *last_ran_thread = 0;
       U64 begin_time = os_now_microseconds();
       String8List debug_strings = {0};
       DMN_Event *debug_strings_event = 0;
       for(B32 keep_going = 1; keep_going;)
       {
         keep_going = 0;
+        
+        ////////////////////////
+        //- rjf: resume threads that we want to run
+        //
+        // if priority mode? => first, just resume priority thread
+        // if not? => resume all non-priority threads
+        //
+        if(do_threads_resume) ProfScope("resume threads that we want to run")
+        {
+          do_threads_resume = 0;
+          for(DMN_W32_EntityNode *n = first_run_thread; n != 0; n = n->next)
+          {
+            DMN_W32_Entity *thread = n->v;
+            B32 thread_is_priority = dmn_handle_match(dmn_w32_handle_from_entity(thread), ctrls->priority_thread);
+            if((priority_mode && !thread_is_priority) ||
+               (!priority_mode && did_priority_mode && thread_is_priority))
+            {
+              continue;
+            }
+            DWORD resume_result = ResumeThread(thread->handle);
+            DMN_W32_EntityNode *n = push_array(scratch.arena, DMN_W32_EntityNode, 1);
+            SLLQueuePush(first_ran_thread, last_ran_thread, n);
+            n->v = thread;
+            switch(resume_result)
+            {
+              case 0xffffffffu:
+              {
+                // TODO(rjf): error - unknown cause. need to do GetLastError, FormatMessage
+              }break;
+              default:
+              {
+                DWORD desired_counter = 0;
+                DWORD current_counter = resume_result - 1;
+                if(current_counter != desired_counter)
+                {
+                  // NOTE(rjf): Warning. The user has manually suspended this thread,
+                  // so even though from Demon's perspective it thinks this thread
+                  // should run, it will not, because the user has manually called
+                  // SuspendThread or used CREATE_SUSPENDED or whatever.
+                }
+              }break;
+            }
+            if(priority_mode && thread_is_priority)
+            {
+              break;
+            }
+          }
+        }
         
         ////////////////////////
         //- rjf: choose win32 resume code
@@ -1878,7 +1901,12 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
           }
           if(resume_good)
           {
-            evt_good = !!WaitForDebugEvent(&evt, 100);
+            DWORD wait_ms = 100;
+            if(priority_mode)
+            {
+              wait_ms = 30;
+            }
+            evt_good = !!WaitForDebugEvent(&evt, wait_ms);
             if(evt_good)
             {
               dmn_w32_shared->resume_needed = 1;
@@ -1891,9 +1919,11 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
               (void)err;
               keep_going = 1;
             }
-            ins_atomic_u64_inc_eval(&dmn_w32_shared->run_gen);
-            ins_atomic_u64_inc_eval(&dmn_w32_shared->mem_gen);
-            ins_atomic_u64_inc_eval(&dmn_w32_shared->reg_gen);
+            if(priority_mode)
+            {
+              priority_mode = 0;
+              do_threads_resume = 1;
+            }
           }
         }
         
@@ -2327,7 +2357,6 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
                       U64 new_rip = instruction_pointer;
                       ctx->Rip = new_rip;
                       SetThreadContext(thread->handle, ctx);
-                      ins_atomic_u64_inc_eval(&dmn_w32_shared->reg_gen);
                     }
                   }break;
                 }
@@ -2387,7 +2416,6 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
                     // hit - so if we have data breakpoints set, we need to
                     // check this thread's debug registers, to determine if this
                     // is a regular single-step or a data breakpoint hit.
-                    if(first_flagged_trap_task != 0)
                     {
                       // rjf: first determine the flagged trap index
                       U64 flagged_trap_idx = 0;
@@ -2402,10 +2430,10 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
                           {
                             e->kind = DMN_EventKind_Breakpoint;
                             if(0){}
-                            else if(regs.dr7.u64 & (1ull<<0) && regs.dr6.u64 & (1ull<<0)) { flagged_trap_idx = 0; }
-                            else if(regs.dr7.u64 & (1ull<<2) && regs.dr6.u64 & (1ull<<1)) { flagged_trap_idx = 1; }
-                            else if(regs.dr7.u64 & (1ull<<4) && regs.dr6.u64 & (1ull<<2)) { flagged_trap_idx = 2; }
-                            else if(regs.dr7.u64 & (1ull<<8) && regs.dr6.u64 & (1ull<<3)) { flagged_trap_idx = 3; }
+                            else if(regs.dr7.u64 & (1ull<<0) && regs.dr6.u64 & (1ull<<0)) { flagged_trap_idx = 0; e->address = regs.dr0.u64; }
+                            else if(regs.dr7.u64 & (1ull<<2) && regs.dr6.u64 & (1ull<<1)) { flagged_trap_idx = 1; e->address = regs.dr1.u64; }
+                            else if(regs.dr7.u64 & (1ull<<4) && regs.dr6.u64 & (1ull<<2)) { flagged_trap_idx = 2; e->address = regs.dr2.u64; }
+                            else if(regs.dr7.u64 & (1ull<<8) && regs.dr6.u64 & (1ull<<3)) { flagged_trap_idx = 3; e->address = regs.dr3.u64; }
                           }
                         }break;
                       }
@@ -2649,7 +2677,7 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
         ////////////////////////
         //- rjf: exit loop after a little while, so we keep pumping e.g. debug strings
         //
-        if(os_now_microseconds() >= begin_time+100000)
+        if(os_now_microseconds() >= begin_time+100000 && debug_strings.total_size != 0)
         {
           keep_going = 0;
         }
@@ -2669,7 +2697,7 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
       //
       ProfScope("suspend threads which ran")
       {
-        for(DMN_W32_EntityNode *n = first_run_thread; n != 0; n = n->next)
+        for(DMN_W32_EntityNode *n = first_ran_thread; n != 0; n = n->next)
         {
           DMN_W32_Entity *thread = n->v;
           if(thread->kind != DMN_W32_EntityKind_Thread)
@@ -2841,7 +2869,6 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
               U64 new_rflags = rflags & ~0x100;
               single_step_thread_ctx->EFlags = new_rflags;
               SetThreadContext(thread->handle, single_step_thread_ctx);
-              ins_atomic_u64_inc_eval(&dmn_w32_shared->reg_gen);
             }
           }break;
         }
@@ -2937,29 +2964,6 @@ dmn_halt(U64 code, U64 user_data)
 
 ////////////////////////////////
 //~ rjf: @dmn_os_hooks Introspection Functions (Implemented Per-OS)
-
-//- rjf: run/memory/register counters
-
-internal U64
-dmn_run_gen(void)
-{
-  U64 result = ins_atomic_u64_eval(&dmn_w32_shared->run_gen);
-  return result;
-}
-
-internal U64
-dmn_mem_gen(void)
-{
-  U64 result = ins_atomic_u64_eval(&dmn_w32_shared->mem_gen);
-  return result;
-}
-
-internal U64
-dmn_reg_gen(void)
-{
-  U64 result = ins_atomic_u64_eval(&dmn_w32_shared->reg_gen);
-  return result;
-}
 
 //- rjf: non-blocking-control-thread access barriers
 

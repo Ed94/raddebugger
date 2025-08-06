@@ -757,6 +757,17 @@ struct CTRL_TCTX
 };
 
 ////////////////////////////////
+//~ rjf: Module Requirement Cache Types
+
+typedef struct CTRL_ModuleReqCacheNode CTRL_ModuleReqCacheNode;
+struct CTRL_ModuleReqCacheNode
+{
+  CTRL_ModuleReqCacheNode *next;
+  CTRL_Handle module;
+  B32 required;
+};
+
+////////////////////////////////
 //~ rjf: Wakeup Hook Function Types
 
 #define CTRL_WAKEUP_FUNCTION_DEF(name) void name(void)
@@ -780,6 +791,11 @@ struct CTRL_State
   CTRL_ThreadRegCache thread_reg_cache;
   CTRL_CallStackCache call_stack_cache;
   CTRL_ModuleImageInfoCache module_image_info_cache;
+  
+  // rjf: generations
+  U64 run_gen;
+  U64 mem_gen;
+  U64 reg_gen;
   
   // rjf: user -> ctrl msg ring buffer
   U64 u2c_ring_size;
@@ -806,6 +822,7 @@ struct CTRL_State
   OS_Handle ctrl_thread_entity_ctx_rw_mutex;
   CTRL_EntityCtxRWStore *ctrl_thread_entity_store;
   E_Cache *ctrl_thread_eval_cache;
+  Arena *ctrl_thread_msg_process_arena;
   Arena *dmn_event_arena;
   DMN_EventNode *first_dmn_event_node;
   DMN_EventNode *last_dmn_event_node;
@@ -816,6 +833,10 @@ struct CTRL_State
   U64 process_counter;
   Arena *dbg_dir_arena;
   CTRL_DbgDirNode *dbg_dir_root;
+  U64 module_req_cache_slots_count;
+  CTRL_ModuleReqCacheNode **module_req_cache_slots;
+  String8List msg_user_bp_touched_files;
+  String8List msg_user_bp_touched_symbols;
   
   // rjf: user -> memstream ring buffer
   U64 u2ms_ring_size;
@@ -852,7 +873,7 @@ thread_static CTRL_EntityCtxLookupAccel *ctrl_entity_ctx_lookup_accel = 0;
 ////////////////////////////////
 //~ rjf: Logging Markup
 
-#define CTRL_CtrlThreadLogScope DeferLoop(log_scope_begin(), ctrl_thread__end_and_flush_info_log())
+#define CTRL_CtrlThreadLogScope DeferLoop(log_scope_begin(), ctrl_thread__end_and_flush_log())
 
 ////////////////////////////////
 //~ rjf: Basic Type Functions
@@ -1099,12 +1120,11 @@ internal DMN_Event *ctrl_thread__next_dmn_event(Arena *arena, DMN_CtrlCtx *ctrl_
 internal B32 ctrl_eval_space_read(void *u, E_Space space, void *out, Rng1U64 vaddr_range);
 
 //- rjf: control thread eval scopes
-internal CTRL_EvalScope *ctrl_thread__eval_scope_begin(Arena *arena, CTRL_Entity *thread);
+internal CTRL_EvalScope *ctrl_thread__eval_scope_begin(Arena *arena, CTRL_UserBreakpointList *user_bps, CTRL_Entity *thread);
 internal void ctrl_thread__eval_scope_end(CTRL_EvalScope *scope);
 
 //- rjf: log flusher
-internal void ctrl_thread__flush_info_log(String8 string);
-internal void ctrl_thread__end_and_flush_info_log(void);
+internal void ctrl_thread__end_and_flush_log(void);
 
 //- rjf: msg kind implementations
 internal void ctrl_thread__launch(DMN_CtrlCtx *ctrl_ctx, CTRL_Msg *msg);
