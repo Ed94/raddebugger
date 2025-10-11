@@ -54,50 +54,6 @@ sizeof(RDI_NameMapNode),
 sizeof(RDI_U8),
 };
 
-RDI_U8 rdi_section_is_required_table[40] =
-{
-0,
-0,
-1,
-1,
-1,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-0,
-};
-
 RDI_U16 rdi_eval_op_ctrlbits_table[52] =
 {
 RDI_EVAL_CTRLBITS(0, 0, 0),
@@ -177,11 +133,15 @@ struct {RDI_U8 *str; RDI_U64 size;} rdi_eval_conversion_kind_message_string_tabl
 RDI_PROC RDI_U64
 rdi_hash(RDI_U8 *ptr, RDI_U64 size)
 {
-  RDI_U64 result = 5381;
-  RDI_U8 *opl = ptr + size;
-  for(;ptr < opl; ptr += 1)
+  RDI_U64 result = 0;
+  if(size != 0)
   {
-    result = ((result << 5) + result) + *ptr;
+    result = 5381;
+    RDI_U8 *opl = ptr + size;
+    for(;ptr < opl; ptr += 1)
+    {
+      result = ((result << 5) + result) + *ptr;
+    }
   }
   return result;
 }

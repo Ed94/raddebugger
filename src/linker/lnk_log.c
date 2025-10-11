@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 internal void
@@ -45,6 +45,7 @@ lnk_log_type_from_string(String8 string)
     "SizeBreakdown", LNK_Log_SizeBreakdown,
     "LinkStats",     LNK_Log_LinkStats,
     "Timers",        LNK_Log_Timers,
+    "Links",         LNK_Log_Links,
   };
   Assert(ArrayCount(map) == LNK_Log_Count);
 

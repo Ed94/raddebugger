@@ -2,214 +2,195 @@
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 ////////////////////////////////
-//~ rjf: Third Party Includes
-
-#if !BUILD_SUPPLEMENTARY_UNIT
-# define STB_SPRINTF_IMPLEMENTATION
-# define STB_SPRINTF_STATIC
-# include "third_party/stb/stb_sprintf.h"
-#endif
-
-////////////////////////////////
-//~ NOTE(allen): String <-> Integer Tables
-
-read_only global U8 integer_symbols[16] = {
-  '0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F',
-};
-
-// NOTE(allen): Includes reverses for uppercase and lowercase hex.
-read_only global U8 integer_symbol_reverse[128] = {
-  0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
-  0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
-  0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
-  0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
-  0xFF,0x0A,0x0B,0x0C,0x0D,0x0E,0x0F,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
-  0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
-  0xFF,0x0A,0x0B,0x0C,0x0D,0x0E,0x0F,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
-  0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
-};
-
-read_only global U8 base64[64] = {
-  '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-  'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
-  'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
-  'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
-  'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-  '_', '$',
-};
-
-read_only global U8 base64_reverse[128] = {
-  0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
-  0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
-  0xFF,0xFF,0xFF,0xFF,0x3F,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
-  0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0xFF,0xFF,0xFF,0xFF,0xFF,0x00,
-  0xFF,0x24,0x25,0x26,0x27,0x28,0x29,0x2A,0x2B,0x2C,0x2D,0x2E,0x2F,0x30,0x31,0x32,
-  0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x3A,0x3B,0x3C,0x3D,0xFF,0xFF,0xFF,0xFF,0x3E,
-  0xFF,0x0A,0x0B,0x0C,0x0D,0x0E,0x0F,0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,0x18,
-  0x19,0x1A,0x1B,0x1C,0x1D,0x1E,0x1F,0x20,0x21,0x22,0x23,0xFF,0xFF,0xFF,0xFF,0xFF,
-};
-
-////////////////////////////////
 //~ rjf: Character Classification & Conversion Functions
 
 internal B32
-char_is_space(U8 c){
-  return(c == ' ' || c == '\n' || c == '\t' || c == '\r' || c == '\f' || c == '\v');
+char_is_space(U8 c)
+{
+  return (c == ' ' || c == '\n' || c == '\t' || c == '\r' || c == '\f' || c == '\v');
 }
 
 internal B32
-char_is_upper(U8 c){
-  return('A' <= c && c <= 'Z');
+char_is_upper(U8 c)
+{
+  return ('A' <= c && c <= 'Z');
 }
 
 internal B32
-char_is_lower(U8 c){
-  return('a' <= c && c <= 'z');
+char_is_lower(U8 c)
+{
+  return ('a' <= c && c <= 'z');
 }
 
 internal B32
-char_is_alpha(U8 c){
-  return(char_is_upper(c) || char_is_lower(c));
+char_is_alpha(U8 c)
+{
+  return (char_is_upper(c) || char_is_lower(c));
 }
 
 internal B32
-char_is_slash(U8 c){
-  return(c == '/' || c == '\\');
+char_is_slash(U8 c)
+{
+  return (c == '/' || c == '\\');
 }
 
 internal B32
-char_is_digit(U8 c, U32 base){
+char_is_digit(U8 c, U32 base)
+{
   B32 result = 0;
-  if (0 < base && base <= 16){
+  if(0 < base && base <= 16)
+  {
     U8 val = integer_symbol_reverse[c];
-    if (val < base){
+    if(val < base)
+    {
       result = 1;
     }
   }
-  return(result);
+  return result;
 }
 
 internal U8
-char_to_lower(U8 c){
-  if (char_is_upper(c)){
+lower_from_char(U8 c)
+{
+  if(char_is_upper(c))
+  {
     c += ('a' - 'A');
   }
-  return(c);
+  return c;
 }
 
 internal U8
-char_to_upper(U8 c){
-  if (char_is_lower(c)){
+upper_from_char(U8 c)
+{
+  if(char_is_lower(c))
+  {
     c += ('A' - 'a');
   }
-  return(c);
+  return c;
 }
 
 internal U8
-char_to_correct_slash(U8 c){
-  if(char_is_slash(c)){
+correct_slash_from_char(U8 c)
+{
+  if(char_is_slash(c))
+  {
     c = '/';
   }
-  return(c);
+  return c;
 }
 
 ////////////////////////////////
 //~ rjf: C-String Measurement
 
 internal U64
-cstring8_length(U8 *c){
+cstring8_length(U8 *c)
+{
   U8 *p = c;
   for (;*p != 0; p += 1);
-  return(p - c);
+  return (p - c);
 }
 
 internal U64
-cstring16_length(U16 *c){
+cstring16_length(U16 *c)
+{
   U16 *p = c;
   for (;*p != 0; p += 1);
-  return(p - c);
+  return (p - c);
 }
 
 internal U64
-cstring32_length(U32 *c){
+cstring32_length(U32 *c)
+{
   U32 *p = c;
   for (;*p != 0; p += 1);
-  return(p - c);
+  return (p - c);
 }
 
 ////////////////////////////////
 //~ rjf: String Constructors
 
 internal String8
-str8(U8 *str, U64 size){
+str8(U8 *str, U64 size)
+{
   String8 result = {str, size};
-  return(result);
+  return result;
 }
 
 internal String8
-str8_range(U8 *first, U8 *one_past_last){
+str8_range(U8 *first, U8 *one_past_last)
+{
   String8 result = {first, (U64)(one_past_last - first)};
-  return(result);
+  return result;
 }
 
 internal String8
-str8_zero(void){
+str8_zero(void)
+{
   String8 result = {0};
-  return(result);
+  return result;
 }
 
 internal String16
-str16(U16 *str, U64 size){
+str16(U16 *str, U64 size)
+{
   String16 result = {str, size};
-  return(result);
+  return result;
 }
 
 internal String16
-str16_range(U16 *first, U16 *one_past_last){
+str16_range(U16 *first, U16 *one_past_last)
+{
   String16 result = {first, (U64)(one_past_last - first)};
-  return(result);
+  return result;
 }
 
 internal String16
-str16_zero(void){
+str16_zero(void)
+{
   String16 result = {0};
-  return(result);
+  return result;
 }
 
 internal String32
-str32(U32 *str, U64 size){
+str32(U32 *str, U64 size)
+{
   String32 result = {str, size};
-  return(result);
+  return result;
 }
 
 internal String32
-str32_range(U32 *first, U32 *one_past_last){
+str32_range(U32 *first, U32 *one_past_last)
+{
   String32 result = {first, (U64)(one_past_last - first)};
-  return(result);
+  return result;
 }
 
 internal String32
-str32_zero(void){
+str32_zero(void)
+{
   String32 result = {0};
-  return(result);
+  return result;
 }
 
 internal String8
-str8_cstring(char *c){
+str8_cstring(char *c)
+{
   String8 result = {(U8*)c, cstring8_length((U8*)c)};
-  return(result);
+  return result;
 }
 
 internal String16
-str16_cstring(U16 *c){
+str16_cstring(U16 *c)
+{
   String16 result = {(U16*)c, cstring16_length((U16*)c)};
-  return(result);
+  return result;
 }
 
 internal String32
-str32_cstring(U32 *c){
+str32_cstring(U32 *c)
+{
   String32 result = {(U32*)c, cstring32_length((U32*)c)};
-  return(result);
+  return result;
 }
 
 internal String8
@@ -242,7 +223,6 @@ str8_cstring_capped_reverse(void *raw_start, void *raw_cap)
   for(; ptr > start; )
   {
     ptr -= 1;
-    
     if (*ptr == '\0')
     {
       break;
@@ -262,7 +242,7 @@ upper_from_str8(Arena *arena, String8 string)
   string = push_str8_copy(arena, string);
   for(U64 idx = 0; idx < string.size; idx += 1)
   {
-    string.str[idx] = char_to_upper(string.str[idx]);
+    string.str[idx] = upper_from_char(string.str[idx]);
   }
   return string;
 }
@@ -273,7 +253,7 @@ lower_from_str8(Arena *arena, String8 string)
   string = push_str8_copy(arena, string);
   for(U64 idx = 0; idx < string.size; idx += 1)
   {
-    string.str[idx] = char_to_lower(string.str[idx]);
+    string.str[idx] = lower_from_char(string.str[idx]);
   }
   return string;
 }
@@ -312,13 +292,13 @@ str8_match(String8 a, String8 b, StringMatchFlags flags)
       U8 bt = b.str[i];
       if(case_insensitive)
       {
-        at = char_to_upper(at);
-        bt = char_to_upper(bt);
+        at = upper_from_char(at);
+        bt = upper_from_char(bt);
       }
       if(slash_insensitive)
       {
-        at = char_to_correct_slash(at);
-        bt = char_to_correct_slash(bt);
+        at = correct_slash_from_char(at);
+        bt = correct_slash_from_char(bt);
       }
       if(at != bt)
       {
@@ -331,35 +311,43 @@ str8_match(String8 a, String8 b, StringMatchFlags flags)
 }
 
 internal U64
-str8_find_needle(String8 string, U64 start_pos, String8 needle, StringMatchFlags flags){
+str8_find_needle(String8 string, U64 start_pos, String8 needle, StringMatchFlags flags)
+{
   U8 *p = string.str + start_pos;
   U64 stop_offset = Max(string.size + 1, needle.size) - needle.size;
   U8 *stop_p = string.str + stop_offset;
-  if (needle.size > 0){
+  if(needle.size > 0)
+  {
     U8 *string_opl = string.str + string.size;
     String8 needle_tail = str8_skip(needle, 1);
     StringMatchFlags adjusted_flags = flags | StringMatchFlag_RightSideSloppy;
     U8 needle_first_char_adjusted = needle.str[0];
-    if(adjusted_flags & StringMatchFlag_CaseInsensitive){
-      needle_first_char_adjusted = char_to_upper(needle_first_char_adjusted);
+    if(adjusted_flags & StringMatchFlag_CaseInsensitive)
+    {
+      needle_first_char_adjusted = upper_from_char(needle_first_char_adjusted);
     }
-    for (;p < stop_p; p += 1){
+    for(;p < stop_p; p += 1)
+    {
       U8 haystack_char_adjusted = *p;
-      if(adjusted_flags & StringMatchFlag_CaseInsensitive){
-        haystack_char_adjusted = char_to_upper(haystack_char_adjusted);
+      if(adjusted_flags & StringMatchFlag_CaseInsensitive)
+      {
+        haystack_char_adjusted = upper_from_char(haystack_char_adjusted);
       }
-      if (haystack_char_adjusted == needle_first_char_adjusted){
-        if (str8_match(str8_range(p + 1, string_opl), needle_tail, adjusted_flags)){
+      if(haystack_char_adjusted == needle_first_char_adjusted)
+      {
+        if(str8_match(str8_range(p + 1, string_opl), needle_tail, adjusted_flags))
+        {
           break;
         }
       }
     }
   }
   U64 result = string.size;
-  if (p < stop_p){
+  if(p < stop_p)
+  {
     result = (U64)(p - string.str);
   }
-  return(result);
+  return result;
 }
 
 internal U64
@@ -379,51 +367,76 @@ str8_find_needle_reverse(String8 string, U64 start_pos, String8 needle, StringMa
 }
 
 internal B32
-str8_ends_with(String8 string, String8 end, StringMatchFlags flags){
-  String8 postfix = str8_postfix(string, end.size);
-  B32 is_match = str8_match(end, postfix, flags);
-  return is_match;
+str8_is_before(String8 a, String8 b)
+{
+  B32 result = 0;
+  {
+    U64 common_size = Min(a.size, b.size);
+    for(U64 off = 0; off < common_size; off += 1)
+    {
+      if(a.str[off] < b.str[off])
+      {
+        result = 1;
+        break;
+      }
+      else if(a.str[off] > b.str[off])
+      {
+        result = 0;
+        break;
+      }
+      else if(off+1 == common_size)
+      {
+        result = (a.size < b.size);
+      }
+    }
+  }
+  return result;
 }
 
 ////////////////////////////////
 //~ rjf: String Slicing
 
 internal String8
-str8_substr(String8 str, Rng1U64 range){
+str8_substr(String8 str, Rng1U64 range)
+{
   range.min = ClampTop(range.min, str.size);
   range.max = ClampTop(range.max, str.size);
   str.str += range.min;
   str.size = dim_1u64(range);
-  return(str);
+  return str;
 }
 
 internal String8
-str8_prefix(String8 str, U64 size){
+str8_prefix(String8 str, U64 size)
+{
   str.size = ClampTop(size, str.size);
-  return(str);
+  return str;
 }
 
 internal String8
-str8_skip(String8 str, U64 amt){
+str8_skip(String8 str, U64 amt)
+{
   amt = ClampTop(amt, str.size);
   str.str += amt;
   str.size -= amt;
-  return(str);
+  return str;
 }
 
 internal String8
-str8_postfix(String8 str, U64 size){
+str8_postfix(String8 str, U64 size)
+{
   size = ClampTop(size, str.size);
   str.str = (str.str + str.size) - size;
   str.size = size;
-  return(str);
+  return str;
 }
 
 internal String8
-str8_chop(String8 str, U64 amt){
+str8_chop(String8 str, U64 amt)
+{
   amt = ClampTop(amt, str.size);
   str.size -= amt;
-  return(str);
+  return str;
 }
 
 internal String8
@@ -542,11 +555,13 @@ push_cstr(Arena *arena, String8 str)
 //- rjf: string -> integer
 
 internal S64
-sign_from_str8(String8 string, String8 *string_tail){
+sign_from_str8(String8 string, String8 *string_tail)
+{
   // count negative signs
   U64 neg_count = 0;
   U64 i = 0;
-  for (; i < string.size; i += 1){
+  for(; i < string.size; i += 1)
+  {
     if (string.str[i] == '-'){
       neg_count += 1;
     }
@@ -560,44 +575,53 @@ sign_from_str8(String8 string, String8 *string_tail){
   
   // output integer sign
   S64 sign = (neg_count & 1)?-1:+1;
-  return(sign);
+  return sign;
 }
 
 internal B32
-str8_is_integer(String8 string, U32 radix){
+str8_is_integer(String8 string, U32 radix)
+{
   B32 result = 0;
-  if (string.size > 0){
-    if (1 < radix && radix <= 16){
+  if(string.size > 0)
+  {
+    if(1 < radix && radix <= 16)
+    {
       result = 1;
-      for (U64 i = 0; i < string.size; i += 1){
+      for(U64 i = 0; i < string.size; i += 1)
+      {
         U8 c = string.str[i];
-        if (!(c < 0x80) || integer_symbol_reverse[c] >= radix){
+        if(!(c < 0x80) || integer_symbol_reverse[c] >= radix)
+        {
           result = 0;
           break;
         }
       }
     }
   }
-  return(result);
+  return result;
 }
 
 internal U64
-u64_from_str8(String8 string, U32 radix){
+u64_from_str8(String8 string, U32 radix)
+{
   U64 x = 0;
-  if (1 < radix && radix <= 16){
-    for (U64 i = 0; i < string.size; i += 1){
+  if(1 < radix && radix <= 16)
+  {
+    for(U64 i = 0; i < string.size; i += 1)
+    {
       x *= radix;
       x += integer_symbol_reverse[string.str[i]&0x7F];
     }
   }
-  return(x);
+  return x;
 }
 
 internal S64
-s64_from_str8(String8 string, U32 radix){
+s64_from_str8(String8 string, U32 radix)
+{
   S64 sign = sign_from_str8(string, &string);
   S64 x = (S64)u64_from_str8(string, radix) * sign;
-  return(x);
+  return x;
 }
 
 internal U32
@@ -619,28 +643,33 @@ s32_from_str8(String8 string, U32 radix)
 internal B32
 try_u64_from_str8_c_rules(String8 string, U64 *x)
 {
-  U64 radix, prefix_size;
-  // hex
-  if(str8_match(str8_prefix(string, 2), str8_lit("0x"), StringMatchFlag_CaseInsensitive))
+  // rjf: unpack radix / prefix size based on string prefix
+  U64 radix = 0;
+  U64 prefix_size = 0;
   {
-    radix = 0x10, prefix_size = 2;
-  }
-  // binary
-  else if(str8_match(str8_prefix(string, 2), str8_lit("0b"), StringMatchFlag_CaseInsensitive))
-  {
-    radix = 2, prefix_size = 2;
-  }
-  // octal
-  else if(str8_match(str8_prefix(string, 1), str8_lit("0"), StringMatchFlag_CaseInsensitive) && string.size > 1)
-  {
-    radix = 010, prefix_size = 1;
-  }
-  // decimal
-  else
-  {
-    radix = 10, prefix_size = 0;
+    // hex
+    if(str8_match(str8_prefix(string, 2), str8_lit("0x"), StringMatchFlag_CaseInsensitive))
+    {
+      radix = 0x10, prefix_size = 2;
+    }
+    // binary
+    else if(str8_match(str8_prefix(string, 2), str8_lit("0b"), StringMatchFlag_CaseInsensitive))
+    {
+      radix = 2, prefix_size = 2;
+    }
+    // octal
+    else if(str8_match(str8_prefix(string, 1), str8_lit("0"), StringMatchFlag_CaseInsensitive) && string.size > 1)
+    {
+      radix = 010, prefix_size = 1;
+    }
+    // decimal
+    else
+    {
+      radix = 10, prefix_size = 0;
+    }
   }
   
+  // rjf: convert if we can
   String8 integer    = str8_skip(string, prefix_size);
   B32     is_integer = str8_is_integer(integer, radix);
   if(is_integer)
@@ -667,78 +696,78 @@ try_s64_from_str8_c_rules(String8 string, S64 *x)
 internal String8
 str8_from_memory_size(Arena *arena, U64 size)
 {
-  String8 result;
-  
-  if(size < KB(1))
+  String8 result = {0};
   {
-    result = push_str8f(arena, "%llu Bytes", size);
+    if(size < KB(1))
+    {
+      result = push_str8f(arena, "%llu Bytes", size);
+    }
+    else if(size < MB(1))
+    {
+      result = push_str8f(arena, "%llu.%02llu KiB", size / KB(1), ((size * 100) / KB(1)) % 100);
+    }
+    else if(size < GB(1))
+    {
+      result = push_str8f(arena, "%llu.%02llu MiB", size / MB(1), ((size * 100) / MB(1)) % 100);
+    }
+    else if(size < TB(1))
+    {
+      result = push_str8f(arena, "%llu.%02llu GiB", size / GB(1), ((size * 100) / GB(1)) % 100);
+    }
+    else
+    {
+      result = push_str8f(arena, "%llu.%02llu TiB", size / TB(1), ((size * 100) / TB(1)) % 100);
+    }
   }
-  else if(size < MB(1))
-  {
-    result = push_str8f(arena, "%llu.%02llu KiB", size / KB(1), ((size * 100) / KB(1)) % 100);
-  }
-  else if(size < GB(1))
-  {
-    result = push_str8f(arena, "%llu.%02llu MiB", size / MB(1), ((size * 100) / MB(1)) % 100);
-  }
-  else if(size < TB(1))
-  {
-    result = push_str8f(arena, "%llu.%02llu GiB", size / GB(1), ((size * 100) / GB(1)) % 100);
-  }
-  else
-  {
-    result = push_str8f(arena, "%llu.%02llu TiB", size / TB(1), ((size * 100) / TB(1)) % 100);
-  }
-  
   return result;
 }
 
 internal String8
 str8_from_count(Arena *arena, U64 count)
 {
-  String8 result;
-  
-  if(count < 1 * 1000)
+  String8 result = {0};
   {
-    result = push_str8f(arena, "%llu", count);
-  }
-  else if(count < 1000000)
-  {
-    U64 frac = ((count * 100) / 1000) % 100;
-    if(frac > 0)
+    if(count < 1 * 1000)
     {
-      result = push_str8f(arena, "%llu.%02lluK", count / 1000, frac);
+      result = push_str8f(arena, "%llu", count);
+    }
+    else if(count < 1000000)
+    {
+      U64 frac = ((count * 100) / 1000) % 100;
+      if(frac > 0)
+      {
+        result = push_str8f(arena, "%llu.%02lluK", count / 1000, frac);
+      }
+      else
+      {
+        result = push_str8f(arena, "%lluK", count / 1000);
+      }
+    }
+    else if(count < 1000000000)
+    {
+      U64 frac = ((count * 100) / 1000000) % 100;
+      if(frac > 0)
+      {
+        result = push_str8f(arena, "%llu.%02lluM", count / 1000000, frac);
+      }
+      else
+      {
+        result = push_str8f(arena, "%lluM", count / 1000000);
+      }
     }
     else
     {
-      result = push_str8f(arena, "%lluK", count / 1000);
+      U64 frac = ((count * 100) * 1000000000) % 100;
+      if(frac > 0)
+      {
+        result = push_str8f(arena, "%llu.%02lluB", count / 1000000000, frac);
+      }
+      else
+      {
+        result = push_str8f(arena, "%lluB", count / 1000000000, frac);
+      }
     }
   }
-  else if(count < 1000000000)
-  {
-    U64 frac = ((count * 100) / 1000000) % 100;
-    if(frac > 0)
-    {
-      result = push_str8f(arena, "%llu.%02lluM", count / 1000000, frac);
-    }
-    else
-    {
-      result = push_str8f(arena, "%lluM", count / 1000000);
-    }
-  }
-  else
-  {
-    U64 frac = ((count * 100) * 1000000000) % 100;
-    if(frac > 0)
-    {
-      result = push_str8f(arena, "%llu.%02lluB", count / 1000000000, frac);
-    }
-    else
-    {
-      result = push_str8f(arena, "%lluB", count / 1000000000, frac);
-    }
-  }
-  
   return result;
 }
 
@@ -851,7 +880,7 @@ str8_from_u64(Arena *arena, U64 u64, U32 radix, U8 min_digits, U8 digit_group_se
         }
         else
         {
-          result.str[result.size - idx - 1] = char_to_lower(integer_symbols[u64_reduce%radix]);
+          result.str[result.size - idx - 1] = lower_from_char(integer_symbols[u64_reduce%radix]);
           u64_reduce /= radix;
         }
         digits_until_separator -= 1;
@@ -943,73 +972,74 @@ f64_from_str8(String8 string)
 ////////////////////////////////
 //~ rjf: String List Construction Functions
 
-internal String8Node*
-str8_list_push_node(String8List *list, String8Node *node){
-  SLLQueuePush(list->first, list->last, node);
-  list->node_count += 1;
-  list->total_size += node->string.size;
-  return(node);
-}
-
-internal String8Node*
-str8_list_push_node_set_string(String8List *list, String8Node *node, String8 string){
-  SLLQueuePush(list->first, list->last, node);
-  list->node_count += 1;
-  list->total_size += string.size;
-  node->string = string;
-  return(node);
-}
-
-internal String8Node*
-str8_list_push_node_front(String8List *list, String8Node *node){
-  SLLQueuePushFront(list->first, list->last, node);
-  list->node_count += 1;
-  list->total_size += node->string.size;
-  return(node);
-}
-
-internal String8Node*
-str8_list_push_node_front_set_string(String8List *list, String8Node *node, String8 string){
-  SLLQueuePushFront(list->first, list->last, node);
-  list->node_count += 1;
-  list->total_size += string.size;
-  node->string = string;
-  return(node);
-}
-
-internal String8Node*
-str8_list_push(Arena *arena, String8List *list, String8 string){
-  String8Node *node = push_array_no_zero(arena, String8Node, 1);
-  str8_list_push_node_set_string(list, node, string);
-  return(node);
-}
-
 internal String8Node *
-str8_list_push_cstr(Arena *arena, String8List *list, String8 string)
+str8_list_push_node(String8List *list, String8Node *node)
 {
-  String8Node *node = str8_list_push(arena, list, string);
-  local_persist String8 null = str8_lit_comp("\0");
-  str8_list_push(arena, list, null);
+  SLLQueuePush(list->first, list->last, node);
+  list->node_count += 1;
+  list->total_size += node->string.size;
   return node;
 }
 
-internal String8Node*
-str8_list_push_front(Arena *arena, String8List *list, String8 string){
+internal String8Node *
+str8_list_push_node_set_string(String8List *list, String8Node *node, String8 string)
+{
+  SLLQueuePush(list->first, list->last, node);
+  list->node_count += 1;
+  list->total_size += string.size;
+  node->string = string;
+  return node;
+}
+
+internal String8Node *
+str8_list_push_node_front(String8List *list, String8Node *node)
+{
+  SLLQueuePushFront(list->first, list->last, node);
+  list->node_count += 1;
+  list->total_size += node->string.size;
+  return node;
+}
+
+internal String8Node *
+str8_list_push_node_front_set_string(String8List *list, String8Node *node, String8 string)
+{
+  SLLQueuePushFront(list->first, list->last, node);
+  list->node_count += 1;
+  list->total_size += string.size;
+  node->string = string;
+  return node;
+}
+
+internal String8Node *
+str8_list_push(Arena *arena, String8List *list, String8 string)
+{
+  String8Node *node = push_array_no_zero(arena, String8Node, 1);
+  str8_list_push_node_set_string(list, node, string);
+  return node;
+}
+
+internal String8Node *
+str8_list_push_front(Arena *arena, String8List *list, String8 string)
+{
   String8Node *node = push_array_no_zero(arena, String8Node, 1);
   str8_list_push_node_front_set_string(list, node, string);
-  return(node);
+  return node;
 }
 
 internal void
-str8_list_concat_in_place(String8List *list, String8List *to_push){
-  if(to_push->node_count != 0){
-    if (list->last){
+str8_list_concat_in_place(String8List *list, String8List *to_push)
+{
+  if(to_push->node_count != 0)
+  {
+    if(list->last)
+    {
       list->node_count += to_push->node_count;
       list->total_size += to_push->total_size;
       list->last->next = to_push->first;
       list->last = to_push->last;
     }
-    else{
+    else
+    {
       *list = *to_push;
     }
     MemoryZeroStruct(to_push);
@@ -1040,133 +1070,121 @@ str8_list_push_aligner(Arena *arena, String8List *list, U64 min, U64 align){
 }
 
 internal String8Node*
-str8_list_pushf(Arena *arena, String8List *list, char *fmt, ...){
+str8_list_pushf(Arena *arena, String8List *list, char *fmt, ...)
+{
   va_list args;
   va_start(args, fmt);
   String8 string = push_str8fv(arena, fmt, args);
   String8Node *result = str8_list_push(arena, list, string);
   va_end(args);
-  return(result);
+  return result;
 }
 
 internal String8Node*
-str8_list_push_frontf(Arena *arena, String8List *list, char *fmt, ...){
+str8_list_push_frontf(Arena *arena, String8List *list, char *fmt, ...)
+{
   va_list args;
   va_start(args, fmt);
   String8 string = push_str8fv(arena, fmt, args);
   String8Node *result = str8_list_push_front(arena, list, string);
   va_end(args);
-  return(result);
+  return result;
 }
 
 internal String8List
-str8_list_copy(Arena *arena, String8List *list){
+str8_list_copy(Arena *arena, String8List *list)
+{
   String8List result = {0};
-  for (String8Node *node = list->first;
-       node != 0;
-       node = node->next){
+  for(String8Node *node = list->first; node != 0; node = node->next)
+  {
     String8Node *new_node = push_array_no_zero(arena, String8Node, 1);
     String8 new_string = push_str8_copy(arena, node->string);
     str8_list_push_node_set_string(&result, new_node, new_string);
   }
-  return(result);
+  return result;
 }
 
+////////////////////////////////
+//~ rjf: String Splitting & Joining
+
 internal String8List
-str8_split(Arena *arena, String8 string, U8 *split_chars, U64 split_char_count, StringSplitFlags flags){
+str8_split(Arena *arena, String8 string, U8 *split_chars, U64 split_char_count, StringSplitFlags flags)
+{
   String8List list = {0};
-  
   B32 keep_empties = (flags & StringSplitFlag_KeepEmpties);
-  
   U8 *ptr = string.str;
   U8 *opl = string.str + string.size;
-  for (;ptr < opl;){
+  for(;ptr < opl;)
+  {
     U8 *first = ptr;
-    for (;ptr < opl; ptr += 1){
+    for(;ptr < opl; ptr += 1)
+    {
       U8 c = *ptr;
       B32 is_split = 0;
-      for (U64 i = 0; i < split_char_count; i += 1){
-        if (split_chars[i] == c){
+      for(U64 i = 0; i < split_char_count; i += 1)
+      {
+        if(split_chars[i] == c)
+        {
           is_split = 1;
           break;
         }
       }
-      if (is_split){
+      if(is_split)
+      {
         break;
       }
     }
-    
     String8 string = str8_range(first, ptr);
-    if (keep_empties || string.size > 0){
+    if(keep_empties || string.size > 0)
+    {
       str8_list_push(arena, &list, string);
     }
     ptr += 1;
   }
-  
-  return(list);
-}
-
-internal String8List
-str8_split_by_string_chars(Arena *arena, String8 string, String8 split_chars, StringSplitFlags flags){
-  String8List list = str8_split(arena, string, split_chars.str, split_chars.size, flags);
   return list;
 }
 
 internal String8List
-str8_list_split_by_string_chars(Arena *arena, String8List list, String8 split_chars, StringSplitFlags flags){
-  String8List result = {0};
-  for (String8Node *node = list.first; node != 0; node = node->next){
-    String8List split = str8_split_by_string_chars(arena, node->string, split_chars, flags);
-    str8_list_concat_in_place(&result, &split);
-  }
-  return result;
+str8_split_by_string_chars(Arena *arena, String8 string, String8 split_chars, StringSplitFlags flags)
+{
+  String8List list = str8_split(arena, string, split_chars.str, split_chars.size, flags);
+  return list;
 }
 
 internal String8
-str8_list_join(Arena *arena, String8List *list, StringJoin *optional_params){
+str8_list_join(Arena *arena, String8List *list, StringJoin *optional_params)
+{
   StringJoin join = {0};
-  if (optional_params != 0){
+  if(optional_params != 0)
+  {
     MemoryCopyStruct(&join, optional_params);
   }
-  
   U64 sep_count = 0;
-  if (list->node_count > 0){
+  if(list->node_count > 0)
+  {
     sep_count = list->node_count - 1;
   }
-  
   String8 result;
   result.size = join.pre.size + join.post.size + sep_count*join.sep.size + list->total_size;
   U8 *ptr = result.str = push_array_no_zero(arena, U8, result.size + 1);
-  
   MemoryCopy(ptr, join.pre.str, join.pre.size);
   ptr += join.pre.size;
-  for (String8Node *node = list->first;
-       node != 0;
-       node = node->next){
+  for(String8Node *node = list->first;
+      node != 0;
+      node = node->next)
+  {
     MemoryCopy(ptr, node->string.str, node->string.size);
     ptr += node->string.size;
-    if (node->next != 0){
+    if(node->next != 0)
+    {
       MemoryCopy(ptr, join.sep.str, join.sep.size);
       ptr += join.sep.size;
     }
   }
   MemoryCopy(ptr, join.post.str, join.post.size);
   ptr += join.post.size;
-  
   *ptr = 0;
-  
-  return(result);
-}
-
-internal void
-str8_list_from_flags(Arena *arena, String8List *list,
-                     U32 flags, String8 *flag_string_table, U32 flag_string_count){
-  for (U32 i = 0; i < flag_string_count; i += 1){
-    U32 flag = (1 << i);
-    if (flags & flag){
-      str8_list_push(arena, list, flag_string_table[i]);
-    }
-  }
+  return result;
 }
 
 ////////////////////////////////
@@ -1273,7 +1291,7 @@ str8_from_version(Arena *arena, U64 version)
   U64 version_major = MajorFromVersion(version);
   U64 version_minor = MinorFromVersion(version);
   U64 version_patch = PatchFromVersion(version);
-  String8 result = push_str8f(arena, "%I64d.%I64d.%I64d", version_major, version_minor, version_patch);
+  String8 result = str8f(arena, "%I64d.%I64d.%I64d", version_major, version_minor, version_patch);
   return result;
 }
 
@@ -1393,6 +1411,12 @@ internal void
 str8_path_list_resolve_dots_in_place(String8List *path, PathStyle style)
 {
   Temp scratch = scratch_begin(0, 0);
+  typedef struct String8MetaNode String8MetaNode;
+  struct String8MetaNode
+  {
+    String8MetaNode *next;
+    String8Node *node;
+  };
   String8MetaNode *stack = 0;
   String8MetaNode *free_meta_node = 0;
   String8Node *first = path->first;
@@ -1568,7 +1592,7 @@ path_relative_dst_from_absolute_dst_src(Arena *arena, String8 dst, String8 src)
       src_n != 0 && bp_n != 0;
       src_n = src_n->next, bp_n = bp_n->next)
   {
-    if(str8_match(src_n->string, bp_n->string, path_match_flags_from_os(operating_system_from_context())))
+    if(str8_match(src_n->string, bp_n->string, path_match_flags_from_os(OperatingSystem_CURRENT)))
     {
       num_backtracks -= 1;
     }
@@ -1602,7 +1626,7 @@ path_relative_dst_from_absolute_dst_src(Arena *arena, String8 dst, String8 src)
           bp_n != 0;
           bp_n = bp_n->next)
       {
-        if(!unique_from_src && (src_n == 0 || !str8_match(src_n->string, bp_n->string, path_match_flags_from_os(operating_system_from_context()))))
+        if(!unique_from_src && (src_n == 0 || !str8_match(src_n->string, bp_n->string, path_match_flags_from_os(OperatingSystem_CURRENT))))
         {
           unique_from_src = 1;
         }
@@ -1765,23 +1789,25 @@ internal String8
 path_replace_file_extension(Arena *arena, String8 file_name, String8 ext)
 {
   String8 file_name_no_ext = str8_chop_last_dot(file_name);
-  String8 result           = push_str8f(arena, "%S.%S", file_name_no_ext, ext);
+  String8 result           = str8f(arena, "%S.%S", file_name_no_ext, ext);
   return result;
 }
 
 ////////////////////////////////
 //~ rjf: UTF-8 & UTF-16 Decoding/Encoding
 
-read_only global U8 utf8_class[32] = {
+read_only global U8 utf8_class[32] =
+{
   1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,2,2,2,2,3,3,4,5,
 };
 
 internal UnicodeDecode
-utf8_decode(U8 *str, U64 max){
+utf8_decode(U8 *str, U64 max)
+{
   UnicodeDecode result = {1, max_U32};
   U8 byte = str[0];
   U8 byte_class = utf8_class[byte >> 3];
-  switch (byte_class)
+  switch(byte_class)
   {
     case 1:
     {
@@ -1789,10 +1815,10 @@ utf8_decode(U8 *str, U64 max){
     }break;
     case 2:
     {
-      if (1 < max)
+      if(1 < max)
       {
         U8 cont_byte = str[1];
-        if (utf8_class[cont_byte >> 3] == 0)
+        if(utf8_class[cont_byte >> 3] == 0)
         {
           result.codepoint = (byte & bitmask5) << 6;
           result.codepoint |=  (cont_byte & bitmask6);
@@ -1802,11 +1828,11 @@ utf8_decode(U8 *str, U64 max){
     }break;
     case 3:
     {
-      if (2 < max)
+      if(2 < max)
       {
         U8 cont_byte[2] = {str[1], str[2]};
-        if (utf8_class[cont_byte[0] >> 3] == 0 &&
-            utf8_class[cont_byte[1] >> 3] == 0)
+        if(utf8_class[cont_byte[0] >> 3] == 0 &&
+           utf8_class[cont_byte[1] >> 3] == 0)
         {
           result.codepoint = (byte & bitmask4) << 12;
           result.codepoint |= ((cont_byte[0] & bitmask6) << 6);
@@ -1817,12 +1843,12 @@ utf8_decode(U8 *str, U64 max){
     }break;
     case 4:
     {
-      if (3 < max)
+      if(3 < max)
       {
         U8 cont_byte[3] = {str[1], str[2], str[3]};
-        if (utf8_class[cont_byte[0] >> 3] == 0 &&
-            utf8_class[cont_byte[1] >> 3] == 0 &&
-            utf8_class[cont_byte[2] >> 3] == 0)
+        if(utf8_class[cont_byte[0] >> 3] == 0 &&
+           utf8_class[cont_byte[1] >> 3] == 0 &&
+           utf8_class[cont_byte[2] >> 3] == 0)
         {
           result.codepoint = (byte & bitmask3) << 18;
           result.codepoint |= ((cont_byte[0] & bitmask6) << 12);
@@ -1833,74 +1859,81 @@ utf8_decode(U8 *str, U64 max){
       }
     }
   }
-  return(result);
+  return result;
 }
 
 internal UnicodeDecode
-utf16_decode(U16 *str, U64 max){
+utf16_decode(U16 *str, U64 max)
+{
   UnicodeDecode result = {1, max_U32};
   result.codepoint = str[0];
   result.inc = 1;
-  if (max > 1 && 0xD800 <= str[0] && str[0] < 0xDC00 && 0xDC00 <= str[1] && str[1] < 0xE000){
+  if(max > 1 && 0xD800 <= str[0] && str[0] < 0xDC00 && 0xDC00 <= str[1] && str[1] < 0xE000)
+  {
     result.codepoint = ((str[0] - 0xD800) << 10) | ((str[1] - 0xDC00) + 0x10000);
     result.inc = 2;
   }
-  return(result);
+  return result;
 }
 
 internal U32
-utf8_encode(U8 *str, U32 codepoint){
+utf8_encode(U8 *str, U32 codepoint)
+{
   U32 inc = 0;
-  if (codepoint <= 0x7F){
+  if(codepoint <= 0x7F)
+  {
     str[0] = (U8)codepoint;
     inc = 1;
   }
-  else if (codepoint <= 0x7FF){
+  else if(codepoint <= 0x7FF)
+  {
     str[0] = (bitmask2 << 6) | ((codepoint >> 6) & bitmask5);
     str[1] = bit8 | (codepoint & bitmask6);
     inc = 2;
   }
-  else if (codepoint <= 0xFFFF){
+  else if(codepoint <= 0xFFFF)
+  {
     str[0] = (bitmask3 << 5) | ((codepoint >> 12) & bitmask4);
     str[1] = bit8 | ((codepoint >> 6) & bitmask6);
     str[2] = bit8 | ( codepoint       & bitmask6);
     inc = 3;
   }
-  else if (codepoint <= 0x10FFFF){
+  else if(codepoint <= 0x10FFFF)
+  {
     str[0] = (bitmask4 << 4) | ((codepoint >> 18) & bitmask3);
     str[1] = bit8 | ((codepoint >> 12) & bitmask6);
     str[2] = bit8 | ((codepoint >>  6) & bitmask6);
     str[3] = bit8 | ( codepoint        & bitmask6);
     inc = 4;
   }
-  else{
+  else
+  {
     str[0] = '?';
     inc = 1;
   }
-  return(inc);
+  return inc;
 }
 
 internal U32
-utf16_encode(U16 *str, U32 codepoint){
+utf16_encode(U16 *str, U32 codepoint)
+{
   U32 inc = 1;
-  if (codepoint == max_U32){
+  if(codepoint == max_U32)
+  {
     str[0] = (U16)'?';
   }
-  else if (codepoint < 0x10000){
+  else if(codepoint < 0x10000)
+  {
     str[0] = (U16)codepoint;
   }
-  else{
+  else
+  {
     U32 v = codepoint - 0x10000;
     str[0] = safe_cast_u16(0xD800 + (v >> 10));
     str[1] = safe_cast_u16(0xDC00 + (v & bitmask10));
     inc = 2;
   }
-  return(inc);
-}
-
-internal U32
-utf8_from_utf32_single(U8 *buffer, U32 character){
-  return(utf8_encode(buffer, character));
+  return inc;
 }
 
 ////////////////////////////////
@@ -2002,7 +2035,7 @@ str32_from_8(Arena *arena, String8 in)
 }
 
 ////////////////////////////////
-//~ String -> Enum Conversions
+//~ rjf: Basic Types & Space Enum -> String Conversions
 
 read_only global struct
 {
@@ -2020,45 +2053,48 @@ StaticAssert(ArrayCount(g_os_enum_map) == OperatingSystem_COUNT, g_os_enum_map_c
 internal OperatingSystem
 operating_system_from_string(String8 string)
 {
-  for(U64 i = 0; i < ArrayCount(g_os_enum_map); ++i)
+  for EachElement(idx, g_os_enum_map)
   {
-    if(str8_match(g_os_enum_map[i].string, string, StringMatchFlag_CaseInsensitive))
+    if(str8_match(g_os_enum_map[idx].string, string, StringMatchFlag_CaseInsensitive))
     {
-      return g_os_enum_map[i].os;
+      return g_os_enum_map[idx].os;
     }
   }
   return OperatingSystem_Null;
 }
 
-////////////////////////////////
-//~ rjf: Basic Types & Space Enum -> String Conversions
-
 internal String8
-string_from_dimension(Dimension dimension){
-  local_persist String8 strings[] = {
+string_from_dimension(Dimension dimension)
+{
+  read_only local_persist String8 strings[] =
+  {
     str8_lit_comp("X"),
     str8_lit_comp("Y"),
     str8_lit_comp("Z"),
     str8_lit_comp("W"),
   };
   String8 result = str8_lit("error");
-  if ((U32)dimension < 4){
+  if((U32)dimension < 4)
+  {
     result = strings[dimension];
   }
-  return(result);
+  return result;
 }
 
 internal String8
-string_from_side(Side side){
-  local_persist String8 strings[] = {
+string_from_side(Side side)
+{
+  local_persist String8 strings[] =
+  {
     str8_lit_comp("Min"),
     str8_lit_comp("Max"),
   };
   String8 result = str8_lit("error");
-  if ((U32)side < 2){
+  if((U32)side < 2)
+  {
     result = strings[side];
   }
-  return(result);
+  return result;
 }
 
 internal String8
@@ -2073,27 +2109,27 @@ string_from_operating_system(OperatingSystem os)
 }
 
 internal String8
-string_from_arch(Arch arch){
-  local_persist String8 strings[] = {
-    str8_lit_comp("Null"),
-    str8_lit_comp("x64"),
-    str8_lit_comp("x86"),
-    str8_lit_comp("arm64"),
-    str8_lit_comp("arm32"),
-  };
-  String8 result = str8_lit("error");
-  if (arch < Arch_COUNT){
-    result = strings[arch];
+string_from_arch(Arch arch)
+{
+  String8 result = {0};
+  switch(arch)
+  {
+    case Arch_Null:  {result = str8_lit("Null");}break;
+    case Arch_x64:   {result = str8_lit("x64");}break;
+    case Arch_x86:   {result = str8_lit("x86");}break;
+    case Arch_arm64: {result = str8_lit("arm64");}break;
+    case Arch_arm32: {result = str8_lit("arm32");}break;
+    case Arch_COUNT:
+    {result = str8_lit("Invalid");}break;
   }
-  return(result);
+  return result;
 }
 
-////////////////////////////////
-//~ rjf: Time Types -> String
-
 internal String8
-string_from_week_day(WeekDay week_day){
-  local_persist String8 strings[] = {
+string_from_week_day(WeekDay week_day)
+{
+  read_only local_persist String8 strings[] =
+  {
     str8_lit_comp("Sun"),
     str8_lit_comp("Mon"),
     str8_lit_comp("Tue"),
@@ -2103,15 +2139,18 @@ string_from_week_day(WeekDay week_day){
     str8_lit_comp("Sat"),
   };
   String8 result = str8_lit("Err");
-  if ((U32)week_day < WeekDay_COUNT){
+  if((U32)week_day < WeekDay_COUNT)
+  {
     result = strings[week_day];
   }
-  return(result);
+  return result;
 }
 
 internal String8
-string_from_month(Month month){
-  local_persist String8 strings[] = {
+string_from_month(Month month)
+{
+  read_only local_persist String8 strings[] =
+  {
     str8_lit_comp("Jan"),
     str8_lit_comp("Feb"),
     str8_lit_comp("Mar"),
@@ -2126,77 +2165,88 @@ string_from_month(Month month){
     str8_lit_comp("Dec"),
   };
   String8 result = str8_lit("Err");
-  if ((U32)month < Month_COUNT){
+  if((U32)month < Month_COUNT)
+  {
     result = strings[month];
   }
-  return(result);
+  return result;
 }
 
 internal String8
-push_date_time_string(Arena *arena, DateTime *date_time){
+string_from_date_time(Arena *arena, DateTime *date_time)
+{
   char *mon_str = (char*)string_from_month(date_time->month).str;
   U32 adjusted_hour = date_time->hour%12;
-  if (adjusted_hour == 0){
+  if(adjusted_hour == 0)
+  {
     adjusted_hour = 12;
   }
   char *ampm = "am";
-  if (date_time->hour >= 12){
+  if(date_time->hour >= 12)
+  {
     ampm = "pm";
   }
   String8 result = push_str8f(arena, "%d %s %d, %02d:%02d:%02d %s",
                               date_time->day, mon_str, date_time->year,
                               adjusted_hour, date_time->min, date_time->sec, ampm);
-  return(result);
+  return result;
 }
 
 internal String8
-push_file_name_date_time_string(Arena *arena, DateTime *date_time){
+string_from_date_time__file_name(Arena *arena, DateTime *date_time)
+{
   char *mon_str = (char*)string_from_month(date_time->month).str;
-  String8 result = push_str8f(arena, "%d-%s-%0d--%02d-%02d-%02d",
-                              date_time->year, mon_str, date_time->day,
-                              date_time->hour, date_time->min, date_time->sec);
-  return(result);
+  String8 result = str8f(arena, "%d-%s-%0d--%02d-%02d-%02d",
+                         date_time->year, mon_str, date_time->day,
+                         date_time->hour, date_time->min, date_time->sec);
+  return result;
 }
 
 internal String8
-string_from_elapsed_time(Arena *arena, DateTime dt){
+string_from_elapsed_time(Arena *arena, DateTime dt)
+{
   Temp scratch = scratch_begin(&arena, 1);
   String8List list = {0};
-  if (dt.year){
+  if(dt.year)
+  {
     str8_list_pushf(scratch.arena, &list, "%dy", dt.year);
     str8_list_pushf(scratch.arena, &list, "%um", dt.mon);
     str8_list_pushf(scratch.arena, &list, "%ud", dt.day);
-  } else if (dt.mon){
+  }
+  else if(dt.mon)
+  {
     str8_list_pushf(scratch.arena, &list, "%um", dt.mon);
     str8_list_pushf(scratch.arena, &list, "%ud", dt.day);
-  } else if (dt.day){
+  }
+  else if (dt.day)
+  {
     str8_list_pushf(scratch.arena, &list, "%ud", dt.day);
   }
   str8_list_pushf(scratch.arena, &list, "%u:%u:%u:%u ms", dt.hour, dt.min, dt.sec, dt.msec);
   StringJoin join = { str8_lit_comp(""), str8_lit_comp(" "), str8_lit_comp("") };
   String8 result = str8_list_join(arena, &list, &join);
   scratch_end(scratch);
-  return(result);
+  return result;
 }
 
 ////////////////////////////////
-//~ Globally UNique Ids
+//~ rjf: String <-> Globally Unique IDs
 
 internal String8
 string_from_guid(Arena *arena, Guid guid)
 {
-  String8 result = push_str8f(arena, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X",
-                              guid.data1,
-                              guid.data2,
-                              guid.data3,
-                              guid.data4[0],
-                              guid.data4[1],
-                              guid.data4[2],
-                              guid.data4[3],
-                              guid.data4[4],
-                              guid.data4[5],
-                              guid.data4[6],
-                              guid.data4[7]);
+  String8 result = str8f(arena, "%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X",
+                         guid.data1,
+                         guid.data2,
+                         guid.data3,
+                         guid.data4[0],
+                         guid.data4[1],
+                         guid.data4[2],
+                         guid.data4[3],
+                         guid.data4[4],
+                         guid.data4[5],
+                         guid.data4[6],
+                         guid.data4[7]);
   return result;
 }
 
@@ -2450,7 +2500,7 @@ wrapped_lines_from_string(Arena *arena, String8 string, U64 first_line_max_width
 internal String8
 hex_string_from_rgba_4f32(Arena *arena, Vec4F32 rgba)
 {
-  String8 hex_string = push_str8f(arena, "%02x%02x%02x%02x", (U8)(rgba.x*255.f), (U8)(rgba.y*255.f), (U8)(rgba.z*255.f), (U8)(rgba.w*255.f));
+  String8 hex_string = str8f(arena, "%02x%02x%02x%02x", (U8)(rgba.x*255.f), (U8)(rgba.y*255.f), (U8)(rgba.z*255.f), (U8)(rgba.w*255.f));
   return hex_string;
 }
 
@@ -2463,7 +2513,7 @@ rgba_from_hex_string_4f32(String8 hex_string)
   {
     if(char_is_digit(hex_string.str[idx], 16))
     {
-      byte_text[byte_text_idx] = char_to_lower(hex_string.str[idx]);
+      byte_text[byte_text_idx] = lower_from_char(hex_string.str[idx]);
       byte_text_idx += 1;
     }
   }
@@ -2766,8 +2816,8 @@ str8_compar(String8 a, String8 b, B32 ignore_case)
   U64 size = Min(a.size, b.size);
   if (ignore_case) {
     for (U64 i = 0; i < size; ++i) {
-      U8 la = char_to_lower(a.str[i]);
-      U8 lb = char_to_lower(b.str[i]);
+      U8 la = lower_from_char(a.str[i]);
+      U8 lb = lower_from_char(b.str[i]);
       if (la < lb) {
         cmp = -1;
         break;
@@ -2800,8 +2850,7 @@ str8_compar(String8 a, String8 b, B32 ignore_case)
   return cmp;
 }
 
-internal int
-str8_compar_ignore_case(const void *a, const void *b)
+internal int str8_compar_ignore_case(const void *a, const void *b)
 {
   return str8_compar(*(String8*)a, *(String8*)b, 1);
 }
@@ -2819,9 +2868,11 @@ str8_is_before_case_sensitive(const void *a, const void *b)
   return cmp < 0;
 }
 
+////////////////////////////////
 //~ rjf: Basic String Hashes
 
 #if !defined(XXH_IMPLEMENTATION)
+# define XXH_INLINE_ALL
 # define XXH_IMPLEMENTATION
 # define XXH_STATIC_LINKING_ONLY
 # include "third_party/xxHash/xxhash.h"
@@ -2838,5 +2889,21 @@ internal U64
 u64_hash_from_str8(String8 string)
 {
   U64 result = u64_hash_from_seed_str8(5381, string);
+  return result;
+}
+
+internal U128
+u128_hash_from_seed_str8(U64 seed, String8 string)
+{
+  U128 result = {0};
+  XXH128_hash_t hash = XXH3_128bits_withSeed(string.str, string.size, seed);
+  MemoryCopy(&result, &hash, sizeof(result));
+  return result;
+}
+
+internal U128
+u128_hash_from_str8(String8 string)
+{
+  U128 result = u128_hash_from_seed_str8(5381, string);
   return result;
 }

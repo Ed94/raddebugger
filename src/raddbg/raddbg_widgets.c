@@ -547,12 +547,12 @@ rd_title_fstrs_from_ctrl_entity(Arena *arena, CTRL_Entity *entity, B32 include_e
   {
     Vec4F32 symbol_color = ui_color_from_name(str8_lit("code_symbol"));
     dr_fstrs_push_new(arena, &result, &params, str8_lit(" "));
-    CTRL_Scope *ctrl_scope = ctrl_scope_open();
+    Access *access = access_open();
     DI_Scope *di_scope = di_scope_open();
     CTRL_Entity *process = ctrl_entity_ancestor_from_kind(entity, CTRL_EntityKind_Process);
     Arch arch = entity->arch;
     B32 call_stack_high_priority = ctrl_handle_match(entity->handle, rd_base_regs()->thread);
-    CTRL_CallStack call_stack = ctrl_call_stack_from_thread(ctrl_scope, &d_state->ctrl_entity_store->ctx, entity, call_stack_high_priority, call_stack_high_priority ? rd_state->frame_eval_memread_endt_us : 0);
+    CTRL_CallStack call_stack = ctrl_call_stack_from_thread(access, entity->handle, call_stack_high_priority, call_stack_high_priority ? rd_state->frame_eval_memread_endt_us : 0);
     B32 did_first_known = 0;
     for(U64 idx = 0, limit = 10;
         idx < call_stack.frames_count && idx < limit;
@@ -592,7 +592,7 @@ rd_title_fstrs_from_ctrl_entity(Arena *arena, CTRL_Entity *entity, B32 include_e
       }
     }
     di_scope_close(di_scope);
-    ctrl_scope_close(ctrl_scope);
+    access_close(access);
   }
   
   //- rjf: modules get debug info status extras
@@ -2384,17 +2384,24 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
   //
   if(do_scope_lines && cursor_scope_node != &txt_scope_node_nil)
   {
-    Vec4F32 scope_line_color = highlight_color;
-    scope_line_color.w *= 0.25f;
+    F32 scope_line_thickness = params->font_size*0.1f;
+    scope_line_thickness = Max(scope_line_thickness, 1.f);
     DR_Bucket *bucket = dr_bucket_make();
     DR_BucketScope(bucket)
     {
       Vec2F32 text_base_pos = v2f32(text_container_box->rect.x0 + params->line_num_width_px + line_num_padding_px,
                                     text_container_box->rect.y0);
+      F32 ancestor_chain_depth = 0;
       for(TXT_ScopeNode *scope_n = cursor_scope_node;
           scope_n != &txt_scope_node_nil;
-          scope_n = txt_scope_node_from_info_num(params->text_info, scope_n->parent_num))
+          scope_n = txt_scope_node_from_info_num(params->text_info, scope_n->parent_num), ancestor_chain_depth += 1)
       {
+        Vec4F32 scope_line_color = highlight_color;
+        F32 scope_line_color_target = highlight_color.w;
+        scope_line_color_target *= 1 - ancestor_chain_depth / 6.f;
+        scope_line_color_target = Max(0.2f, scope_line_color_target);
+        F32 scope_line_color_t = ui_anim(ui_key_from_stringf(text_container_box->key, "###scope_depth_%I64x_%I64x", scope_n->token_idx_range.min, scope_n->token_idx_range.max), scope_line_color_target, .rate = rd_state->menu_animation_rate__slow);
+        scope_line_color.w = scope_line_color_t*0.5f;
         Rng1U64 token_idx_range = scope_n->token_idx_range;
         Rng1U64 off_range = r1u64(params->text_info->tokens.v[token_idx_range.min].range.min, params->text_info->tokens.v[token_idx_range.max].range.min);
         TxtRng txt_range = txt_rng(txt_pt_from_info_off__linear_scan(params->text_info, off_range.min), txt_pt_from_info_off__linear_scan(params->text_info, off_range.max));
@@ -2422,7 +2429,7 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
           underline_clip.y1 = 10000;
           DR_ClipScope(underline_clip)
           {
-            dr_rect(underline_rect, scope_line_color, params->font_size*0.1f, 1.f, 1.f);
+            dr_rect(underline_rect, scope_line_color, params->font_size*0.1f, scope_line_thickness, 1.f);
           }
         }
         
@@ -2460,7 +2467,7 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
           }
           DR_ClipScope(scope_clip_rect)
           {
-            dr_rect(scope_rect, scope_line_color, params->font_size*0.1f, 1.f, 1.f);
+            dr_rect(scope_rect, scope_line_color, params->font_size*0.1f, scope_line_thickness, 1.f);
           }
         }
       }

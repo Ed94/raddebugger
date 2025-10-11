@@ -5,12 +5,9 @@
 #define BASE_ARENA_H
 
 ////////////////////////////////
-//~ rjf: Constants
+//~ rjf: Arena Types
 
 #define ARENA_HEADER_SIZE 128
-
-////////////////////////////////
-//~ rjf: Types
 
 typedef U64 ArenaFlags;
 enum
@@ -45,7 +42,6 @@ struct Arena
   char *allocation_site_file;
   int allocation_site_line;
 #if ARENA_FREE_LIST
-  U64 free_size;
   Arena *free_last;
 #endif
 };
@@ -59,14 +55,11 @@ struct Temp
 };
 
 ////////////////////////////////
-//~ rjf: Global Defaults
+//~ rjf: Arena Functions
 
 global U64 arena_default_reserve_size = MB(64);
 global U64 arena_default_commit_size  = KB(64);
 global ArenaFlags arena_default_flags = 0;
-
-////////////////////////////////
-//~ rjf: Arena Functions
 
 //- rjf: arena creation/destruction
 internal Arena *arena_alloc_(ArenaParams *params);
@@ -74,7 +67,7 @@ internal Arena *arena_alloc_(ArenaParams *params);
 internal void arena_release(Arena *arena);
 
 //- rjf: arena push/pop/pos core functions
-internal void *arena_push(Arena *arena, U64 size, U64 align);
+internal void *arena_push(Arena *arena, U64 size, U64 align, B32 zero);
 internal U64   arena_pos(Arena *arena);
 internal void  arena_pop_to(Arena *arena, U64 pos);
 
@@ -87,8 +80,8 @@ internal Temp temp_begin(Arena *arena);
 internal void temp_end(Temp temp);
 
 //- rjf: push helper macros
-#define push_array_no_zero_aligned(a, T, c, align) (T *)arena_push((a), sizeof(T)*(c), (align))
-#define push_array_aligned(a, T, c, align) (T *)MemoryZero(push_array_no_zero_aligned(a, T, c, align), sizeof(T)*(c))
+#define push_array_no_zero_aligned(a, T, c, align) (T *)arena_push((a), sizeof(T)*(c), (align), (0))
+#define push_array_aligned(a, T, c, align) (T *)arena_push((a), sizeof(T)*(c), (align), (1))
 #define push_array_no_zero(a, T, c) push_array_no_zero_aligned(a, T, c, Max(8, AlignOf(T)))
 #define push_array(a, T, c) push_array_aligned(a, T, c, Max(8, AlignOf(T)))
 

@@ -1,8 +1,8 @@
 // Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
-#ifndef TEXT_CACHE_H
-#define TEXT_CACHE_H
+#ifndef TEXT_H
+#define TEXT_H
 
 ////////////////////////////////
 //~ rjf: Value Types
@@ -156,111 +156,9 @@ TXT_LangKind;
 typedef TXT_TokenArray TXT_LangLexFunctionType(Arena *arena, U64 *bytes_processed_counter, String8 string);
 
 ////////////////////////////////
-//~ rjf: Cache Types
-
-typedef struct TXT_Node TXT_Node;
-struct TXT_Node
-{
-  // rjf: links
-  TXT_Node *next;
-  TXT_Node *prev;
-  
-  // rjf: key
-  U128 hash;
-  TXT_LangKind lang;
-  
-  // rjf: artifacts
-  Arena *arena;
-  TXT_TextInfo info;
-  
-  // rjf: metadata
-  B32 is_working;
-  U64 scope_ref_count;
-  U64 last_time_touched_us;
-  U64 last_user_clock_idx_touched;
-  U64 load_count;
-};
-
-typedef struct TXT_Slot TXT_Slot;
-struct TXT_Slot
-{
-  TXT_Node *first;
-  TXT_Node *last;
-};
-
-typedef struct TXT_Stripe TXT_Stripe;
-struct TXT_Stripe
-{
-  Arena *arena;
-  OS_Handle rw_mutex;
-  OS_Handle cv;
-};
-
-////////////////////////////////
-//~ rjf: Scoped Access
-
-typedef struct TXT_Touch TXT_Touch;
-struct TXT_Touch
-{
-  TXT_Touch *next;
-  U128 hash;
-  TXT_LangKind lang;
-};
-
-typedef struct TXT_Scope TXT_Scope;
-struct TXT_Scope
-{
-  TXT_Scope *next;
-  TXT_Touch *top_touch;
-};
-
-////////////////////////////////
-//~ rjf: Thread Context
-
-typedef struct TXT_TCTX TXT_TCTX;
-struct TXT_TCTX
-{
-  Arena *arena;
-  TXT_Scope *free_scope;
-  TXT_Touch *free_touch;
-};
-
-////////////////////////////////
-//~ rjf: Shared State
-
-typedef struct TXT_Shared TXT_Shared;
-struct TXT_Shared
-{
-  Arena *arena;
-  
-  // rjf: user clock
-  U64 user_clock_idx;
-  
-  // rjf: cache
-  U64 slots_count;
-  U64 stripes_count;
-  TXT_Slot *slots;
-  TXT_Stripe *stripes;
-  TXT_Node **stripes_free_nodes;
-  
-  // rjf: user -> parse thread
-  U64 u2p_ring_size;
-  U8 *u2p_ring_base;
-  U64 u2p_ring_write_pos;
-  U64 u2p_ring_read_pos;
-  OS_Handle u2p_ring_cv;
-  OS_Handle u2p_ring_mutex;
-  
-  // rjf: evictor thread
-  OS_Handle evictor_thread;
-};
-
-////////////////////////////////
 //~ rjf: Globals
 
 read_only global TXT_ScopeNode txt_scope_node_nil = {0};
-thread_static TXT_TCTX *txt_tctx = 0;
-global TXT_Shared *txt_shared = 0;
 
 ////////////////////////////////
 //~ rjf: Basic Helpers
@@ -288,29 +186,6 @@ internal TXT_TokenArray txt_token_array_from_string__zig(Arena *arena, U64 *byte
 internal TXT_TokenArray txt_token_array_from_string__disasm_x64_intel(Arena *arena, U64 *bytes_processed_counter, String8 string);
 
 ////////////////////////////////
-//~ rjf: Main Layer Initialization
-
-internal void txt_init(void);
-
-////////////////////////////////
-//~ rjf: Thread Context Initialization
-
-internal void txt_tctx_ensure_inited(void);
-
-////////////////////////////////
-//~ rjf: Scoped Access
-
-internal TXT_Scope *txt_scope_open(void);
-internal void txt_scope_close(TXT_Scope *scope);
-internal void txt_scope_touch_node__stripe_r_guarded(TXT_Scope *scope, TXT_Node *node);
-
-////////////////////////////////
-//~ rjf: Cache Lookups
-
-internal TXT_TextInfo txt_text_info_from_hash_lang(TXT_Scope *scope, U128 hash, TXT_LangKind lang);
-internal TXT_TextInfo txt_text_info_from_key_lang(TXT_Scope *scope, HS_Key key, TXT_LangKind lang, U128 *hash_out);
-
-////////////////////////////////
 //~ rjf: Text Info Extractor Helpers
 
 internal U64 txt_off_from_info_pt(TXT_TextInfo *info, TxtPt pt);
@@ -326,15 +201,11 @@ internal TXT_ScopeNode *txt_scope_node_from_info_off(TXT_TextInfo *info, U64 off
 internal TXT_ScopeNode *txt_scope_node_from_info_pt(TXT_TextInfo *info, TxtPt pt);
 
 ////////////////////////////////
-//~ rjf: Parse Threads
+//~ rjf: Artifact Cache Hooks / Lookups
 
-internal B32 txt_u2p_enqueue_req(U128 hash, TXT_LangKind lang, U64 endt_us);
-internal void txt_u2p_dequeue_req(U128 *hash_out, TXT_LangKind *lang_out);
-ASYNC_WORK_DEF(txt_parse_work);
+internal AC_Artifact txt_artifact_create(String8 key, U64 gen, U64 *requested_gen, B32 *retry_out);
+internal void txt_artifact_destroy(AC_Artifact artifact);
+internal TXT_TextInfo txt_text_info_from_hash_lang(Access *access, U128 hash, TXT_LangKind lang);
+internal TXT_TextInfo txt_text_info_from_key_lang(Access *access, C_Key key, TXT_LangKind lang, U128 *hash_out);
 
-////////////////////////////////
-//~ rjf: Evictor Threads
-
-internal void txt_evictor_thread__entry_point(void *p);
-
-#endif // TEXT_CACHE_H
+#endif // TEXT_H

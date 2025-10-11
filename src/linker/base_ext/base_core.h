@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #pragma once
@@ -107,10 +107,6 @@
 } while(0)
 
 #define SLLChunkListLastItem(_list) (&(_list)->last->v[(_list)->last->count - 1])
-
-////////////////////////////////
-
-#define MemoryIsZeroStruct(p) memory_is_zero(p, sizeof(*p))
 
 ////////////////////////////////
 

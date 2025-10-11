@@ -2,12 +2,24 @@
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 global U64 global_update_tick_idx = 0;
+global U64 async_threads_count = 0;
+global CondVar async_tick_start_cond_var = {0};
+global Mutex async_tick_start_mutex = {0};
+global Mutex async_tick_stop_mutex = {0};
+global B32 async_loop_again = 0;
+global B32 global_async_exit = 0;
+thread_static B32 is_async_thread = 0;
 
 internal void
 main_thread_base_entry_point(int arguments_count, char **arguments)
 {
+  ThreadNameF("main_thread");
   Temp scratch = scratch_begin(0, 0);
-  ThreadNameF("[main thread]");
+  
+  //- rjf: set up async thread group info
+  async_tick_start_cond_var = cond_var_alloc();
+  async_tick_start_mutex = mutex_alloc();
+  async_tick_stop_mutex = mutex_alloc();
   
   //- rjf: set up telemetry
 #if PROFILE_TELEMETRY
@@ -23,7 +35,13 @@ main_thread_base_entry_point(int arguments_count, char **arguments)
 #endif
   
   //- rjf: parse command line
-  String8List command_line_argument_strings = os_string_list_from_argcv(scratch.arena, arguments_count, arguments);
+  String8List command_line_argument_strings = {0};
+  {
+    for EachIndex(idx, arguments_count)
+    {
+      str8_list_push(scratch.arena, &command_line_argument_strings, str8_cstring(arguments[idx]));
+    }
+  }
   CmdLine cmdline = cmd_line_from_string_list(scratch.arena, command_line_argument_strings);
   
   //- rjf: begin captures
@@ -31,33 +49,30 @@ main_thread_base_entry_point(int arguments_count, char **arguments)
   if(capture)
   {
     ProfBeginCapture(arguments[0]);
+    ProfMsg(BUILD_TITLE);
   }
   
-#if PROFILE_TELEMETRY 
-  tmMessage(0, TMMF_ICON_NOTE, BUILD_TITLE);
-#endif
-  
   //- rjf: initialize all included layers
+#if defined(ARTIFACT_CACHE_H) && !defined(AC_INIT_MANUAL)
+  ac_init();
+#endif
 #if defined(ASYNC_H) && !defined(ASYNC_INIT_MANUAL)
   async_init(&cmdline);
 #endif
-#if defined(HASH_STORE_H) && !defined(HS_INIT_MANUAL)
-  hs_init();
+#if defined(CONTENT_H) && !defined(C_INIT_MANUAL)
+  c_init();
 #endif
 #if defined(FILE_STREAM_H) && !defined(FS_INIT_MANUAL)
   fs_init();
 #endif
-#if defined(TEXT_CACHE_H) && !defined(TXT_INIT_MANUAL)
-  txt_init();
-#endif
 #if defined(MUTABLE_TEXT_H) && !defined(MTX_INIT_MANUAL)
   mtx_init();
 #endif
-#if defined(DASM_CACHE_H) && !defined(DASM_INIT_MANUAL)
-  dasm_init();
-#endif
-#if defined(DBGI_H) && !defined(DI_INIT_MANUAL)
+#if defined(DBG_INFO_H) && !defined(DI_INIT_MANUAL)
   di_init();
+#endif
+#if defined(DBG_INFO2_H) && !defined(DI_INIT_MANUAL)
+  di2_init(&cmdline);
 #endif
 #if defined(DEMON_CORE_H) && !defined(DMN_INIT_MANUAL)
   dmn_init();
@@ -74,12 +89,6 @@ main_thread_base_entry_point(int arguments_count, char **arguments)
 #if defined(RENDER_CORE_H) && !defined(R_INIT_MANUAL)
   r_init(&cmdline);
 #endif
-#if defined(TEXTURE_CACHE_H) && !defined(TEX_INIT_MANUAL)
-  tex_init();
-#endif
-#if defined(GEO_CACHE_H) && !defined(GEO_INIT_MANUAL)
-  geo_init();
-#endif
 #if defined(FONT_CACHE_H) && !defined(FNT_INIT_MANUAL)
   fnt_init();
 #endif
@@ -90,8 +99,42 @@ main_thread_base_entry_point(int arguments_count, char **arguments)
   rd_init(&cmdline);
 #endif
   
+  //- rjf: launch async threads
+  Thread *async_threads = 0;
+  U64 lane_broadcast_val = 0;
+  {
+    U64 num_main_threads = 1;
+#if defined(CTRL_CORE_H)
+    num_main_threads += 1;
+#endif
+    U64 num_async_threads = os_get_system_info()->logical_processor_count;
+    U64 num_main_threads_clamped = Min(num_async_threads, num_main_threads);
+    num_async_threads -= num_main_threads_clamped;
+    num_async_threads = Max(1, num_async_threads);
+    Barrier barrier = barrier_alloc(num_async_threads);
+    LaneCtx *lane_ctxs = push_array(scratch.arena, LaneCtx, num_async_threads);
+    async_threads_count = num_async_threads;
+    async_threads = push_array(scratch.arena, Thread, async_threads_count);
+    for EachIndex(idx, num_async_threads)
+    {
+      lane_ctxs[idx].lane_idx = idx;
+      lane_ctxs[idx].lane_count = async_threads_count;
+      lane_ctxs[idx].barrier = barrier;
+      lane_ctxs[idx].broadcast_memory = &lane_broadcast_val;
+      async_threads[idx] = thread_launch(async_thread_entry_point, &lane_ctxs[idx]);
+    }
+  }
+  
   //- rjf: call into entry point
   entry_point(&cmdline);
+  
+  //- rjf: join async threads
+  ins_atomic_u32_inc_eval(&global_async_exit);
+  cond_var_broadcast(async_tick_start_cond_var);
+  for EachIndex(idx, async_threads_count)
+  {
+    thread_join(async_threads[idx], max_U64);
+  }
   
   //- rjf: end captures
   if(capture)
@@ -105,10 +148,10 @@ main_thread_base_entry_point(int arguments_count, char **arguments)
 internal void
 supplement_thread_base_entry_point(void (*entry_point)(void *params), void *params)
 {
-  TCTX tctx;
-  tctx_init_and_equip(&tctx);
+  TCTX *tctx = tctx_alloc();
+  tctx_select(tctx);
   entry_point(params);
-  tctx_release();
+  tctx_release(tctx);
 }
 
 internal U64
@@ -132,4 +175,56 @@ update(void)
   B32 result = 0;
 #endif
   return result;
+}
+
+internal void
+async_thread_entry_point(void *params)
+{
+  LaneCtx lctx = *(LaneCtx *)params;
+  lane_ctx(lctx);
+  is_async_thread = 1;
+  ThreadNameF("async_thread_%I64u", lane_idx());
+  for(;;)
+  {
+    // rjf: wait for signal if we need, otherwise reset loop signal & continue
+    if(lane_idx() == 0)
+    {
+      if(!ins_atomic_u32_eval(&async_loop_again))
+      {
+        MutexScope(async_tick_start_mutex) cond_var_wait(async_tick_start_cond_var, async_tick_start_mutex, os_now_microseconds()+100000);
+      }
+      ins_atomic_u32_eval_assign(&async_loop_again, 0);
+    }
+    lane_sync();
+    
+    // rjf: do all ticks for all layers
+    ProfScope("async tick")
+    {
+#if defined(ARTIFACT_CACHE_H)
+      ac_async_tick();
+#endif
+#if defined(CONTENT_H)
+      c_async_tick();
+#endif
+#if defined(FILE_STREAM_H)
+      fs_async_tick();
+#endif
+#if defined(DBG_INFO2_H)
+      di2_async_tick();
+#endif
+    }
+    
+    // rjf: take exit signal; break if set
+    lane_sync();
+    B32 need_exit = 0;
+    if(lane_idx() == 0)
+    {
+      need_exit = ins_atomic_u32_eval(&global_async_exit);
+    }
+    lane_sync_u64(&need_exit, 0);
+    if(need_exit)
+    {
+      break;
+    }
+  }
 }

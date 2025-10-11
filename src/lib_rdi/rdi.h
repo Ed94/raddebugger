@@ -52,7 +52,7 @@ typedef int64_t  RDI_S64;
 
 // "raddbg\0\0"
 #define RDI_MAGIC_CONSTANT   0x0000676264646172
-#define RDI_ENCODING_VERSION 12
+#define RDI_ENCODING_VERSION 13
 
 ////////////////////////////////////////////////////////////////
 //~ Format Types & Functions
@@ -293,6 +293,8 @@ RDI_RegCodeX64_fds        = 97,
 RDI_RegCodeX64_fip        = 98,
 RDI_RegCodeX64_fdp        = 99,
 RDI_RegCodeX64_mxcsr_mask = 100,
+RDI_RegCodeX64_cetmsr     = 101,
+RDI_RegCodeX64_cetssp     = 102,
 } RDI_RegCodeX64Enum;
 
 typedef RDI_U32 RDI_BinarySectionFlags;
@@ -765,6 +767,8 @@ X(fds, 97)\
 X(fip, 98)\
 X(fdp, 99)\
 X(mxcsr_mask, 100)\
+X(cetmsr, 101)\
+X(cetssp, 102)\
 
 #define RDI_TopLevelInfo_XList \
 X(RDI_Arch, arch)\
@@ -992,8 +996,6 @@ X(RDI_U32, voff_range_first)\
 X(RDI_U32, voff_range_opl)\
 X(RDI_U32, local_first)\
 X(RDI_U32, local_count)\
-X(RDI_U32, static_local_idx_run_first)\
-X(RDI_U32, static_local_count)\
 X(RDI_U32, inline_site_idx)\
 
 #define RDI_InlineSite_XList \
@@ -1442,8 +1444,6 @@ RDI_U32 voff_range_first;
 RDI_U32 voff_range_opl;
 RDI_U32 local_first;
 RDI_U32 local_count;
-RDI_U32 static_local_idx_run_first;
-RDI_U32 static_local_count;
 RDI_U32 inline_site_idx;
 };
 
@@ -1568,7 +1568,6 @@ RDI_PROC RDI_S32 rdi_eval_op_typegroup_are_compatible(RDI_EvalOp op, RDI_EvalTyp
 RDI_PROC RDI_U8 *rdi_explanation_string_from_eval_conversion_kind(RDI_EvalConversionKind kind, RDI_U64 *size_out);
 
 extern RDI_U16 rdi_section_element_size_table[40];
-extern RDI_U8 rdi_section_is_required_table[40];
 extern RDI_U16 rdi_eval_op_ctrlbits_table[52];
 
 #endif // RDI_H

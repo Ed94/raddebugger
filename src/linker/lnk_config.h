@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #pragma once
@@ -37,6 +37,7 @@ typedef enum
   LNK_CmdSwitch_AlternateName,
   LNK_CmdSwitch_AppContainer,
   LNK_CmdSwitch_Base,
+  LNK_CmdSwitch_Brepro,
   LNK_CmdSwitch_Debug,
   LNK_CmdSwitch_DefaultLib,
   LNK_CmdSwitch_Delay,
@@ -44,7 +45,9 @@ typedef enum
   LNK_CmdSwitch_Dll,
   LNK_CmdSwitch_DynamicBase,
   LNK_CmdSwitch_Dump,
+  LNK_CmdSwitch_D2,
   LNK_CmdSwitch_Entry,
+  LNK_CmdSwitch_ErrorReport,
   LNK_CmdSwitch_Export,
   LNK_CmdSwitch_FastFail,
   LNK_CmdSwitch_FileAlign,
@@ -101,7 +104,6 @@ typedef enum
   LNK_CmdSwitch_DisallowLib,
   LNK_CmdSwitch_EditAndContinue,
   LNK_CmdSwitch_EmitVolatileMetadata,
-  LNK_CmdSwitch_ErrorReport,
   LNK_CmdSwitch_ExportAdmin,
   LNK_CmdSwitch_FastGenProfile,
   LNK_CmdSwitch_FailIfMismatch,
@@ -149,6 +151,7 @@ typedef enum
   LNK_CmdSwitch_Wx,
 
   LNK_CmdSwitch_Rad_Age,
+  LNK_CmdSwitch_Rad_AltPchDir,
   LNK_CmdSwitch_Rad_BuildInfo,
   LNK_CmdSwitch_Rad_CheckUnusedDelayLoadDll,
   LNK_CmdSwitch_Rad_Debug,
@@ -164,6 +167,7 @@ typedef enum
   LNK_CmdSwitch_Rad_Log,
   LNK_CmdSwitch_Rad_Logo,
   LNK_CmdSwitch_Rad_Map,
+  LNK_CmdSwitch_Rad_MapLinesForUnresolvedSymbols,
   LNK_CmdSwitch_Rad_MemoryMapFiles,
   LNK_CmdSwitch_Rad_MtPath,
   LNK_CmdSwitch_Rad_OsVer,
@@ -176,12 +180,10 @@ typedef enum
   LNK_CmdSwitch_Rad_SharedThreadPool,
   LNK_CmdSwitch_Rad_SharedThreadPoolMaxWorkers,
   LNK_CmdSwitch_Rad_SuppressError,
-  LNK_CmdSwitch_Rad_SymbolTableCapDefined,
-  LNK_CmdSwitch_Rad_SymbolTableCapInternal,
-  LNK_CmdSwitch_Rad_SymbolTableCapLib,
-  LNK_CmdSwitch_Rad_SymbolTableCapWeak,
   LNK_CmdSwitch_Rad_TargetOs,
   LNK_CmdSwitch_Rad_TimeStamp,
+  LNK_CmdSwitch_Rad_UnresolvedSymbolLimit,
+  LNK_CmdSwitch_Rad_UnresolvedSymbolRefLimit,
   LNK_CmdSwitch_Rad_Version,
   LNK_CmdSwitch_Rad_Workers,
   LNK_CmdSwitch_Rad_WriteTempFiles,
@@ -249,6 +251,25 @@ typedef enum
   LNK_ManifestOpt_No,
 } LNK_ManifestOpt;
 
+typedef struct LNK_IncludeSymbol
+{
+  String8         name;
+  struct LNK_Obj *obj;
+} LNK_IncludeSymbol;
+
+typedef struct LNK_IncludeSymbolNode
+{
+  struct LNK_IncludeSymbolNode *next;
+  LNK_IncludeSymbol             v;
+} LNK_IncludeSymbolNode;
+
+typedef struct LNK_IncludeSymbolList
+{
+  U64                    count;
+  LNK_IncludeSymbolNode *first;
+  LNK_IncludeSymbolNode *last;
+} LNK_IncludeSymbolList;
+
 typedef struct LNK_AltName
 {
   String8 from;
@@ -259,7 +280,7 @@ typedef struct LNK_AltName
 typedef struct LNK_AltNameNode
 {
   struct LNK_AltNameNode *next;
-  LNK_AltName data;
+  LNK_AltName v;
 } LNK_AltNameNode;
 
 typedef struct LNK_AltNameList
@@ -278,7 +299,7 @@ typedef struct LNK_MergeDirective
 typedef struct LNK_MergeDirectiveNode
 {
   struct LNK_MergeDirectiveNode *next;
-  LNK_MergeDirective             data;
+  LNK_MergeDirective             v;
 } LNK_MergeDirectiveNode;
 
 typedef struct LNK_MergeDirectiveList
@@ -304,6 +325,7 @@ typedef enum
 
 typedef struct LNK_Config
 {
+  Arena                      *arena;
   LNK_ConfigFlags             flags;
   LNK_DebugMode               debug_mode;
   LNK_SwitchState             opt_ref;
@@ -362,7 +384,6 @@ typedef struct LNK_Config
   String8List                 input_list[LNK_Input_Count];
   String8List                 input_obj_lib_list;
   String8List                 input_default_lib_list;
-  String8List                 disallow_lib_list;
   String8List                 delay_load_dll_list;
   String8List                 natvis_list;
   String8                     manifest_name;
@@ -375,13 +396,9 @@ typedef struct LNK_Config
   String8                     rad_chunk_map_name;
   String8                     rad_debug_name;
   String8                     rad_debug_alt_path;
-  String8List                 include_symbol_list;
+  LNK_IncludeSymbolList       include_symbol_list;
   LNK_AltNameList             alt_name_list;
   LNK_MergeDirectiveList      merge_list;
-  U64                         symbol_table_cap_defined;
-  U64                         symbol_table_cap_internal;
-  U64                         symbol_table_cap_weak;
-  U64                         symbol_table_cap_lib;
   U64                         data_dir_count;
   B32                         build_imp_lib;
   B32                         build_exp;
@@ -390,11 +407,18 @@ typedef struct LNK_Config
   String8                     temp_pdb_name;
   String8                     temp_rad_debug_name;
   String8                     temp_rad_chunk_map_name;
+  String8                     delay_load_helper_name;
   String8List                 remove_sections;
   LNK_IO_Flags                io_flags;
   HashTable                  *export_ht;
   HashTable                  *alt_name_ht;
   HashTable                  *include_symbol_ht;
+  HashTable                  *delay_load_ht;
+  HashTable                  *disallow_lib_ht;
+  U64                         unresolved_symbol_limit;
+  U64                         unresolved_symbol_ref_limit;
+  LNK_SwitchState             map_lines_for_unresolved_symbols;
+  String8List                 alt_pch_dirs;
 } LNK_Config;
 
 // --- MSVC Error Codes --------------------------------------------------------
@@ -566,25 +590,31 @@ internal B32 lnk_parse_merge_directive    (String8 string, struct LNK_Obj *obj, 
 internal B32 lnk_parse_export_directive   (Arena *arena, String8 directive, struct LNK_Obj *obj, PE_ExportParse *export_out);
 internal B32 lnk_parse_export_directive_ex(Arena *arena, String8List directive, struct LNK_Obj *obj, PE_ExportParse *export_out);
 
-internal LNK_AltNameNode *        lnk_alt_name_list_push(Arena *arena, LNK_AltNameList *list, LNK_AltName data);
-internal LNK_MergeDirectiveNode * lnk_merge_directive_list_push(Arena *arena, LNK_MergeDirectiveList *list, LNK_MergeDirective data);
+internal LNK_AltNameNode *        lnk_alt_name_list_push(Arena *arena, LNK_AltNameList *list, LNK_AltName v);
+internal LNK_MergeDirectiveNode * lnk_merge_directive_list_push(Arena *arena, LNK_MergeDirectiveList *list, LNK_MergeDirective v);
 
 // --- Getters -----------------------------------------------------------------
 
-internal String8 lnk_get_image_name(LNK_Config *config);
-internal U64     lnk_get_default_function_pad_min(COFF_MachineType machine);
-internal U64     lnk_get_base_addr(LNK_Config *config);
+internal String8 lnk_get_image_name               (LNK_Config *config);
+internal U64     lnk_get_default_function_pad_min (COFF_MachineType machine);
+internal U64     lnk_get_base_addr                (LNK_Config *config);
 internal Version lnk_get_default_subsystem_version(PE_WindowsSubsystem subsystem, COFF_MachineType machine);
-internal Version lnk_get_min_subsystem_version(PE_WindowsSubsystem subsystem, COFF_MachineType machine);
+internal Version lnk_get_min_subsystem_version    (PE_WindowsSubsystem subsystem, COFF_MachineType machine);
 
 internal B32 lnk_do_debug_info        (LNK_Config *config);
 internal B32 lnk_is_thread_pool_shared(LNK_Config *config);
+internal B32 lnk_is_section_removed   (LNK_Config *config, String8 section_name);
+internal B32 lnk_is_dll_delay_load    (LNK_Config *config, String8 dll_name);
 
-internal B32 lnk_is_section_removed(LNK_Config *config, String8 section_name);
+internal String8 lnk_get_lib_name     (String8 path);
+internal void    lnk_push_disallow_lib(LNK_Config *config, String8 path);
+internal B32     lnk_is_lib_disallowed(LNK_Config *config, String8 path);
+
+internal void lnk_include_symbol(LNK_Config *config, String8 name, struct LNK_Obj *obj);
 
 // --- Config ------------------------------------------------------------------
 
-internal void lnk_apply_cmd_option_to_config(Arena *arena, LNK_Config *config, String8 name, String8List value_list, struct LNK_Obj *obj);
+internal void lnk_apply_cmd_option_to_config(LNK_Config *config, String8 name, String8List value_list, struct LNK_Obj *obj);
 
-internal LNK_Config * lnk_config_from_cmd_line(Arena *arena, String8List raw_cmd_line, LNK_CmdLine cmd_line);
+internal LNK_Config * lnk_config_from_cmd_line(String8List raw_cmd_line, LNK_CmdLine cmd_line);
 

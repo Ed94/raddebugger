@@ -37,7 +37,7 @@ d_hash_from_seed_string__case_insensitive(U64 seed, String8 string)
   U64 result = seed;
   for(U64 i = 0; i < string.size; i += 1)
   {
-    result = ((result << 5) + result) + char_to_lower(string.str[i]);
+    result = ((result << 5) + result) + lower_from_char(string.str[i]);
   }
   return result;
 }
@@ -1208,13 +1208,13 @@ d_query_cached_rip_from_thread_unwind(CTRL_Entity *thread, U64 unwind_count)
   }
   else
   {
-    CTRL_Scope *ctrl_scope = ctrl_scope_open();
-    CTRL_CallStack callstack = ctrl_call_stack_from_thread(ctrl_scope, &d_state->ctrl_entity_store->ctx, thread, 1, 0);
+    Access *access = access_open();
+    CTRL_CallStack callstack = ctrl_call_stack_from_thread(access, thread->handle, 1, 0);
     if(callstack.concrete_frames_count != 0)
     {
       result = regs_rip_from_arch_block(thread->arch, callstack.concrete_frames[unwind_count%callstack.concrete_frames_count]->regs);
     }
-    ctrl_scope_close(ctrl_scope);
+    access_close(access);
   }
   return result;
 }
@@ -1421,8 +1421,8 @@ d_init(void)
   d_state = push_array(arena, D_State, 1);
   d_state->arena = arena;
   d_state->cmds_arena = arena_alloc();
-  d_state->output_log_key = hs_key_make(hs_root_alloc(), hs_id_make(0, 0));
-  hs_submit_data(d_state->output_log_key, 0, str8_zero());
+  d_state->output_log_key = c_key_make(c_root_alloc(), c_id_make(0, 0));
+  c_submit_data(d_state->output_log_key, 0, str8_zero());
   d_state->ctrl_entity_store = ctrl_entity_ctx_rw_store_alloc();
   d_state->ctrl_stop_arena = arena_alloc();
   d_state->ctrl_msg_arena = arena_alloc();
@@ -1886,10 +1886,10 @@ d_tick(Arena *arena, D_TargetArray *targets, D_BreakpointArray *breakpoints, D_P
               case D_CmdKind_StepOverLine: {traps = d_trap_net_from_thread__step_over_line(scratch.arena, thread);}break;
               case D_CmdKind_StepOut:
               {
-                CTRL_Scope *ctrl_scope = ctrl_scope_open();
+                Access *access = access_open();
                 
                 // rjf: thread => call stack
-                CTRL_CallStack callstack = ctrl_call_stack_from_thread(ctrl_scope, &d_state->ctrl_entity_store->ctx, thread, 1, os_now_microseconds()+10000);
+                CTRL_CallStack callstack = ctrl_call_stack_from_thread(access, thread->handle, 1, os_now_microseconds()+10000);
                 
                 // rjf: use first unwind frame to generate trap
                 if(callstack.concrete_frames_count > 1)
@@ -1904,7 +1904,7 @@ d_tick(Arena *arena, D_TargetArray *targets, D_BreakpointArray *breakpoints, D_P
                   good = 0;
                 }
                 
-                ctrl_scope_close(ctrl_scope);
+                access_close(access);
               }break;
             }
             if(good && traps.count != 0)

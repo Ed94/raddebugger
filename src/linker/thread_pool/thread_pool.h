@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #pragma once
@@ -22,15 +22,15 @@ typedef struct TP_Worker
 {
   U64                id;
   struct TP_Context *pool;
-  OS_Handle          handle;
+  Thread             handle;
 } TP_Worker;
 
 typedef struct TP_Context
 {
   B32          is_live;
-  OS_Handle    exec_semaphore;
-  OS_Handle    task_semaphore;
-  OS_Handle    main_semaphore;
+  Semaphore    exec_semaphore;
+  Semaphore    task_semaphore;
+  Semaphore    main_semaphore;
 
   U32          worker_count;
   TP_Worker   *worker_arr;

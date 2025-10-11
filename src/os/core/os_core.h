@@ -129,22 +129,12 @@ struct OS_ProcessLaunchParams
 };
 
 ////////////////////////////////
-//~ rjf: Thread Types
-
-typedef void OS_ThreadFunctionType(void *ptr);
-
-////////////////////////////////
 //~ rjf: Handle Type Functions (Helpers, Implemented Once)
 
 internal OS_Handle os_handle_zero(void);
 internal B32 os_handle_match(OS_Handle a, OS_Handle b);
 internal void os_handle_list_push(Arena *arena, OS_HandleList *handles, OS_Handle handle);
 internal OS_HandleArray os_handle_array_from_list(Arena *arena, OS_HandleList *list);
-
-////////////////////////////////
-//~ rjf: Command Line Argc/Argv Helper (Helper, Implemented Once)
-
-internal String8List os_string_list_from_argcv(Arena *arena, int argc, char **argv);
 
 ////////////////////////////////
 //~ rjf: Filesystem Helpers (Helpers, Implemented Once)
@@ -254,58 +244,53 @@ internal void        os_sleep_milliseconds(U32 msec);
 //~ rjf: @os_hooks Child Processes (Implemented Per-OS)
 
 internal OS_Handle os_process_launch(OS_ProcessLaunchParams *params);
-internal B32       os_process_join(OS_Handle handle, U64 endt_us);
-internal B32       os_process_join_exit_code(OS_Handle handle, U64 endt_us, int *exit_code_out);
+internal B32       os_process_join(OS_Handle handle, U64 endt_us, U64 *exit_code_out);
 internal void      os_process_detach(OS_Handle handle);
 internal B32       os_process_kill(OS_Handle handle);
 
 ////////////////////////////////
 //~ rjf: @os_hooks Threads (Implemented Per-OS)
 
-internal OS_Handle os_thread_launch(OS_ThreadFunctionType *func, void *ptr, void *params);
-internal B32       os_thread_join(OS_Handle handle, U64 endt_us);
-internal void      os_thread_detach(OS_Handle handle);
+internal Thread os_thread_launch(ThreadEntryPointFunctionType *f, void *p);
+internal B32 os_thread_join(Thread handle, U64 endt_us);
+internal void os_thread_detach(Thread handle);
 
 ////////////////////////////////
 //~ rjf: @os_hooks Synchronization Primitives (Implemented Per-OS)
 
 //- rjf: recursive mutexes
-internal OS_Handle os_mutex_alloc(void);
-internal void      os_mutex_release(OS_Handle mutex);
-internal void      os_mutex_take(OS_Handle mutex);
-internal void      os_mutex_drop(OS_Handle mutex);
+internal Mutex os_mutex_alloc(void);
+internal void  os_mutex_release(Mutex mutex);
+internal void  os_mutex_take(Mutex mutex);
+internal void  os_mutex_drop(Mutex mutex);
 
 //- rjf: reader/writer mutexes
-internal OS_Handle os_rw_mutex_alloc(void);
-internal void      os_rw_mutex_release(OS_Handle rw_mutex);
-internal void      os_rw_mutex_take_r(OS_Handle mutex);
-internal void      os_rw_mutex_drop_r(OS_Handle mutex);
-internal void      os_rw_mutex_take_w(OS_Handle mutex);
-internal void      os_rw_mutex_drop_w(OS_Handle mutex);
+internal RWMutex os_rw_mutex_alloc(void);
+internal void    os_rw_mutex_release(RWMutex mutex);
+internal void    os_rw_mutex_take(RWMutex mutex, B32 write_mode);
+internal void    os_rw_mutex_drop(RWMutex mutex, B32 write_mode);
 
 //- rjf: condition variables
-internal OS_Handle os_condition_variable_alloc(void);
-internal void      os_condition_variable_release(OS_Handle cv);
+internal CondVar   os_cond_var_alloc(void);
+internal void      os_cond_var_release(CondVar cv);
 // returns false on timeout, true on signal, (max_wait_ms = max_U64) -> no timeout
-internal B32       os_condition_variable_wait(OS_Handle cv, OS_Handle mutex, U64 endt_us);
-internal B32       os_condition_variable_wait_rw_r(OS_Handle cv, OS_Handle mutex_rw, U64 endt_us);
-internal B32       os_condition_variable_wait_rw_w(OS_Handle cv, OS_Handle mutex_rw, U64 endt_us);
-internal void      os_condition_variable_signal(OS_Handle cv);
-internal void      os_condition_variable_broadcast(OS_Handle cv);
+internal B32       os_cond_var_wait(CondVar cv, Mutex mutex, U64 endt_us);
+internal B32       os_cond_var_wait_rw(CondVar cv, RWMutex mutex_rw, B32 write_mode, U64 endt_us);
+internal void      os_cond_var_signal(CondVar cv);
+internal void      os_cond_var_broadcast(CondVar cv);
 
 //- rjf: cross-process semaphores
-internal OS_Handle os_semaphore_alloc(U32 initial_count, U32 max_count, String8 name);
-internal void      os_semaphore_release(OS_Handle semaphore);
-internal OS_Handle os_semaphore_open(String8 name);
-internal void      os_semaphore_close(OS_Handle semaphore);
-internal B32       os_semaphore_take(OS_Handle semaphore, U64 endt_us);
-internal void      os_semaphore_drop(OS_Handle semaphore);
+internal Semaphore os_semaphore_alloc(U32 initial_count, U32 max_count, String8 name);
+internal void      os_semaphore_release(Semaphore semaphore);
+internal Semaphore os_semaphore_open(String8 name);
+internal void      os_semaphore_close(Semaphore semaphore);
+internal B32       os_semaphore_take(Semaphore semaphore, U64 endt_us);
+internal void      os_semaphore_drop(Semaphore semaphore);
 
-//- rjf: scope macros
-#define OS_MutexScope(mutex) DeferLoop(os_mutex_take(mutex), os_mutex_drop(mutex))
-#define OS_MutexScopeR(mutex) DeferLoop(os_rw_mutex_take_r(mutex), os_rw_mutex_drop_r(mutex))
-#define OS_MutexScopeW(mutex) DeferLoop(os_rw_mutex_take_w(mutex), os_rw_mutex_drop_w(mutex))
-#define OS_MutexScopeRWPromote(mutex) DeferLoop((os_rw_mutex_drop_r(mutex), os_rw_mutex_take_w(mutex)), (os_rw_mutex_drop_w(mutex), os_rw_mutex_take_r(mutex)))
+//- rjf: barriers
+internal Barrier   os_barrier_alloc(U64 count);
+internal void      os_barrier_release(Barrier barrier);
+internal void      os_barrier_wait(Barrier barrier);
 
 ////////////////////////////////
 //~ rjf: @os_hooks Dynamically-Loaded Libraries (Implemented Per-OS)
@@ -317,7 +302,7 @@ internal VoidProc *os_library_load_proc(OS_Handle lib, String8 name);
 ////////////////////////////////
 //~ rjf: @os_hooks Safe Calls (Implemented Per-OS)
 
-internal void os_safe_call(OS_ThreadFunctionType *func, OS_ThreadFunctionType *fail_handler, void *ptr);
+internal void os_safe_call(ThreadEntryPointFunctionType *func, ThreadEntryPointFunctionType *fail_handler, void *ptr);
 
 ////////////////////////////////
 //~ rjf: @os_hooks GUIDs (Implemented Per-OS)
@@ -333,7 +318,7 @@ internal Guid os_make_guid(void);
 
 #if BUILD_ENTRY_DEFINING_UNIT
 raddbg_entry_point(entry_point);
-internal void entry_point(CmdLine *cmdline);
+internal no_inline void entry_point(CmdLine *cmdline);
 #endif
 
 #endif // OS_CORE_H

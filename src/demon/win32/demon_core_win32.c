@@ -690,7 +690,7 @@ dmn_w32_thread_read_reg_block(Arch arch, HANDLE thread, void *reg_block)
       
       //- rjf: unpack info about available features
       U32 feature_mask = GetEnabledXStateFeatures();
-      B32 xstate_enabled = (feature_mask & (XSTATE_MASK_AVX | XSTATE_MASK_AVX512)) != 0;
+      B32 xstate_enabled = (feature_mask & (XSTATE_MASK_AVX | XSTATE_MASK_AVX512 | XSTATE_MASK_CET_U)) != 0;
       
       //- rjf: set up context
       CONTEXT *ctx = 0;
@@ -709,7 +709,7 @@ dmn_w32_thread_read_reg_block(Arch arch, HANDLE thread, void *reg_block)
       //- rjf: unpack features available on this context
       if (xstate_enabled)
       {
-        SetXStateFeaturesMask(ctx, XSTATE_MASK_AVX | XSTATE_MASK_AVX512);
+        SetXStateFeaturesMask(ctx, XSTATE_MASK_AVX | XSTATE_MASK_AVX512 | XSTATE_MASK_CET_U);
       }
       
       //- rjf: get thread context
@@ -864,6 +864,18 @@ dmn_w32_thread_read_reg_block(Arch arch, HANDLE thread, void *reg_block)
         for(U32 n = 0; n < 16; n += 1, zmm_d += 1)
         {
           MemoryZero(zmm_d, sizeof(*zmm_d));
+        }
+      }
+      
+      // CET / Shadow Stack
+      if(xstate_mask & XSTATE_MASK_CET_U)
+      {
+        DWORD cet_length = 0;
+        XSAVE_CET_U_FORMAT *cet = LocateXStateFeature(ctx, XSTATE_CET_U, &cet_length);
+        if (cet_length == sizeof(*cet))
+        {
+          dst->cetmsr.u64 = cet->Ia32CetUMsr;
+          dst->cetssp.u64 = cet->Ia32Pl3SspMsr;
         }
       }
       
@@ -1142,7 +1154,7 @@ dmn_init(void)
   Arena *arena = arena_alloc();
   dmn_w32_shared = push_array(arena, DMN_W32_Shared, 1);
   dmn_w32_shared->arena = arena;
-  dmn_w32_shared->access_mutex = os_mutex_alloc();
+  dmn_w32_shared->access_mutex = mutex_alloc();
   dmn_w32_shared->detach_arena = arena_alloc();
   dmn_w32_shared->entities_arena = arena_alloc(.reserve_size = GB(8), .commit_size = KB(64));
   dmn_w32_shared->entities_base = dmn_w32_entity_alloc(&dmn_w32_entity_nil, DMN_W32_EntityKind_Root, 0);
@@ -1192,7 +1204,7 @@ dmn_ctrl_begin(void)
 internal void
 dmn_ctrl_exclusive_access_begin(void)
 {
-  OS_MutexScope(dmn_w32_shared->access_mutex)
+  MutexScope(dmn_w32_shared->access_mutex)
   {
     dmn_w32_shared->access_run_state = 1;
   }
@@ -1201,7 +1213,7 @@ dmn_ctrl_exclusive_access_begin(void)
 internal void
 dmn_ctrl_exclusive_access_end(void)
 {
-  OS_MutexScope(dmn_w32_shared->access_mutex)
+  MutexScope(dmn_w32_shared->access_mutex)
   {
     dmn_w32_shared->access_run_state = 0;
   }
@@ -2404,6 +2416,13 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
                   case DMN_W32_EXCEPTION_STACK_BUFFER_OVERRUN:
                   {
                     e->kind = DMN_EventKind_Trap;
+                    if(exception->ExceptionInformation[0] == DMN_W32_FAST_FAIL_CONTROL_INVALID_RETURN_ADDRESS)
+                    {
+                      // TODO(rjf): this is a shadow stack violation - this can imply that the spoof was hit.
+                      // need to handle this correctly in the ctrl layer when stepping w/ a spoof set.
+                      //
+                      // @shadow_stack_step
+                    }
                   }break;
                   
                   //- rjf: fill single-step event info
@@ -2977,7 +2996,7 @@ dmn_access_open(void)
   }
   else
   {
-    os_mutex_take(dmn_w32_shared->access_mutex);
+    mutex_take(dmn_w32_shared->access_mutex);
     result = !dmn_w32_shared->access_run_state;
   }
   return result;
@@ -2988,7 +3007,7 @@ dmn_access_close(void)
 {
   if(!dmn_w32_ctrl_thread)
   {
-    os_mutex_drop(dmn_w32_shared->access_mutex);
+    mutex_drop(dmn_w32_shared->access_mutex);
   }
 }
 

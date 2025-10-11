@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #pragma once
@@ -14,6 +14,7 @@ typedef enum
   LNK_Log_SizeBreakdown,
   LNK_Log_LinkStats,
   LNK_Log_Timers,
+  LNK_Log_Links, 
   LNK_Log_Count
 } LNK_LogType;
 

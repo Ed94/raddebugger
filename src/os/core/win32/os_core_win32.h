@@ -7,6 +7,8 @@
 ////////////////////////////////
 //~ rjf: Includes / Libraries
 
+#include <winsock2.h>
+#include <mswsock.h>
 #include <windows.h>
 #include <windowsx.h>
 #include <timeapi.h>
@@ -20,6 +22,7 @@
 #pragma comment(lib, "rpcrt4")
 #pragma comment(lib, "shlwapi")
 #pragma comment(lib, "comctl32")
+#pragma comment(lib, "ws2_32")
 #pragma comment(linker,"\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"") // this is required for loading correct comctl32 dll file
 
 ////////////////////////////////
@@ -46,6 +49,7 @@ typedef enum OS_W32_EntityKind
   OS_W32_EntityKind_Mutex,
   OS_W32_EntityKind_RWMutex,
   OS_W32_EntityKind_ConditionVariable,
+  OS_W32_EntityKind_Barrier,
 }
 OS_W32_EntityKind;
 
@@ -58,7 +62,7 @@ struct OS_W32_Entity
   {
     struct
     {
-      OS_ThreadFunctionType *func;
+      ThreadEntryPointFunctionType *func;
       void *ptr;
       HANDLE handle;
       DWORD tid;
@@ -66,6 +70,7 @@ struct OS_W32_Entity
     CRITICAL_SECTION mutex;
     SRWLOCK rw_mutex;
     CONDITION_VARIABLE cv;
+    SYNCHRONIZATION_BARRIER sb;
   };
 };
 

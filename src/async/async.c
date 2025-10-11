@@ -18,21 +18,21 @@ async_init(CmdLine *cmdline)
     ASYNC_Ring *ring = &async_shared->rings[p];
     ring->ring_size  = MB(8);
     ring->ring_base  = push_array_no_zero(arena, U8, ring->ring_size);
-    ring->ring_mutex = os_mutex_alloc();
-    ring->ring_cv    = os_condition_variable_alloc();
+    ring->ring_mutex = mutex_alloc();
+    ring->ring_cv    = cond_var_alloc();
   }
-  async_shared->ring_mutex = os_mutex_alloc();
-  async_shared->ring_cv = os_condition_variable_alloc();
+  async_shared->ring_mutex = mutex_alloc();
+  async_shared->ring_cv = cond_var_alloc();
   String8 work_thread_count_string = cmd_line_string(cmdline, str8_lit("work_threads_count"));
   if(work_thread_count_string.size == 0 || !try_u64_from_str8_c_rules(work_thread_count_string, &async_shared->work_threads_count))
   {
     async_shared->work_threads_count = Max(4, os_get_system_info()->logical_processor_count-1);
   }
   async_shared->work_threads_count = Max(4, async_shared->work_threads_count);
-  async_shared->work_threads = push_array(arena, OS_Handle, async_shared->work_threads_count);
+  async_shared->work_threads = push_array(arena, Thread, async_shared->work_threads_count);
   for EachIndex(idx, async_shared->work_threads_count)
   {
-    async_shared->work_threads[idx] = os_thread_launch(async_work_thread__entry_point, (void *)idx, 0);
+    async_shared->work_threads[idx] = thread_launch(async_work_thread__entry_point, (void *)idx);
   }
 }
 
@@ -68,7 +68,7 @@ async_push_work_(ASYNC_WorkFunctionType *work_function, ASYNC_WorkParams *params
   // thread, and skip ring buffer if so.
   B32 queued_in_ring_buffer = 0;
   B32 need_to_execute_on_this_thread = 0;
-  OS_MutexScope(ring->ring_mutex) for(;;)
+  MutexScope(ring->ring_mutex) for(;;)
   {
     U64 num_available_work_threads = (async_shared->work_threads_count - ins_atomic_u64_eval(&async_shared->work_threads_live_count));
     if(num_available_work_threads == 0 && async_work_thread_depth > 0)
@@ -81,7 +81,7 @@ async_push_work_(ASYNC_WorkFunctionType *work_function, ASYNC_WorkParams *params
     if(available_size >= sizeof(work))
     {
       queued_in_ring_buffer = 1;
-      if(!os_handle_match(params->semaphore, os_handle_zero()))
+      if(!MemoryIsZeroStruct(&params->semaphore))
       {
         os_semaphore_take(params->semaphore, max_U64);
       }
@@ -92,14 +92,14 @@ async_push_work_(ASYNC_WorkFunctionType *work_function, ASYNC_WorkParams *params
     {
       break;
     }
-    os_condition_variable_wait(ring->ring_cv, ring->ring_mutex, params->endt_us);
+    cond_var_wait(ring->ring_cv, ring->ring_mutex, params->endt_us);
   }
   
   // rjf: broadcast ring buffer cv if we wrote successfully
   if(queued_in_ring_buffer)
   {
-    os_condition_variable_broadcast(ring->ring_cv);
-    os_condition_variable_broadcast(async_shared->ring_cv);
+    cond_var_broadcast(ring->ring_cv);
+    cond_var_broadcast(async_shared->ring_cv);
   }
   
   // rjf: if we did not queue successfully, and we have determined that
@@ -148,7 +148,7 @@ internal void *
 async_task_join(ASYNC_Task *task)
 {
   void *result = 0;
-  if(task != 0 && !os_handle_match(task->semaphore, os_handle_zero()))
+  if(task != 0 && !MemoryIsZeroStruct(&task->semaphore))
   {
     os_semaphore_take(task->semaphore, max_U64);
     os_semaphore_release(task->semaphore);
@@ -167,12 +167,12 @@ async_pop_work(void)
   ASYNC_Work work = {0};
   B32 done = 0;
   ASYNC_Priority taken_priority = ASYNC_Priority_Low;
-  OS_MutexScope(async_shared->ring_mutex) for(;!done;)
+  MutexScope(async_shared->ring_mutex) for(;!done;)
   {
     for(ASYNC_Priority priority = ASYNC_Priority_High;; priority = (ASYNC_Priority)(priority - 1))
     {
       ASYNC_Ring *ring = &async_shared->rings[priority];
-      OS_MutexScope(ring->ring_mutex)
+      MutexScope(ring->ring_mutex)
       {
         U64 unconsumed_size = ring->ring_write_pos - ring->ring_read_pos;
         if(unconsumed_size >= sizeof(work))
@@ -193,11 +193,11 @@ async_pop_work(void)
     }
     if(!done)
     {
-      os_condition_variable_wait(async_shared->ring_cv, async_shared->ring_mutex, max_U64);
+      cond_var_wait(async_shared->ring_cv, async_shared->ring_mutex, max_U64);
     }
   }
-  os_condition_variable_broadcast(async_shared->ring_cv);
-  os_condition_variable_broadcast(async_shared->rings[taken_priority].ring_cv);
+  cond_var_broadcast(async_shared->ring_cv);
+  cond_var_broadcast(async_shared->rings[taken_priority].ring_cv);
   return work;
 }
 
@@ -216,7 +216,7 @@ async_execute_work(ASYNC_Work work)
   }
   
   //- rjf: release semaphore
-  if(!os_handle_match(work.semaphore, os_handle_zero()))
+  if(!MemoryIsZeroStruct(&work.semaphore))
   {
     os_semaphore_drop(work.semaphore);
   }
@@ -274,7 +274,7 @@ internal void
 async_work_thread__entry_point(void *p)
 {
   U64 thread_idx = (U64)p;
-  ThreadNameF("[async] work thread #%I64u", thread_idx);
+  ThreadNameF("async_work_thread_%I64u", thread_idx);
   async_work_thread_idx = thread_idx;
   for(;;)
   {

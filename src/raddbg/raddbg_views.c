@@ -105,6 +105,21 @@ rd_code_view_build(Arena *arena, RD_CodeViewState *cv, RD_CodeViewBuildFlags fla
   }
   
   //////////////////////////////
+  //- rjf: set up wrap cache
+  //
+  if(cv->wrap_arena == 0)
+  {
+    cv->wrap_arena = rd_push_view_arena();
+  }
+  if(cv->wrap_total_vline_count == 0)
+  {
+    arena_clear(cv->wrap_arena);
+    cv->wrap_total_vline_count = text_info->lines_count;
+    cv->wrap_cache_slots_count = text_info->lines_count/64;
+    cv->wrap_cache_slots = push_array(cv->wrap_arena, RD_CodeViewTLineWrapCacheSlot, cv->wrap_cache_slots_count);
+  }
+  
+  //////////////////////////////
   //- rjf: determine visible line range / count
   //
   Rng1S64 visible_line_num_range = r1s64(scroll_pos.y.idx + (S64)(scroll_pos.y.off) + 1 - !!(scroll_pos.y.off < 0),
@@ -1011,11 +1026,11 @@ rd_watch_row_info_from_row(Arena *arena, EV_Row *row)
       CTRL_Entity *entity = rd_ctrl_entity_from_eval_space(block_eval.space);
       if(entity->kind == CTRL_EntityKind_Thread)
       {
-        CTRL_Scope *ctrl_scope = ctrl_scope_open();
+        Access *access = access_open();
         info.callstack_thread = entity;
         U64 frame_num = ev_block_num_from_id(block, key.child_id);
         B32 call_stack_high_priority = ctrl_handle_match(entity->handle, rd_base_regs()->thread);
-        CTRL_CallStack call_stack = ctrl_call_stack_from_thread(ctrl_scope, &d_state->ctrl_entity_store->ctx, entity, call_stack_high_priority, call_stack_high_priority ? rd_state->frame_eval_memread_endt_us : 0);
+        CTRL_CallStack call_stack = ctrl_call_stack_from_thread(access, entity->handle, call_stack_high_priority, call_stack_high_priority ? rd_state->frame_eval_memread_endt_us : 0);
         if(1 <= frame_num && frame_num <= call_stack.frames_count)
         {
           CTRL_CallStackFrame *f = &call_stack.frames[frame_num-1];
@@ -1023,7 +1038,7 @@ rd_watch_row_info_from_row(Arena *arena, EV_Row *row)
           info.callstack_inline_depth = f->inline_depth;
           info.callstack_vaddr = regs_rip_from_arch_block(entity->arch, f->regs);
         }
-        ctrl_scope_close(ctrl_scope);
+        access_close(access);
       }
     }
     
@@ -1446,8 +1461,7 @@ rd_watch_row_info_from_row(Arena *arena, EV_Row *row)
       F32 next_pct = 0;
 #define take_pct() (next_pct = (F32)f64_from_str8(w_cfg->string), w_cfg = w_cfg->next, next_pct)
       rd_watch_cell_list_push_new(arena, &info.cells, RD_WatchCellKind_CallStackFrame, row->eval,                                 .default_pct = 0.05f, .pct = take_pct());
-      rd_watch_cell_list_push_new(arena, &info.cells, RD_WatchCellKind_Eval,           row->eval,                                 .default_pct = 0.55f, .pct = take_pct());
-      rd_watch_cell_list_push_new(arena, &info.cells, RD_WatchCellKind_Eval,           e_eval_wrapf(row->eval, "hex((uint64)$)"), .default_pct = 0.20f, .pct = take_pct());
+      rd_watch_cell_list_push_new(arena, &info.cells, RD_WatchCellKind_Eval,           row->eval,                                 .default_pct = 0.75f, .pct = take_pct());
       rd_watch_cell_list_push_new(arena, &info.cells, RD_WatchCellKind_Eval,           (module == &ctrl_entity_nil ? (E_Eval)zero_struct : module_eval),
                                   .default_pct = 0.20f, .pct = take_pct());
 #undef take_pct
@@ -1929,8 +1943,8 @@ rd_info_from_watch_row_cell(Arena *arena, EV_Row *row, EV_StringFlags string_fla
       dr_fstrs_push_new(arena, &fstrs, &params, str8_lit("  "));
       dr_fstrs_push_new(arena, &fstrs, &params, name);
       {
-        HS_Scope *hs_scope = hs_scope_open();
-        MD_Node *theme_tree = rd_theme_tree_from_name(scratch.arena, hs_scope, name);
+        Access *access = access_open();
+        MD_Node *theme_tree = rd_theme_tree_from_name(scratch.arena, access, name);
         U64 color_idx = 0;
         for(MD_Node *n = theme_tree; color_idx < 4 && !md_node_is_nil(n); n = md_node_rec_depth_first_pre(n, theme_tree).next)
         {
@@ -1958,7 +1972,7 @@ rd_info_from_watch_row_cell(Arena *arena, EV_Row *row, EV_StringFlags string_fla
             }
           }
         }
-        hs_scope_close(hs_scope);
+        access_close(access);
       }
       result.eval_fstrs = fstrs;
     }break;
@@ -2010,8 +2024,7 @@ RD_VIEW_UI_FUNCTION_DEF(text)
   RD_CodeViewState *cv = rd_view_state(RD_CodeViewState);
   rd_code_view_init(cv);
   Temp scratch = scratch_begin(0, 0);
-  HS_Scope *hs_scope = hs_scope_open();
-  TXT_Scope *txt_scope = txt_scope_open();
+  Access *access = access_open();
   
   //////////////////////////////
   //- rjf: set up invariants
@@ -2075,8 +2088,8 @@ RD_VIEW_UI_FUNCTION_DEF(text)
     rd_regs()->lang_kind = txt_lang_kind_from_extension(lang);
   }
   U128 hash = {0};
-  TXT_TextInfo info = txt_text_info_from_key_lang(txt_scope, rd_regs()->text_key, rd_regs()->lang_kind, &hash);
-  String8 data = hs_data_from_hash(hs_scope, hash);
+  TXT_TextInfo info = txt_text_info_from_key_lang(access, rd_regs()->text_key, rd_regs()->lang_kind, &hash);
+  String8 data = c_data_from_hash(access, hash);
   B32 file_is_missing = (rd_regs()->file_path.size != 0 && os_properties_from_file_path(rd_regs()->file_path).modified == 0);
   B32 key_has_data = !u128_match(hash, u128_zero()) && info.lines_count;
   ProfEnd();
@@ -2163,7 +2176,7 @@ RD_VIEW_UI_FUNCTION_DEF(text)
   B32 file_is_out_of_date = 0;
   String8 out_of_date_dbgi_name = {0};
   {
-    U64 file_timestamp = fs_properties_from_path(rd_regs()->file_path).modified;
+    U64 file_timestamp = os_properties_from_file_path(rd_regs()->file_path).modified;
     if(file_timestamp != 0)
     {
       for(DI_KeyNode *n = dbgi_keys.first; n != 0; n = n->next)
@@ -2235,8 +2248,7 @@ RD_VIEW_UI_FUNCTION_DEF(text)
   rd_store_view_param_s64(str8_lit("mark_line"), rd_regs()->mark.line);
   rd_store_view_param_s64(str8_lit("mark_column"), rd_regs()->mark.column);
   
-  txt_scope_close(txt_scope);
-  hs_scope_close(hs_scope);
+  access_close(access);
   scratch_end(scratch);
 }
 
@@ -2276,9 +2288,7 @@ RD_VIEW_UI_FUNCTION_DEF(disasm)
   }
   RD_CodeViewState *cv = &dv->cv;
   Temp scratch = scratch_begin(0, 0);
-  HS_Scope *hs_scope = hs_scope_open();
-  DASM_Scope *dasm_scope = dasm_scope_open();
-  TXT_Scope *txt_scope = txt_scope_open();
+  Access *access = access_open();
   
   //////////////////////////////
   //- rjf: if disassembly views are not parameterized by anything, they
@@ -2384,7 +2394,7 @@ RD_VIEW_UI_FUNCTION_DEF(disasm)
       syntax = DASM_Syntax_ATT;
     }
   }
-  HS_Key dasm_key = rd_key_from_eval_space_range(space, range, 0);
+  C_Key dasm_key = rd_key_from_eval_space_range(space, range, 0);
   U128 dasm_data_hash = {0};
   DASM_Params dasm_params = {0};
   {
@@ -2395,12 +2405,12 @@ RD_VIEW_UI_FUNCTION_DEF(disasm)
     dasm_params.base_vaddr  = base_vaddr;
     dasm_params.dbgi_key    = dbgi_key;
   }
-  DASM_Info dasm_info = dasm_info_from_key_params(dasm_scope, dasm_key, &dasm_params, &dasm_data_hash);
+  DASM_Info dasm_info = dasm_info_from_key_params(access, dasm_key, &dasm_params, &dasm_data_hash);
   rd_regs()->text_key = dasm_info.text_key;
   rd_regs()->lang_kind = txt_lang_kind_from_arch(arch);
   U128 dasm_text_hash = {0};
-  TXT_TextInfo dasm_text_info = txt_text_info_from_key_lang(txt_scope, rd_regs()->text_key, rd_regs()->lang_kind, &dasm_text_hash);
-  String8 dasm_text_data = hs_data_from_hash(hs_scope, dasm_text_hash);
+  TXT_TextInfo dasm_text_info = txt_text_info_from_key_lang(access, rd_regs()->text_key, rd_regs()->lang_kind, &dasm_text_hash);
+  String8 dasm_text_data = c_data_from_hash(access, dasm_text_hash);
   B32 has_disasm = (dasm_info.lines.count != 0 && dasm_text_info.lines_count != 0);
   B32 is_loading = (!has_disasm && dim_1u64(range) != 0 && eval.msgs.max_kind == E_MsgKind_Null && (space.kind != RD_EvalSpaceKind_CtrlEntity || space_entity != &ctrl_entity_nil));
   
@@ -2480,9 +2490,7 @@ RD_VIEW_UI_FUNCTION_DEF(disasm)
   dv->cursor = rd_regs()->cursor;
   dv->mark = rd_regs()->mark;
   
-  txt_scope_close(txt_scope);
-  dasm_scope_close(dasm_scope);
-  hs_scope_close(hs_scope);
+  access_close(access);
   scratch_end(scratch);
 }
 
@@ -2921,10 +2929,10 @@ RD_VIEW_UI_FUNCTION_DEF(memory)
   };
   AnnotationList *visible_memory_annotations = push_array(scratch.arena, AnnotationList, visible_memory_size);
   {
-    CTRL_Scope *ctrl_scope = ctrl_scope_open();
+    Access *access = access_open();
     CTRL_Entity *selected_thread = ctrl_entity_from_handle(&d_state->ctrl_entity_store->ctx, rd_regs()->thread);
     CTRL_Entity *selected_process = ctrl_entity_ancestor_from_kind(selected_thread, CTRL_EntityKind_Process);
-    CTRL_CallStack selected_call_stack = ctrl_call_stack_from_thread(ctrl_scope, &d_state->ctrl_entity_store->ctx, selected_thread, 1, 0);
+    CTRL_CallStack selected_call_stack = ctrl_call_stack_from_thread(access, selected_thread->handle, 1, 0);
     CTRL_Entity *eval_process = &ctrl_entity_nil;
     if(eval.space.kind == RD_EvalSpaceKind_CtrlEntity)
     {
@@ -3194,7 +3202,7 @@ RD_VIEW_UI_FUNCTION_DEF(memory)
       }
     }
     
-    ctrl_scope_close(ctrl_scope);
+    access_close(access);
   }
   
   //////////////////////////////
@@ -3715,6 +3723,13 @@ EV_EXPAND_RULE_INFO_FUNCTION_DEF(graph)
 ////////////////////////////////
 //~ rjf: bitmap @view_hook_impl
 
+typedef struct RD_BitmapTopology RD_BitmapTopology;
+struct RD_BitmapTopology
+{
+  Vec2S16 dim;
+  R_Tex2DFormat fmt;
+};
+
 typedef struct RD_BitmapBoxDrawData RD_BitmapBoxDrawData;
 struct RD_BitmapBoxDrawData
 {
@@ -3732,6 +3747,46 @@ struct RD_BitmapCanvasBoxDrawData
   Vec2F32 view_center_pos;
   F32 zoom;
 };
+
+internal AC_Artifact
+rd_bitmap_artifact_create(String8 key, U64 gen, U64 *requested_gen, B32 *retry_out)
+{
+  Access *access = access_open();
+  
+  //- rjf: unpack key
+  U128 hash = {0};
+  RD_BitmapTopology top = {0};
+  {
+    U64 key_read_off = 0;
+    key_read_off += str8_deserial_read_struct(key, key_read_off, &hash);
+    key_read_off += str8_deserial_read_struct(key, key_read_off, &top);
+  }
+  String8 data = c_data_from_hash(access, hash);
+  
+  //- rjf: create texture
+  R_Handle texture = {0};
+  if(top.dim.x > 0 && top.dim.y > 0 &&
+     data.size >= (U64)top.dim.x*(U64)top.dim.y*(U64)r_tex2d_format_bytes_per_pixel_table[top.fmt])
+  {
+    texture = r_tex2d_alloc(R_ResourceKind_Static, v2s32(top.dim.x, top.dim.y), top.fmt, data.str);
+  }
+  
+  //- rjf: bundle as artifact
+  AC_Artifact artifact = {0};
+  StaticAssert(sizeof(artifact) >= sizeof(texture), tex_artifact_size_check);
+  MemoryCopy(&artifact, &texture, Min(sizeof(texture), sizeof(artifact)));
+  
+  access_close(access);
+  return artifact;
+}
+
+internal void
+rd_bitmap_artifact_destroy(AC_Artifact artifact)
+{
+  R_Handle texture = {0};
+  MemoryCopy(&texture, &artifact, Min(sizeof(texture), sizeof(artifact)));
+  r_tex2d_release(texture);
+}
 
 internal Vec2F32
 rd_bitmap_screen_from_canvas_pos(Vec2F32 view_center_pos, F32 zoom, Rng2F32 rect, Vec2F32 cvs)
@@ -3811,8 +3866,7 @@ EV_EXPAND_RULE_INFO_FUNCTION_DEF(bitmap)
 RD_VIEW_UI_FUNCTION_DEF(bitmap)
 {
   Temp scratch = scratch_begin(0, 0);
-  HS_Scope *hs_scope = hs_scope_open();
-  TEX_Scope *tex_scope = tex_scope_open();
+  Access *access = access_open();
   
   //////////////////////////////
   //- rjf: evaluate expression
@@ -3859,11 +3913,31 @@ RD_VIEW_UI_FUNCTION_DEF(bitmap)
   //////////////////////////////
   //- rjf: map expression artifacts -> texture
   //
-  HS_Key texture_key = rd_key_from_eval_space_range(eval.space, offset_range, 0);
-  TEX_Topology topology = tex_topology_make(dim, fmt);
+  C_Key texture_key = rd_key_from_eval_space_range(eval.space, offset_range, 0);
+  RD_BitmapTopology topology = {v2s16(dim.x, dim.y), fmt};
   U128 data_hash = {0};
-  R_Handle texture = tex_texture_from_key_topology(tex_scope, texture_key, topology, &data_hash);
-  String8 data = hs_data_from_hash(hs_scope, data_hash);
+  R_Handle texture = {0};
+  for EachIndex(rewind_idx, C_KEY_HASH_HISTORY_COUNT)
+  {
+    U128 hash = c_hash_from_key(texture_key, rewind_idx);
+    struct
+    {
+      U128 hash;
+      RD_BitmapTopology top;
+    }
+    key_data = {hash, topology};
+    String8 key = str8_struct(&key_data);
+    AC_Artifact artifact = ac_artifact_from_key(access, key, rd_bitmap_artifact_create, rd_bitmap_artifact_destroy, 0);
+    R_Handle texture_candidate = {0};
+    MemoryCopy(&texture_candidate, &artifact, Min(sizeof(texture_candidate), sizeof(artifact)));
+    if(!r_handle_match(texture_candidate, r_handle_zero()))
+    {
+      data_hash = hash;
+      texture = texture_candidate;
+      break;
+    }
+  }
+  String8 data = c_data_from_hash(access, data_hash);
   
   //////////////////////////////
   //- rjf: equip loading info
@@ -4016,8 +4090,7 @@ RD_VIEW_UI_FUNCTION_DEF(bitmap)
   rd_store_view_param_f32(str8_lit("x"), view_center_pos.x);
   rd_store_view_param_f32(str8_lit("y"), view_center_pos.y);
   
-  hs_scope_close(hs_scope);
-  tex_scope_close(tex_scope);
+  access_close(access);
   scratch_end(scratch);
 }
 
@@ -4289,6 +4362,51 @@ struct RD_Geo3DBoxDrawData
   R_Handle index_buffer;
 };
 
+internal AC_Artifact
+rd_geo3d_artifact_create(String8 key, U64 gen, U64 *requested_gen, B32 *retry_out)
+{
+  Access *access = access_open();
+  U128 hash = {0};
+  str8_deserial_read_struct(key, 0, &hash);
+  String8 data = c_data_from_hash(access, hash);
+  R_Handle buffer = {0};
+  if(data.size != 0)
+  {
+    buffer = r_buffer_alloc(R_ResourceKind_Static, data.size, data.str);
+  }
+  AC_Artifact artifact = {0};
+  MemoryCopy(&artifact, &buffer, Min(sizeof(artifact), sizeof(buffer)));
+  access_close(access);
+  return artifact;
+}
+
+internal void
+rd_geo3d_artifact_destroy(AC_Artifact artifact)
+{
+  R_Handle buffer = {0};
+  MemoryCopy(&buffer, &artifact, Min(sizeof(buffer), sizeof(artifact)));
+  r_buffer_release(buffer);
+}
+
+internal R_Handle
+rd_geo3d_buffer_from_key(Access *access, C_Key key)
+{
+  R_Handle result = {0};
+  for EachIndex(rewind_idx, C_KEY_HASH_HISTORY_COUNT)
+  {
+    U128 hash = c_hash_from_key(key, rewind_idx);
+    AC_Artifact artifact = ac_artifact_from_key(access, str8_struct(&hash), rd_geo3d_artifact_create, rd_geo3d_artifact_destroy, 0);
+    R_Handle buffer = {0};
+    MemoryCopy(&buffer, &artifact, Min(sizeof(buffer), sizeof(artifact)));
+    if(!r_handle_match(buffer, r_handle_zero()))
+    {
+      result = buffer;
+      break;
+    }
+  }
+  return result;
+}
+
 internal UI_BOX_CUSTOM_DRAW(rd_geo3d_box_draw)
 {
   RD_Geo3DBoxDrawData *draw_data = (RD_Geo3DBoxDrawData *)user_data;
@@ -4329,7 +4447,7 @@ EV_EXPAND_RULE_INFO_FUNCTION_DEF(geo3d)
 RD_VIEW_UI_FUNCTION_DEF(geo3d)
 {
   Temp scratch = scratch_begin(0, 0);
-  GEO_Scope *geo_scope = geo_scope_open();
+  Access *access = access_open();
   RD_Geo3DViewState *state = rd_view_state(RD_Geo3DViewState);
   
   //////////////////////////////
@@ -4349,10 +4467,10 @@ RD_VIEW_UI_FUNCTION_DEF(geo3d)
   U64 base_offset = eval_range.min;
   Rng1U64 idxs_range = r1u64(base_offset, base_offset+count*sizeof(U32));
   Rng1U64 vtxs_range = r1u64(vtx_base_off, vtx_base_off+vtx_size);
-  HS_Key idxs_key = rd_key_from_eval_space_range(eval.space, idxs_range, 0);
-  HS_Key vtxs_key = rd_key_from_eval_space_range(eval.space, vtxs_range, 0);
-  R_Handle idxs_buffer = geo_buffer_from_key(geo_scope, idxs_key);
-  R_Handle vtxs_buffer = geo_buffer_from_key(geo_scope, vtxs_key);
+  C_Key idxs_key = rd_key_from_eval_space_range(eval.space, idxs_range, 0);
+  C_Key vtxs_key = rd_key_from_eval_space_range(eval.space, vtxs_range, 0);
+  R_Handle idxs_buffer = rd_geo3d_buffer_from_key(access, idxs_key);
+  R_Handle vtxs_buffer = rd_geo3d_buffer_from_key(access, vtxs_key);
   
   //////////////////////////////
   //- rjf: equip loading info
@@ -4436,6 +4554,6 @@ RD_VIEW_UI_FUNCTION_DEF(geo3d)
   rd_store_view_param_f32(str8_lit("pitch"), pitch_target);
   rd_store_view_param_f32(str8_lit("zoom"),  zoom_target);
   
-  geo_scope_close(geo_scope);
+  access_close(access);
   scratch_end(scratch);
 }

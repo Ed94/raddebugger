@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 internal void
@@ -63,9 +63,9 @@ tp_alloc(Arena *arena, U32 worker_count, U32 max_worker_count, String8 name)
   B32 is_shared = (name.size > 0);
 
   // alloc semaphores
-  OS_Handle main_semaphore = {0};
-  OS_Handle task_semaphore = {0};
-  OS_Handle exec_semaphore = {0};
+  Semaphore main_semaphore = {0};
+  Semaphore task_semaphore = {0};
+  Semaphore exec_semaphore = {0};
   if (worker_count > 1) {
     main_semaphore = os_semaphore_alloc(0, 1, str8_zero());
     if (is_shared) {
@@ -99,7 +99,7 @@ tp_alloc(Arena *arena, U32 worker_count, U32 max_worker_count, String8 name)
   // launch worker threads
   for (U64 i = 1; i < worker_count; i += 1) {
     TP_Worker *worker = &pool->worker_arr[i];
-    worker->handle    = os_thread_launch(worker_entry, worker, 0);
+    worker->handle    = thread_launch(worker_entry, worker);
   }
   
   ProfEnd();
@@ -111,23 +111,23 @@ tp_release(TP_Context *pool)
 {
   pool->is_live = 0;
 
-  B32 is_shared = !os_handle_match(pool->exec_semaphore, os_handle_zero());
+  B32 is_shared = pool->exec_semaphore.u64[0] != 0;
   if (is_shared) {
     for (U64 i = 0; i < pool->worker_count; ++i) {
-      os_semaphore_drop(pool->exec_semaphore);
+      semaphore_drop(pool->exec_semaphore);
     }
   }
   for (U64 i = 0; i < pool->worker_count; ++i) {
-    os_semaphore_drop(pool->task_semaphore);
+    semaphore_drop(pool->task_semaphore);
   }
   for (U64 i = 1; i < pool->worker_count; i += 1) {
-    os_thread_detach(pool->worker_arr[i].handle);
+    thread_detach(pool->worker_arr[i].handle);
   }
   if (is_shared) {
-    os_semaphore_release(pool->exec_semaphore);
+    semaphore_release(pool->exec_semaphore);
   }
-  os_semaphore_release(pool->task_semaphore);
-  os_semaphore_release(pool->main_semaphore);
+  semaphore_release(pool->task_semaphore);
+  semaphore_release(pool->main_semaphore);
 
   MemoryZeroStruct(pool);
 }
@@ -209,7 +209,7 @@ tp_for_parallel(TP_Context *pool, TP_Arena *task_arena, U64 task_count, TP_TaskF
     U64 drop_count = Min(task_count, pool->worker_count);
 
     // if we are in shared mode ping local semaphore
-    if (!os_handle_match(pool->exec_semaphore, os_handle_zero())) {
+    if (pool->exec_semaphore.u64[0] != 0) {
       for (U64 worker_idx = 0; worker_idx < drop_count; worker_idx +=1) {
         os_semaphore_drop(pool->exec_semaphore);
       }

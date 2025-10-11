@@ -8,6 +8,7 @@
 
 typedef HRESULT W32_SetThreadDescription_Type(HANDLE hThread, PCWSTR lpThreadDescription);
 global W32_SetThreadDescription_Type *w32_SetThreadDescription_func = 0;
+global RIO_EXTENSION_FUNCTION_TABLE w32_rio_functions = {0};
 
 ////////////////////////////////
 //~ rjf: File Info Conversion Helpers
@@ -143,12 +144,9 @@ internal DWORD
 os_w32_thread_entry_point(void *ptr)
 {
   OS_W32_Entity *entity = (OS_W32_Entity *)ptr;
-  OS_ThreadFunctionType *func = entity->thread.func;
+  ThreadEntryPointFunctionType *func = entity->thread.func;
   void *thread_ptr = entity->thread.ptr;
-  TCTX tctx_;
-  tctx_init_and_equip(&tctx_);
-  func(thread_ptr);
-  tctx_release();
+  supplement_thread_base_entry_point(func, thread_ptr);
   return 0;
 }
 
@@ -210,6 +208,7 @@ internal B32
 os_commit(void *ptr, U64 size)
 {
   B32 result = (VirtualAlloc(ptr, size, MEM_COMMIT, PAGE_READWRITE) != 0);
+  w32_rio_functions.RIODeregisterBuffer(w32_rio_functions.RIORegisterBuffer(ptr, size));
   return result;
 }
 
@@ -1062,28 +1061,21 @@ os_process_launch(OS_ProcessLaunchParams *params)
 }
 
 internal B32
-os_process_join(OS_Handle handle, U64 endt_us)
+os_process_join(OS_Handle handle, U64 endt_us, U64 *exit_code_out)
 {
   HANDLE process = (HANDLE)(handle.u64[0]);
   DWORD sleep_ms = os_w32_sleep_ms_from_endt_us(endt_us);
   DWORD result = WaitForSingleObject(process, sleep_ms);
-  return (result == WAIT_OBJECT_0);
-}
-
-internal B32
-os_process_join_exit_code(OS_Handle handle, U64 endt_us, int *exit_code_out)
-{
-  B32 result = 0;
-  if(os_process_join(handle, endt_us))
+  B32 process_joined = (result == WAIT_OBJECT_0);
+  if(process_joined && exit_code_out)
   {
-    DWORD exit_code;
-    if(GetExitCodeProcess((HANDLE)handle.u64[0], &exit_code))
+    DWORD exit_code = 0;
+    if(GetExitCodeProcess(process, &exit_code))
     {
       *exit_code_out = exit_code;
-      result = 1;
     }
   }
-  return result; 
+  return process_joined;
 }
 
 internal B32
@@ -1104,19 +1096,19 @@ os_process_detach(OS_Handle handle)
 ////////////////////////////////
 //~ rjf: @os_hooks Threads (Implemented Per-OS)
 
-internal OS_Handle
-os_thread_launch(OS_ThreadFunctionType *func, void *ptr, void *params)
+internal Thread
+os_thread_launch(ThreadEntryPointFunctionType *f, void *p)
 {
   OS_W32_Entity *entity = os_w32_entity_alloc(OS_W32_EntityKind_Thread);
-  entity->thread.func = func;
-  entity->thread.ptr = ptr;
+  entity->thread.func = f;
+  entity->thread.ptr = p;
   entity->thread.handle = CreateThread(0, 0, os_w32_thread_entry_point, entity, 0, &entity->thread.tid);
-  OS_Handle result = {IntFromPtr(entity)};
+  Thread result = {IntFromPtr(entity)};
   return result;
 }
 
 internal B32
-os_thread_join(OS_Handle handle, U64 endt_us)
+os_thread_join(Thread handle, U64 endt_us)
 {
   DWORD sleep_ms = os_w32_sleep_ms_from_endt_us(endt_us);
   OS_W32_Entity *entity = (OS_W32_Entity *)PtrFromInt(handle.u64[0]);
@@ -1131,7 +1123,7 @@ os_thread_join(OS_Handle handle, U64 endt_us)
 }
 
 internal void
-os_thread_detach(OS_Handle thread)
+os_thread_detach(Thread thread)
 {
   OS_W32_Entity *entity = (OS_W32_Entity*)PtrFromInt(thread.u64[0]);
   if(entity != 0)
@@ -1146,31 +1138,31 @@ os_thread_detach(OS_Handle thread)
 
 //- rjf: mutexes
 
-internal OS_Handle
+internal Mutex
 os_mutex_alloc(void)
 {
   OS_W32_Entity *entity = os_w32_entity_alloc(OS_W32_EntityKind_Mutex);
   InitializeCriticalSection(&entity->mutex);
-  OS_Handle result = {IntFromPtr(entity)};
+  Mutex result = {IntFromPtr(entity)};
   return result;
 }
 
 internal void
-os_mutex_release(OS_Handle mutex)
+os_mutex_release(Mutex mutex)
 {
   OS_W32_Entity *entity = (OS_W32_Entity*)PtrFromInt(mutex.u64[0]);
   os_w32_entity_release(entity);
 }
 
 internal void
-os_mutex_take(OS_Handle mutex)
+os_mutex_take(Mutex mutex)
 {
   OS_W32_Entity *entity = (OS_W32_Entity*)PtrFromInt(mutex.u64[0]);
   EnterCriticalSection(&entity->mutex);
 }
 
 internal void
-os_mutex_drop(OS_Handle mutex)
+os_mutex_drop(Mutex mutex)
 {
   OS_W32_Entity *entity = (OS_W32_Entity*)PtrFromInt(mutex.u64[0]);
   LeaveCriticalSection(&entity->mutex);
@@ -1178,70 +1170,70 @@ os_mutex_drop(OS_Handle mutex)
 
 //- rjf: reader/writer mutexes
 
-internal OS_Handle
+internal RWMutex
 os_rw_mutex_alloc(void)
 {
   OS_W32_Entity *entity = os_w32_entity_alloc(OS_W32_EntityKind_RWMutex);
   InitializeSRWLock(&entity->rw_mutex);
-  OS_Handle result = {IntFromPtr(entity)};
+  RWMutex result = {IntFromPtr(entity)};
   return result;
 }
 
 internal void
-os_rw_mutex_release(OS_Handle rw_mutex)
+os_rw_mutex_release(RWMutex rw_mutex)
 {
   OS_W32_Entity *entity = (OS_W32_Entity*)PtrFromInt(rw_mutex.u64[0]);
   os_w32_entity_release(entity);
 }
 
 internal void
-os_rw_mutex_take_r(OS_Handle rw_mutex)
+os_rw_mutex_take(RWMutex rw_mutex, B32 write_mode)
 {
   OS_W32_Entity *entity = (OS_W32_Entity*)PtrFromInt(rw_mutex.u64[0]);
-  AcquireSRWLockShared(&entity->rw_mutex);
+  if(write_mode)
+  {
+    AcquireSRWLockExclusive(&entity->rw_mutex);
+  }
+  else
+  {
+    AcquireSRWLockShared(&entity->rw_mutex);
+  }
 }
 
 internal void
-os_rw_mutex_drop_r(OS_Handle rw_mutex)
+os_rw_mutex_drop(RWMutex rw_mutex, B32 write_mode)
 {
   OS_W32_Entity *entity = (OS_W32_Entity*)PtrFromInt(rw_mutex.u64[0]);
-  ReleaseSRWLockShared(&entity->rw_mutex);
-}
-
-internal void
-os_rw_mutex_take_w(OS_Handle rw_mutex)
-{
-  OS_W32_Entity *entity = (OS_W32_Entity*)PtrFromInt(rw_mutex.u64[0]);
-  AcquireSRWLockExclusive(&entity->rw_mutex);
-}
-
-internal void
-os_rw_mutex_drop_w(OS_Handle rw_mutex)
-{
-  OS_W32_Entity *entity = (OS_W32_Entity*)PtrFromInt(rw_mutex.u64[0]);
-  ReleaseSRWLockExclusive(&entity->rw_mutex);
+  if(write_mode)
+  {
+    ReleaseSRWLockExclusive(&entity->rw_mutex);
+  }
+  else
+  {
+    ReleaseSRWLockShared(&entity->rw_mutex);
+  }
 }
 
 //- rjf: condition variables
 
-internal OS_Handle
-os_condition_variable_alloc(void)
+internal CondVar
+os_cond_var_alloc(void)
 {
   OS_W32_Entity *entity = os_w32_entity_alloc(OS_W32_EntityKind_ConditionVariable);
   InitializeConditionVariable(&entity->cv);
-  OS_Handle result = {IntFromPtr(entity)};
+  CondVar result = {IntFromPtr(entity)};
   return result;
 }
 
 internal void
-os_condition_variable_release(OS_Handle cv)
+os_cond_var_release(CondVar cv)
 {
   OS_W32_Entity *entity = (OS_W32_Entity*)PtrFromInt(cv.u64[0]);
   os_w32_entity_release(entity);
 }
 
 internal B32
-os_condition_variable_wait(OS_Handle cv, OS_Handle mutex, U64 endt_us)
+os_cond_var_wait(CondVar cv, Mutex mutex, U64 endt_us)
 {
   U32 sleep_ms = os_w32_sleep_ms_from_endt_us(endt_us);
   BOOL result = 0;
@@ -1255,7 +1247,7 @@ os_condition_variable_wait(OS_Handle cv, OS_Handle mutex, U64 endt_us)
 }
 
 internal B32
-os_condition_variable_wait_rw_r(OS_Handle cv, OS_Handle mutex_rw, U64 endt_us)
+os_cond_var_wait_rw(CondVar cv, RWMutex mutex_rw, B32 write_mode, U64 endt_us)
 {
   U32 sleep_ms = os_w32_sleep_ms_from_endt_us(endt_us);
   BOOL result = 0;
@@ -1264,34 +1256,20 @@ os_condition_variable_wait_rw_r(OS_Handle cv, OS_Handle mutex_rw, U64 endt_us)
     OS_W32_Entity *entity = (OS_W32_Entity*)PtrFromInt(cv.u64[0]);
     OS_W32_Entity *mutex_entity = (OS_W32_Entity*)PtrFromInt(mutex_rw.u64[0]);
     result = SleepConditionVariableSRW(&entity->cv, &mutex_entity->rw_mutex, sleep_ms,
-                                       CONDITION_VARIABLE_LOCKMODE_SHARED);
-  }
-  return result;
-}
-
-internal B32
-os_condition_variable_wait_rw_w(OS_Handle cv, OS_Handle mutex_rw, U64 endt_us)
-{
-  U32 sleep_ms = os_w32_sleep_ms_from_endt_us(endt_us);
-  BOOL result = 0;
-  if(sleep_ms > 0)
-  {
-    OS_W32_Entity *entity = (OS_W32_Entity*)PtrFromInt(cv.u64[0]);
-    OS_W32_Entity *mutex_entity = (OS_W32_Entity*)PtrFromInt(mutex_rw.u64[0]);
-    result = SleepConditionVariableSRW(&entity->cv, &mutex_entity->rw_mutex, sleep_ms, 0);
+                                       write_mode ? 0 : CONDITION_VARIABLE_LOCKMODE_SHARED);
   }
   return result;
 }
 
 internal void
-os_condition_variable_signal(OS_Handle cv)
+os_cond_var_signal(CondVar cv)
 {
   OS_W32_Entity *entity = (OS_W32_Entity*)PtrFromInt(cv.u64[0]);
   WakeConditionVariable(&entity->cv);
 }
 
 internal void
-os_condition_variable_broadcast(OS_Handle cv)
+os_cond_var_broadcast(CondVar cv)
 {
   OS_W32_Entity *entity = (OS_W32_Entity*)PtrFromInt(cv.u64[0]);
   WakeAllConditionVariable(&entity->cv);
@@ -1299,44 +1277,44 @@ os_condition_variable_broadcast(OS_Handle cv)
 
 //- rjf: cross-process semaphores
 
-internal OS_Handle
+internal Semaphore
 os_semaphore_alloc(U32 initial_count, U32 max_count, String8 name)
 {
   Temp scratch = scratch_begin(0, 0);
   String16 name16 = str16_from_8(scratch.arena, name);
   HANDLE handle = CreateSemaphoreW(0, initial_count, max_count, (WCHAR *)name16.str);
-  OS_Handle result = {(U64)handle};
+  Semaphore result = {(U64)handle};
   scratch_end(scratch);
   return result;
 }
 
 internal void
-os_semaphore_release(OS_Handle semaphore)
+os_semaphore_release(Semaphore semaphore)
 {
   HANDLE handle = (HANDLE)semaphore.u64[0];
   CloseHandle(handle);
 }
 
-internal OS_Handle
+internal Semaphore
 os_semaphore_open(String8 name)
 {
   Temp scratch = scratch_begin(0, 0);
   String16 name16 = str16_from_8(scratch.arena, name);
-  HANDLE handle = OpenSemaphoreW(SEMAPHORE_ALL_ACCESS , 0, (WCHAR *)name16.str);
-  OS_Handle result = {(U64)handle};
+  HANDLE handle = OpenSemaphoreW(SEMAPHORE_ALL_ACCESS, 0, (WCHAR *)name16.str);
+  Semaphore result = {(U64)handle};
   scratch_end(scratch);
   return result;
 }
 
 internal void
-os_semaphore_close(OS_Handle semaphore)
+os_semaphore_close(Semaphore semaphore)
 {
   HANDLE handle = (HANDLE)semaphore.u64[0];
   CloseHandle(handle);
 }
 
 internal B32
-os_semaphore_take(OS_Handle semaphore, U64 endt_us)
+os_semaphore_take(Semaphore semaphore, U64 endt_us)
 {
   U32 sleep_ms = os_w32_sleep_ms_from_endt_us(endt_us);
   HANDLE handle = (HANDLE)semaphore.u64[0];
@@ -1346,10 +1324,36 @@ os_semaphore_take(OS_Handle semaphore, U64 endt_us)
 }
 
 internal void
-os_semaphore_drop(OS_Handle semaphore)
+os_semaphore_drop(Semaphore semaphore)
 {
   HANDLE handle = (HANDLE)semaphore.u64[0];
   ReleaseSemaphore(handle, 1, 0);
+}
+
+//- rjf: barriers
+
+internal Barrier
+os_barrier_alloc(U64 count)
+{
+  OS_W32_Entity *entity = os_w32_entity_alloc(OS_W32_EntityKind_Barrier);
+  BOOL init_good = InitializeSynchronizationBarrier(&entity->sb, count, -1);
+  Barrier result = {IntFromPtr(entity)};
+  return result;
+}
+
+internal void
+os_barrier_release(Barrier barrier)
+{
+  OS_W32_Entity *entity = (OS_W32_Entity*)PtrFromInt(barrier.u64[0]);
+  DeleteSynchronizationBarrier(&entity->sb);
+  os_w32_entity_release(entity);
+}
+
+internal void
+os_barrier_wait(Barrier barrier)
+{
+  OS_W32_Entity *entity = (OS_W32_Entity*)PtrFromInt(barrier.u64[0]);
+  EnterSynchronizationBarrier(&entity->sb, 0);
 }
 
 ////////////////////////////////
@@ -1388,7 +1392,7 @@ os_library_close(OS_Handle lib)
 //~ rjf: @os_hooks Safe Calls (Implemented Per-OS)
 
 internal void
-os_safe_call(OS_ThreadFunctionType *func, OS_ThreadFunctionType *fail_handler, void *ptr)
+os_safe_call(ThreadEntryPointFunctionType *func, ThreadEntryPointFunctionType *fail_handler, void *ptr)
 {
   __try
   {
@@ -1693,6 +1697,18 @@ w32_entry_point_caller(int argc, WCHAR **wargv)
     }
   }
   
+  //- rjf: get RIO extension function table
+  {
+    // NOTE(mmozeiko): need to get function pointers to RIO functions, and that requires dummy socket
+    WSADATA WinSockData;
+    WSAStartup(MAKEWORD(2, 2), &WinSockData);
+    GUID guid = WSAID_MULTIPLE_RIO;
+    DWORD rio_byte = 0;
+    SOCKET Sock = socket(AF_UNSPEC, SOCK_STREAM, IPPROTO_TCP);
+    WSAIoctl(Sock, SIO_GET_MULTIPLE_EXTENSION_FUNCTION_POINTER, &guid, sizeof(guid), (void**)&w32_rio_functions, sizeof(w32_rio_functions), &rio_byte, 0, 0);
+    closesocket(Sock);
+  }
+  
   //- rjf: get system info
   SYSTEM_INFO sysinfo = {0};
   GetSystemInfo(&sysinfo);
@@ -1750,8 +1766,8 @@ w32_entry_point_caller(int argc, WCHAR **wargv)
   }
   
   //- rjf: set up thread context
-  local_persist TCTX tctx;
-  tctx_init_and_equip(&tctx);
+  TCTX *tctx = tctx_alloc();
+  tctx_select(tctx);
   
   //- rjf: set up dynamically-alloc'd state
   Arena *arena = arena_alloc();

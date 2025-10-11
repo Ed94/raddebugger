@@ -185,6 +185,11 @@ typedef struct PDB_GsiParsed
 } PDB_GsiParsed;
 
 ////////////////////////////////
+//~ rjf: Globals
+
+read_only global PDB_CompUnit pdb_comp_unit_nil = {0};
+
+////////////////////////////////
 //~ PDB Parser Functions
 
 internal PDB_Info*            pdb_info_from_data(Arena *arena, String8 pdb_info_data);
@@ -206,9 +211,7 @@ internal COFF_SectionHeaderArray pdb_coff_section_array_from_data(Arena *arena, 
 internal PDB_CompUnitArray*   pdb_comp_unit_array_from_data(Arena *arena,
                                                             String8 module_info_data);
 
-internal PDB_CompUnitContributionArray*
-pdb_comp_unit_contribution_array_from_data(Arena *arena, String8 seccontrib_data,
-                                           COFF_SectionHeaderArray sections);
+internal PDB_CompUnitContributionArray pdb_comp_unit_contribution_array_from_data(Arena *arena, String8 seccontrib_data, COFF_SectionHeaderArray sections);
 
 ////////////////////////////////
 //~ PDB Dbi Functions

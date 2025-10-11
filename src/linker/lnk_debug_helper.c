@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 internal String8
@@ -71,5 +71,4 @@ lnk_make_dll_import_debug_symbols(Arena *arena, COFF_MachineType machine, String
   scratch_end(scratch);
   return debug_symbols;
 }
-
 

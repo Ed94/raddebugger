@@ -1,7 +1,10 @@
-// Copyright (c) 2025 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #pragma once
+
+#define BLAKE3_API static
+#define BLAKE3_PRIVATE static
 
 #if defined(__clang__) && defined(__x86_64__)
 #  if defined(__IMMINTRIN_H)

@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 internal String8
@@ -324,7 +324,7 @@ pe_make_edata_obj(Arena               *arena,
   return obj;
 }
 
-internal String8List
+internal String8
 pe_make_import_lib(Arena *arena, COFF_MachineType machine, COFF_TimeStamp time_stamp, String8 dll_name, String8 debug_symbols, PE_ExportParseList export_list)
 {
   ProfBeginFunction();
@@ -354,7 +354,7 @@ pe_make_import_lib(Arena *arena, COFF_MachineType machine, COFF_TimeStamp time_s
   }
 
   // serialize lib
-  String8List lib = coff_lib_writer_serialize(arena, lib_writer, COFF_TimeStamp_Max, 0, /* emit second member: */ 1);
+  String8 lib = coff_lib_writer_serialize(arena, lib_writer, COFF_TimeStamp_Max, 0, /* emit second member: */ 1);
   coff_lib_writer_release(&lib_writer);
   
   ProfEnd();

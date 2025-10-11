@@ -1,8 +1,8 @@
 // Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
-#ifndef HASH_STORE_H
-#define HASH_STORE_H
+#ifndef CONTENT_H
+#define CONTENT_H
 
 ////////////////////////////////
 //~ NOTE(rjf): Hash Store Notes (2025/05/18)
@@ -43,228 +43,202 @@
 ////////////////////////////////
 //~ rjf: Key Types
 
-typedef struct HS_Root HS_Root;
-struct HS_Root
+typedef struct C_Root C_Root;
+struct C_Root
 {
   U64 u64[1];
 };
 
-typedef struct HS_ID HS_ID;
-struct HS_ID
+typedef struct C_ID C_ID;
+struct C_ID
 {
   U128 u128[1];
 };
 
-typedef struct HS_Key HS_Key;
-struct HS_Key
+typedef struct C_Key C_Key;
+struct C_Key
 {
-  HS_Root root;
+  C_Root root;
   U64 _padding_;
-  HS_ID id;
+  C_ID id;
 };
 
 ////////////////////////////////
-//~ rjf: Cache Types
+//~ rjf: Cache Stripe Type
 
-typedef struct HS_RootIDChunkNode HS_RootIDChunkNode;
-struct HS_RootIDChunkNode
+typedef struct C_Stripe C_Stripe;
+struct C_Stripe
 {
-  HS_RootIDChunkNode *next;
-  HS_ID *v;
+  Arena *arena;
+  RWMutex rw_mutex;
+  CondVar cv;
+};
+
+////////////////////////////////
+//~ rjf: Root Cache Types
+
+typedef struct C_RootIDChunkNode C_RootIDChunkNode;
+struct C_RootIDChunkNode
+{
+  C_RootIDChunkNode *next;
+  C_ID *v;
   U64 count;
   U64 cap;
 };
 
-typedef struct HS_RootIDChunkList HS_RootIDChunkList;
-struct HS_RootIDChunkList
+typedef struct C_RootIDChunkList C_RootIDChunkList;
+struct C_RootIDChunkList
 {
-  HS_RootIDChunkNode *first;
-  HS_RootIDChunkNode *last;
+  C_RootIDChunkNode *first;
+  C_RootIDChunkNode *last;
   U64 chunk_count;
   U64 total_count;
 };
 
-typedef struct HS_RootNode HS_RootNode;
-struct HS_RootNode
+typedef struct C_RootNode C_RootNode;
+struct C_RootNode
 {
-  HS_RootNode *next;
-  HS_RootNode *prev;
+  C_RootNode *next;
+  C_RootNode *prev;
   Arena *arena;
-  HS_Root root;
-  HS_RootIDChunkList ids;
+  C_Root root;
+  C_RootIDChunkList ids;
 };
 
-typedef struct HS_RootSlot HS_RootSlot;
-struct HS_RootSlot
+typedef struct C_RootSlot C_RootSlot;
+struct C_RootSlot
 {
-  HS_RootNode *first;
-  HS_RootNode *last;
+  C_RootNode *first;
+  C_RootNode *last;
 };
 
-#define HS_KEY_HASH_HISTORY_COUNT 64
-#define HS_KEY_HASH_HISTORY_STRONG_REF_COUNT 2
+////////////////////////////////
+//~ rjf: Key Cache Types
 
-typedef struct HS_KeyNode HS_KeyNode;
-struct HS_KeyNode
+#define C_KEY_HASH_HISTORY_COUNT 64
+#define C_KEY_HASH_HISTORY_STRONG_REF_COUNT 2
+
+typedef struct C_KeyNode C_KeyNode;
+struct C_KeyNode
 {
-  HS_KeyNode *next;
-  HS_KeyNode *prev;
-  HS_Key key;
-  U128 hash_history[HS_KEY_HASH_HISTORY_COUNT];
+  C_KeyNode *next;
+  C_KeyNode *prev;
+  C_Key key;
+  U128 hash_history[C_KEY_HASH_HISTORY_COUNT];
   U64 hash_history_gen;
 };
 
-typedef struct HS_KeySlot HS_KeySlot;
-struct HS_KeySlot
+typedef struct C_KeySlot C_KeySlot;
+struct C_KeySlot
 {
-  HS_KeyNode *first;
-  HS_KeyNode *last;
+  C_KeyNode *first;
+  C_KeyNode *last;
 };
 
-typedef struct HS_Node HS_Node;
-struct HS_Node
+////////////////////////////////
+//~ rjf: Content Blob Cache Types
+
+typedef struct C_BlobNode C_BlobNode;
+struct C_BlobNode
 {
-  HS_Node *next;
-  HS_Node *prev;
+  C_BlobNode *next;
+  C_BlobNode *prev;
   U128 hash;
   Arena *arena;
   String8 data;
-  U64 scope_ref_count;
+  AccessPt access_pt;
   U64 key_ref_count;
   U64 downstream_ref_count;
 };
 
-typedef struct HS_Slot HS_Slot;
-struct HS_Slot
+typedef struct C_BlobSlot C_BlobSlot;
+struct C_BlobSlot
 {
-  HS_Node *first;
-  HS_Node *last;
-};
-
-typedef struct HS_Stripe HS_Stripe;
-struct HS_Stripe
-{
-  Arena *arena;
-  OS_Handle rw_mutex;
-  OS_Handle cv;
-};
-
-////////////////////////////////
-//~ rjf: Scoped Access
-
-typedef struct HS_Touch HS_Touch;
-struct HS_Touch
-{
-  HS_Touch *next;
-  U128 hash;
-};
-
-typedef struct HS_Scope HS_Scope;
-struct HS_Scope
-{
-  HS_Scope *next;
-  HS_Touch *top_touch;
-};
-
-////////////////////////////////
-//~ rjf: Thread Context
-
-typedef struct HS_TCTX HS_TCTX;
-struct HS_TCTX
-{
-  Arena *arena;
-  HS_Scope *free_scope;
-  HS_Touch *free_touch;
+  C_BlobNode *first;
+  C_BlobNode *last;
 };
 
 ////////////////////////////////
 //~ rjf: Shared State
 
-typedef struct HS_Shared HS_Shared;
-struct HS_Shared
+typedef struct C_Shared C_Shared;
+struct C_Shared
 {
   Arena *arena;
   
-  // rjf: main data cache
-  U64 slots_count;
-  U64 stripes_count;
-  HS_Slot *slots;
-  HS_Stripe *stripes;
-  HS_Node **stripes_free_nodes;
+  // rjf: main data blob cache
+  U64 blob_slots_count;
+  U64 blob_stripes_count;
+  C_BlobSlot *blob_slots;
+  C_Stripe *blob_stripes;
+  C_BlobNode **blob_stripes_free_nodes;
   
   // rjf: key cache
   U64 key_slots_count;
   U64 key_stripes_count;
-  HS_KeySlot *key_slots;
-  HS_Stripe *key_stripes;
-  HS_KeyNode **key_stripes_free_nodes;
+  C_KeySlot *key_slots;
+  C_Stripe *key_stripes;
+  C_KeyNode **key_stripes_free_nodes;
   
   // rjf: root cache
   U64 root_slots_count;
   U64 root_stripes_count;
-  HS_RootSlot *root_slots;
-  HS_Stripe *root_stripes;
-  HS_RootNode **root_stripes_free_nodes;
+  C_RootSlot *root_slots;
+  C_Stripe *root_stripes;
+  C_RootNode **root_stripes_free_nodes;
   U64 root_id_gen;
-  
-  // rjf: evictor thread
-  OS_Handle evictor_thread;
 };
 
 ////////////////////////////////
 //~ rjf: Globals
 
-thread_static HS_TCTX *hs_tctx = 0;
-global HS_Shared *hs_shared = 0;
+global C_Shared *c_shared = 0;
 
 ////////////////////////////////
 //~ rjf: Basic Helpers
 
-internal U64 hs_little_hash_from_data(String8 data);
-internal U128 hs_hash_from_data(String8 data);
-internal HS_ID hs_id_make(U64 u64_0, U64 u64_1);
-internal B32 hs_id_match(HS_ID a, HS_ID b);
-internal HS_Key hs_key_make(HS_Root root, HS_ID id);
-internal B32 hs_key_match(HS_Key a, HS_Key b);
+internal U128 c_hash_from_data(String8 data);
+internal C_ID c_id_make(U64 u64_0, U64 u64_1);
+internal B32 c_id_match(C_ID a, C_ID b);
+internal C_Key c_key_make(C_Root root, C_ID id);
+internal B32 c_key_match(C_Key a, C_Key b);
 
 ////////////////////////////////
 //~ rjf: Main Layer Initialization
 
-internal void hs_init(void);
+internal void c_init(void);
 
 ////////////////////////////////
 //~ rjf: Root Allocation/Deallocation
 
-internal HS_Root hs_root_alloc(void);
-internal void hs_root_release(HS_Root root);
+internal C_Root c_root_alloc(void);
+internal void c_root_release(C_Root root);
 
 ////////////////////////////////
 //~ rjf: Cache Submission
 
-internal U128 hs_submit_data(HS_Key key, Arena **data_arena, String8 data);
+internal U128 c_submit_data(C_Key key, Arena **data_arena, String8 data);
 
 ////////////////////////////////
-//~ rjf: Scoped Access
+//~ rjf: Key Closing
 
-internal HS_Scope *hs_scope_open(void);
-internal void hs_scope_close(HS_Scope *scope);
-internal void hs_scope_touch_node__stripe_r_guarded(HS_Scope *scope, HS_Node *node);
+internal void c_close_key(C_Key key);
 
 ////////////////////////////////
 //~ rjf: Downstream Accesses
 
-internal void hs_hash_downstream_inc(U128 hash);
-internal void hs_hash_downstream_dec(U128 hash);
+internal void c_hash_downstream_inc(U128 hash);
+internal void c_hash_downstream_dec(U128 hash);
 
 ////////////////////////////////
 //~ rjf: Cache Lookups
 
-internal U128 hs_hash_from_key(HS_Key key, U64 rewind_count);
-internal String8 hs_data_from_hash(HS_Scope *scope, U128 hash);
+internal U128 c_hash_from_key(C_Key key, U64 rewind_count);
+internal String8 c_data_from_hash(Access *access, U128 hash);
 
 ////////////////////////////////
-//~ rjf: Evictor Thread
+//~ rjf: Asynchronous Tick
 
-internal void hs_evictor_thread__entry_point(void *p);
+internal void c_async_tick(void);
 
-#endif // HASH_STORE_H
+#endif // CONTENT_H

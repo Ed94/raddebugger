@@ -294,10 +294,11 @@ typedef struct COFF_Symbol32
 typedef U32 COFF_WeakExtType;
 enum
 {
+  COFF_WeakExt_Null           = 0,
   COFF_WeakExt_NoLibrary      = 1,
   COFF_WeakExt_SearchLibrary  = 2,
   COFF_WeakExt_SearchAlias    = 3,
-  COFF_WeakExt_AntiDependency = 4, // default symbol must not reference a weak symbol
+  COFF_WeakExt_AntiDependency = 4, // search libraries only if the default symbol is weak, even if the weak symbol points to itself
 };
 
 // storage class: External
@@ -599,6 +600,8 @@ internal String8 coff_read_symbol_name(String8 string_table, COFF_SymbolName *na
 
 ////////////////////////////////
 // Reloc
+
+internal U64 coff_is_addr_reloc(COFF_MachineType machine, U32 type);
 
 internal U64 coff_apply_size_from_reloc_x64(COFF_Reloc_X64 x);
 internal U64 coff_apply_size_from_reloc_x86(COFF_Reloc_X86 x);

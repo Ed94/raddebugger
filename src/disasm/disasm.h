@@ -1,8 +1,8 @@
 // Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
-#ifndef DASM_CACHE_H
-#define DASM_CACHE_H
+#ifndef DISASM_H
+#define DISASM_H
 
 ////////////////////////////////
 //~ rjf: Disassembly Syntax Types
@@ -101,6 +101,24 @@ struct DASM_Params
 };
 
 ////////////////////////////////
+//~ rjf: Disassembly Request Bundle
+
+typedef struct DASM_Request DASM_Request;
+struct DASM_Request
+{
+  C_Root root;
+  U128 hash;
+  DASM_Params params;
+};
+
+typedef struct DASM_RequestNode DASM_RequestNode;
+struct DASM_RequestNode
+{
+  DASM_RequestNode *next;
+  DASM_Request v;
+};
+
+////////////////////////////////
 //~ rjf: Disassembly Text Line Types
 
 typedef U32 DASM_LineFlags;
@@ -144,133 +162,14 @@ struct DASM_LineArray
 };
 
 ////////////////////////////////
-//~ rjf: Disassembly Result Bundle
-
-typedef struct DASM_Result DASM_Result;
-struct DASM_Result
-{
-  String8 text;
-  DASM_LineArray lines;
-};
-
-////////////////////////////////
 //~ rjf: Value Bundle Type
 
 typedef struct DASM_Info DASM_Info;
 struct DASM_Info
 {
-  HS_Key text_key;
+  C_Key text_key;
   DASM_LineArray lines;
 };
-
-////////////////////////////////
-//~ rjf: Cache Types
-
-typedef struct DASM_Node DASM_Node;
-struct DASM_Node
-{
-  // rjf: links
-  DASM_Node *next;
-  DASM_Node *prev;
-  
-  // rjf: key
-  U128 hash;
-  DASM_Params params;
-  
-  // rjf: root
-  HS_Root root;
-  
-  // rjf: generations
-  U64 change_gen;
-  
-  // rjf: value
-  Arena *info_arena;
-  DASM_Info info;
-  
-  // rjf: metadata
-  U64 working_count;
-  U64 scope_ref_count;
-  U64 last_time_touched_us;
-  U64 last_user_clock_idx_touched;
-  U64 last_time_requested_us;
-  U64 last_user_clock_idx_requested;
-};
-
-typedef struct DASM_Slot DASM_Slot;
-struct DASM_Slot
-{
-  DASM_Node *first;
-  DASM_Node *last;
-};
-
-typedef struct DASM_Stripe DASM_Stripe;
-struct DASM_Stripe
-{
-  Arena *arena;
-  OS_Handle rw_mutex;
-  OS_Handle cv;
-  DASM_Node *free_node;
-};
-
-////////////////////////////////
-//~ rjf: Scoped Access Types
-
-typedef struct DASM_Touch DASM_Touch;
-struct DASM_Touch
-{
-  DASM_Touch *next;
-  U128 hash;
-  DASM_Params params;
-};
-
-typedef struct DASM_Scope DASM_Scope;
-struct DASM_Scope
-{
-  DASM_Scope *next;
-  DASM_Touch *top_touch;
-  U64 base_pos;
-};
-
-////////////////////////////////
-//~ rjf: Thread Context
-
-typedef struct DASM_TCTX DASM_TCTX;
-struct DASM_TCTX
-{
-  Arena *arena;
-};
-
-////////////////////////////////
-//~ rjf: Shared State
-
-typedef struct DASM_Shared DASM_Shared;
-struct DASM_Shared
-{
-  Arena *arena;
-  
-  // rjf: cache
-  U64 slots_count;
-  U64 stripes_count;
-  DASM_Slot *slots;
-  DASM_Stripe *stripes;
-  
-  // rjf: user -> parse thread
-  U64 u2p_ring_size;
-  U8 *u2p_ring_base;
-  U64 u2p_ring_write_pos;
-  U64 u2p_ring_read_pos;
-  OS_Handle u2p_ring_cv;
-  OS_Handle u2p_ring_mutex;
-  
-  // rjf: evictor/detector thread
-  OS_Handle evictor_detector_thread;
-};
-
-////////////////////////////////
-//~ rjf: Globals
-
-thread_static DASM_TCTX *dasm_tctx = 0;
-global DASM_Shared *dasm_shared = 0;
 
 ////////////////////////////////
 //~ rjf: Instruction Decoding/Disassembling Type Functions
@@ -296,33 +195,11 @@ internal U64 dasm_line_array_idx_from_code_off__linear_scan(DASM_LineArray *arra
 internal U64 dasm_line_array_code_off_from_idx(DASM_LineArray *array, U64 idx);
 
 ////////////////////////////////
-//~ rjf: Main Layer Initialization
+//~ rjf: Artifact Cache Hooks / Lookups
 
-internal void dasm_init(void);
+internal AC_Artifact dasm_artifact_create(String8 key, U64 gen, U64 *requested_gen, B32 *retry_out);
+internal void dasm_artifact_destroy(AC_Artifact artifact);
+internal DASM_Info dasm_info_from_hash_params(Access *access, U128 hash, DASM_Params *params);
+internal DASM_Info dasm_info_from_key_params(Access *access, C_Key key, DASM_Params *params, U128 *hash_out);
 
-////////////////////////////////
-//~ rjf: Scoped Access
-
-internal DASM_Scope *dasm_scope_open(void);
-internal void dasm_scope_close(DASM_Scope *scope);
-internal void dasm_scope_touch_node__stripe_r_guarded(DASM_Scope *scope, DASM_Node *node);
-
-////////////////////////////////
-//~ rjf: Cache Lookups
-
-internal DASM_Info dasm_info_from_hash_params(DASM_Scope *scope, U128 hash, DASM_Params *params);
-internal DASM_Info dasm_info_from_key_params(DASM_Scope *scope, HS_Key key, DASM_Params *params, U128 *hash_out);
-
-////////////////////////////////
-//~ rjf: Parse Threads
-
-internal B32 dasm_u2p_enqueue_req(HS_Root root, U128 hash, DASM_Params *params, U64 endt_us);
-internal void dasm_u2p_dequeue_req(Arena *arena, HS_Root *root_out, U128 *hash_out, DASM_Params *params_out);
-ASYNC_WORK_DEF(dasm_parse_work);
-
-////////////////////////////////
-//~ rjf: Evictor/Detector Thread
-
-internal void dasm_evictor_detector_thread__entry_point(void *p);
-
-#endif // DASM_CACHE_H
+#endif // DISASM_H

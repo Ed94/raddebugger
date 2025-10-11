@@ -1,8 +1,8 @@
 // Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
-#ifndef DBGI_H
-#define DBGI_H
+#ifndef DBG_INFO_H
+#define DBG_INFO_H
 
 ////////////////////////////////
 //~ rjf: Cache Key Type
@@ -121,8 +121,8 @@ struct DI_Stripe
   Arena *arena;
   DI_Node *free_node;
   DI_StringChunkNode *free_string_chunks[8];
-  OS_Handle rw_mutex;
-  OS_Handle cv;
+  RWMutex rw_mutex;
+  CondVar cv;
 };
 
 ////////////////////////////////
@@ -206,8 +206,8 @@ struct DI_SearchStripe
 {
   Arena *arena;
   DI_SearchNode *free_node;
-  OS_Handle rw_mutex;
-  OS_Handle cv;
+  RWMutex rw_mutex;
+  CondVar cv;
 };
 
 ////////////////////////////////
@@ -248,9 +248,9 @@ struct DI_TCTX
 typedef struct DI_SearchThread DI_SearchThread;
 struct DI_SearchThread
 {
-  OS_Handle thread;
-  OS_Handle ring_mutex;
-  OS_Handle ring_cv;
+  Thread thread;
+  Mutex ring_mutex;
+  CondVar ring_cv;
   U64 ring_size;
   U8 *ring_base;
   U64 ring_write_pos;
@@ -315,7 +315,7 @@ struct DI_MatchStore
   
   // rjf: parameters
   Arena *params_arena;
-  OS_Handle params_rw_mutex;
+  RWMutex params_rw_mutex;
   U64 params_hash;
   DI_KeyArray params_keys;
   
@@ -327,20 +327,20 @@ struct DI_MatchStore
   DI_MatchNameNode *first_lru_match_name;
   DI_MatchNameNode *last_lru_match_name;
   U64 active_match_name_nodes_count;
-  OS_Handle match_rw_mutex;
-  OS_Handle match_cv;
+  RWMutex match_rw_mutex;
+  CondVar match_cv;
   
   // rjf: user -> match work ring buffer
-  OS_Handle u2m_ring_cv;
-  OS_Handle u2m_ring_mutex;
+  CondVar u2m_ring_cv;
+  Mutex u2m_ring_mutex;
   U64 u2m_ring_size;
   U8 *u2m_ring_base;
   U64 u2m_ring_write_pos;
   U64 u2m_ring_read_pos;
   
   // rjf: match -> user work ring buffer
-  OS_Handle m2u_ring_cv;
-  OS_Handle m2u_ring_mutex;
+  CondVar m2u_ring_cv;
+  Mutex m2u_ring_mutex;
   U64 m2u_ring_size;
   U8 *m2u_ring_base;
   U64 m2u_ring_write_pos;
@@ -368,16 +368,16 @@ struct DI_Shared
   DI_SearchStripe *search_stripes;
   
   // rjf: user -> parse ring
-  OS_Handle u2p_ring_mutex;
-  OS_Handle u2p_ring_cv;
+  Mutex u2p_ring_mutex;
+  CondVar u2p_ring_cv;
   U64 u2p_ring_size;
   U8 *u2p_ring_base;
   U64 u2p_ring_write_pos;
   U64 u2p_ring_read_pos;
   
   // rjf: parse -> user event ring
-  OS_Handle p2u_ring_mutex;
-  OS_Handle p2u_ring_cv;
+  Mutex p2u_ring_mutex;
+  CondVar p2u_ring_cv;
   U64 p2u_ring_size;
   U8 *p2u_ring_base;
   U64 p2u_ring_write_pos;
@@ -386,7 +386,7 @@ struct DI_Shared
   // rjf: search threads
   U64 search_threads_count;
   DI_SearchThread *search_threads;
-  OS_Handle search_evictor_thread;
+  Thread search_evictor_thread;
 };
 
 ////////////////////////////////
@@ -486,4 +486,4 @@ internal void di_match_store_begin(DI_MatchStore *store, DI_KeyArray keys);
 internal DI_Match di_match_from_name(DI_MatchStore *store, String8 name, U64 endt_us);
 ASYNC_WORK_DEF(di_match_work);
 
-#endif // DBGI_H
+#endif // DBG_INFO_H

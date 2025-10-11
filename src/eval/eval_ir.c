@@ -503,7 +503,7 @@ E_TYPE_ACCESS_FUNCTION_DEF(default)
       E_TypeKey r_restype = e_type_key_unwrap(r.type_key, E_TypeUnwrapFlag_AllDecorative);
       E_TypeKind l_restype_kind = e_type_kind_from_key(l_restype);
       E_TypeKind r_restype_kind = e_type_kind_from_key(r_restype);
-      E_TypeKey direct_type = e_type_key_unwrap(l_restype, E_TypeUnwrapFlag_All);
+      E_TypeKey direct_type = e_type_key_unwrap(l_restype, E_TypeUnwrapFlag_All & ~(E_TypeUnwrapFlag_Enums|E_TypeUnwrapFlag_Aliases));
       U64 direct_type_size = e_type_byte_size_from_key(direct_type);
       
       // rjf: bad conditions? -> error if applicable, exit
@@ -752,9 +752,9 @@ e_push_irtree_and_type_from_expr(Arena *arena, E_IRTreeAndType *root_parent, E_I
         E_Expr *r_expr = expr->first;
         E_IRTreeAndType r_tree = e_push_irtree_and_type_from_expr(arena, parent, &e_default_identifier_resolution_rule, disallow_autohooks, 1, r_expr);
         e_msg_list_concat_in_place(&result.msgs, &r_tree.msgs);
-        E_TypeKey r_type = e_type_key_unwrap(r_tree.type_key, E_TypeUnwrapFlag_AllDecorative);
+        E_TypeKey r_type = e_type_key_unwrap(r_tree.type_key, E_TypeUnwrapFlag_AllDecorative & ~E_TypeUnwrapFlag_Enums);
         E_TypeKind r_type_kind = e_type_kind_from_key(r_type);
-        E_TypeKey r_type_direct = e_type_key_unwrap(r_type, E_TypeUnwrapFlag_All);
+        E_TypeKey r_type_direct = e_type_key_unwrap(r_type, E_TypeUnwrapFlag_All & ~E_TypeUnwrapFlag_Enums);
         U64 r_type_direct_size = e_type_byte_size_from_key(r_type_direct);
         
         // rjf: bad conditions? -> error if applicable, exit
@@ -812,7 +812,7 @@ e_push_irtree_and_type_from_expr(Arena *arena, E_IRTreeAndType *root_parent, E_I
         E_IRTreeAndType r_tree = e_push_irtree_and_type_from_expr(arena, parent, &e_default_identifier_resolution_rule, disallow_autohooks, 1, r_expr);
         e_msg_list_concat_in_place(&result.msgs, &r_tree.msgs);
         E_TypeKey r_type = r_tree.type_key;
-        E_TypeKey r_type_unwrapped = e_type_key_unwrap(r_type, E_TypeUnwrapFlag_AllDecorative);
+        E_TypeKey r_type_unwrapped = e_type_key_unwrap(r_type, E_TypeUnwrapFlag_AllDecorative & (~E_TypeUnwrapFlag_Enums));
         E_TypeKind r_type_unwrapped_kind = e_type_kind_from_key(r_type_unwrapped);
         
         // rjf: bad conditions? -> error if applicable, exit
@@ -1184,6 +1184,7 @@ e_push_irtree_and_type_from_expr(Arena *arena, E_IRTreeAndType *root_parent, E_I
 #define E_ArithPath_PtrAdd          1
 #define E_ArithPath_PtrSub          2
 #define E_ArithPath_PtrArrayCompare 3
+#define E_ArithPath_TypeCompare     4
         B32 ptr_arithmetic_mul_rptr = 0;
         U32 arith_path = E_ArithPath_Normal;
         if(kind == E_ExprKind_Add)
@@ -1216,7 +1217,7 @@ e_push_irtree_and_type_from_expr(Arena *arena, E_IRTreeAndType *root_parent, E_I
             }
           }
         }
-        else if(kind == E_ExprKind_EqEq)
+        else if(kind == E_ExprKind_EqEq || kind == E_ExprKind_NtEq)
         {
           if(l_type_kind == E_TypeKind_Array && (r_type_kind == E_TypeKind_Ptr || r_is_decay))
           {
@@ -1225,6 +1226,10 @@ e_push_irtree_and_type_from_expr(Arena *arena, E_IRTreeAndType *root_parent, E_I
           if(r_type_kind == E_TypeKind_Array && (l_type_kind == E_TypeKind_Ptr || l_is_decay))
           {
             arith_path = E_ArithPath_PtrArrayCompare;
+          }
+          if(l_tree.mode == E_Mode_Null && r_tree.mode == E_Mode_Null)
+          {
+            arith_path = E_ArithPath_TypeCompare;
           }
         }
         
@@ -1357,6 +1362,14 @@ e_push_irtree_and_type_from_expr(Arena *arena, E_IRTreeAndType *root_parent, E_I
             
             // rjf: generate
             result.root     = e_irtree_binary_op(arena, op, RDI_EvalTypeGroup_Other, mem_root, arr_root);
+            result.type_key = e_type_key_basic(E_TypeKind_Bool);
+            result.mode     = E_Mode_Value;
+          }break;
+          
+          //- rjf: type comparison
+          case E_ArithPath_TypeCompare:
+          {
+            result.root     = e_irtree_const_u(arena, !!e_type_match(l_type, r_type));
             result.type_key = e_type_key_basic(E_TypeKind_Bool);
             result.mode     = E_Mode_Value;
           }break;
@@ -2222,7 +2235,7 @@ e_push_irtree_and_type_from_expr(Arena *arena, E_IRTreeAndType *root_parent, E_I
       {
         E_IRTreeAndType direct_irtree = e_push_irtree_and_type_from_expr(arena, parent, &e_default_identifier_resolution_rule, disallow_autohooks, 1, expr->first);
         result = direct_irtree;
-        E_TypeKey direct_type_key = result.type_key;
+        E_TypeKey direct_type_key = e_type_key_unwrap(result.type_key, E_TypeUnwrapFlag_AllDecorative);
         E_TypeKind direct_type_kind = e_type_kind_from_key(direct_type_key);
         if(e_type_kind_is_signed(direct_type_kind))
         {

@@ -54,7 +54,7 @@ typedef struct OS_LNX_SafeCallChain OS_LNX_SafeCallChain;
 struct OS_LNX_SafeCallChain
 {
   OS_LNX_SafeCallChain *next;
-  OS_ThreadFunctionType *fail_handler;
+  ThreadEntryPointFunctionType *fail_handler;
   void *ptr;
 };
 
@@ -67,6 +67,7 @@ typedef enum OS_LNX_EntityKind
   OS_LNX_EntityKind_Mutex,
   OS_LNX_EntityKind_RWMutex,
   OS_LNX_EntityKind_ConditionVariable,
+  OS_LNX_EntityKind_Barrier,
 }
 OS_LNX_EntityKind;
 
@@ -80,7 +81,7 @@ struct OS_LNX_Entity
     struct
     {
       pthread_t handle;
-      OS_ThreadFunctionType *func;
+      ThreadEntryPointFunctionType *func;
       void *ptr;
     } thread;
     pthread_mutex_t mutex_handle;
@@ -90,6 +91,7 @@ struct OS_LNX_Entity
       pthread_cond_t cond_handle;
       pthread_mutex_t rwlock_mutex_handle;
     } cv;
+    pthread_barrier_t barrier;
   };
 };
 

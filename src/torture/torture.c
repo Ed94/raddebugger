@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 ////////////////////////////////
@@ -23,6 +23,9 @@
 #include "coff/coff_lib_writer.h"
 #include "pe/pe.h"
 #include "pe/pe_section_flags.h"
+#include "linker/base_ext/base_core.h"
+#include "linker/base_ext/base_arena.h"
+#include "linker/base_ext/base_arrays.h"
 #include "linker/hash_table.h"
 
 #include "base/base_inc.c"
@@ -33,6 +36,9 @@
 #include "coff/coff_lib_writer.c"
 #include "pe/pe.c"
 #include "linker/hash_table.c"
+#include "linker/base_ext/base_core.c"
+#include "linker/base_ext/base_arena.c"
+#include "linker/base_ext/base_arrays.c"
 
 #include "linker/lnk_cmd_line.h"
 #include "linker/lnk_cmd_line.c"
@@ -136,7 +142,9 @@ t_invoke_linker_with_time_out(U64 time_out, String8 cmdline)
     if (os_handle_match(linker_handle, os_handle_zero())) {
       fprintf(stderr, "unable to start process: %.*s\n", str8_varg(g_linker));
     } else {
-      B32 was_joined = os_process_join_exit_code(linker_handle, time_out, &exit_code);
+      U64 exit_code_u64 = 0;
+      B32 was_joined = os_process_join(linker_handle, time_out, &exit_code_u64);
+      exit_code = (int)exit_code_u64;
       if (!was_joined) {
         os_process_kill(linker_handle);
         exit_code = T_LINKER_TIME_OUT_EXIT_CODE;
@@ -744,31 +752,18 @@ exit:;
 }
 
 internal T_Result
-t_weak_vs_weak(void)
+t_link_undef(void)
 {
   Temp scratch = scratch_begin(0,0);
   T_Result result = T_Result_Fail;
 
-  String8 a_obj;
+  String8 undef_obj;
   {
-    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
-    COFF_ObjSection *sect = coff_obj_writer_push_section(obj_writer, str8_lit(".a"), PE_DATA_SECTION_FLAGS, str8_lit("a"));
-    COFF_ObjSymbol *sect_symbol = coff_obj_writer_push_symbol_static(obj_writer, str8_lit("_a"), 0, sect);
-    coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_SearchLibrary, sect_symbol);
-    a_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0,COFF_MachineType_X64);
+    coff_obj_writer_push_symbol_undef(obj_writer, str8_lit("undef"));
+    undef_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
     coff_obj_writer_release(&obj_writer);
   }
-    
-  String8 b_obj;
-  {
-    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
-    COFF_ObjSection *sect = coff_obj_writer_push_section(obj_writer, str8_lit(".b"), PE_DATA_SECTION_FLAGS, str8_lit("b"));
-    COFF_ObjSymbol *sect_symbol = coff_obj_writer_push_symbol_static(obj_writer, str8_lit("_b"), 0, sect);
-    coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_SearchLibrary, sect_symbol);
-    b_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
-    coff_obj_writer_release(&obj_writer);
-  }
-
 
   String8 entry_obj;
   {
@@ -779,18 +774,967 @@ t_weak_vs_weak(void)
     };
     COFF_ObjSection *sect = coff_obj_writer_push_section(obj_writer, str8_lit(".text"), PE_TEXT_SECTION_FLAGS, str8_array_fixed(text));
     coff_obj_writer_push_symbol_extern(obj_writer, str8_lit("entry"), 0, sect);
-    COFF_ObjSymbol *symbol = coff_obj_writer_push_symbol_undef(obj_writer, str8_lit("w"));
+    COFF_ObjSymbol *symbol = coff_obj_writer_push_symbol_undef(obj_writer, str8_lit("undef"));
     coff_obj_writer_section_push_reloc_voff(obj_writer, sect, 0, symbol);
     entry_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
     coff_obj_writer_release(&obj_writer);
   }
 
-  if (!t_write_file(str8_lit("a.obj"), a_obj)) { goto exit; }
-  if (!t_write_file(str8_lit("b.obj"), b_obj)) { goto exit; }
+  if (!t_write_file(str8_lit("undef.obj"), undef_obj)) { goto exit; }
+  if (!t_write_file(str8_lit("entry.obj"), entry_obj)) { goto exit; }
+
+  // try linking unresolved symbol and see if linker picks up on that
+  int linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe entry.obj undef.obj");
+  if (linker_exit_code != LNK_Error_UnresolvedSymbol) { goto exit; }
+
+  result = T_Result_Pass;
+exit:;
+  scratch_end(scratch);
+  return result;
+}
+
+internal T_Result
+t_link_unref_undef(void)
+{
+  Temp scratch = scratch_begin(0,0);
+  T_Result result = T_Result_Fail;
+
+  String8 undef_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0,COFF_MachineType_X64);
+    coff_obj_writer_push_symbol_undef(obj_writer, str8_lit("undef"));
+    undef_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  String8 entry_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    U8 text[] = { 0xc3 };
+    COFF_ObjSection *sect = coff_obj_writer_push_section(obj_writer, str8_lit(".text"), PE_TEXT_SECTION_FLAGS, str8_array_fixed(text));
+    coff_obj_writer_push_symbol_extern(obj_writer, str8_lit("entry"), 0, sect);
+    entry_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  if (!t_write_file(str8_lit("undef.obj"), undef_obj)) { goto exit; }
+  if (!t_write_file(str8_lit("entry.obj"), entry_obj)) { goto exit; }
+
+  // try linking unreferenced unresolved symbol, this must link
+  int linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe entry.obj undef.obj");
+  if (linker_exit_code == 0) { goto exit; }
+
+  result = T_Result_Pass;
+  exit:;
+  scratch_end(scratch);
+  return result;
+}
+
+internal T_Result
+t_weak_lib_vs_weak_lib(void)
+{
+  Temp scratch = scratch_begin(0,0);
+  T_Result result = T_Result_Fail;
+
+  String8 a_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    COFF_ObjSymbol *q = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("q"), 0x111, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_SearchLibrary, q);
+    a_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  String8 entry_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    U8 text[] = {
+      0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,  // mov rax, $imm
+      0xC3 // ret
+    };
+    COFF_ObjSection *sect = coff_obj_writer_push_section(obj_writer, str8_lit(".text"), PE_TEXT_SECTION_FLAGS, str8_array_fixed(text));
+    coff_obj_writer_push_symbol_extern(obj_writer, str8_lit("entry"), 0, sect);
+    COFF_ObjSymbol *e = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("e"), 0x222, COFF_SymStorageClass_External);
+    COFF_ObjSymbol *sym = coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_SearchLibrary, e);
+    coff_obj_writer_section_push_reloc_addr32(obj_writer, sect, 3, sym);
+    entry_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  if (!t_write_file(str8_lit("a.obj"), a_obj))         { goto exit; }
+  if (!t_write_file(str8_lit("entry.obj"), entry_obj)) { goto exit; }
+
+  int linker_exit_code;
+
+  // linker must pick weak symbol from a.obj
+  linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe a.obj entry.obj");
+  if (linker_exit_code != 0) { goto exit; }
+
+  {
+    String8             exe           = t_read_file(scratch.arena, str8_lit("a.exe"));
+    PE_BinInfo          pe            = pe_bin_info_from_data(scratch.arena, exe);
+    COFF_SectionHeader *section_table = (COFF_SectionHeader *)str8_substr(exe, pe.section_table_range).str;
+    String8             string_table  = str8_substr(exe, pe.string_table_range);
+    COFF_SectionHeader *text_sect     = t_coff_section_header_from_name(string_table, section_table, pe.section_count, str8_lit(".text"));
+    if (text_sect == 0) { goto exit; }
+    String8 text_data = str8_substr(exe, rng_1u64(text_sect->foff, text_sect->foff + text_sect->vsize));
+    String8 imm       = str8_substr(text_data, rng_1u64(3, 7));
+    U32 expected = 0x111;
+    if (!str8_match(imm, str8_struct(&expected), 0)) { goto exit; }
+  }
+
+  // linker must pick weak symbol from entry.obj
+  linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe entry.obj a.obj");
+  if (linker_exit_code != 0) { goto exit; }
+
+  {
+    String8             exe           = t_read_file(scratch.arena, str8_lit("a.exe"));
+    PE_BinInfo          pe            = pe_bin_info_from_data(scratch.arena, exe);
+    COFF_SectionHeader *section_table = (COFF_SectionHeader *)str8_substr(exe, pe.section_table_range).str;
+    String8             string_table  = str8_substr(exe, pe.string_table_range);
+    COFF_SectionHeader *text_sect     = t_coff_section_header_from_name(string_table, section_table, pe.section_count, str8_lit(".text"));
+    if (text_sect == 0) { goto exit; }
+    String8 text_data = str8_substr(exe, rng_1u64(text_sect->foff, text_sect->foff + text_sect->vsize));
+    String8 imm       = str8_substr(text_data, rng_1u64(3, 7));
+    U32 expected = 0x222;
+    if (!str8_match(imm, str8_struct(&expected), 0)) { goto exit; }
+  }
+
+  result = T_Result_Pass;
+exit:;
+  scratch_end(scratch);
+  return result;
+}
+
+internal T_Result
+t_weak_lib_vs_weak_nolib(void)
+{
+  Temp scratch = scratch_begin(0,0);
+  T_Result result = T_Result_Fail;
+
+  String8 a_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    COFF_ObjSymbol *q = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("q"), 0x111, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_NoLibrary, q);
+    a_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  String8 entry_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    U8 text[] = {
+      0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,  // mov rax, $imm
+      0xC3 // ret
+    };
+    COFF_ObjSection *sect = coff_obj_writer_push_section(obj_writer, str8_lit(".text"), PE_TEXT_SECTION_FLAGS, str8_array_fixed(text));
+    coff_obj_writer_push_symbol_extern(obj_writer, str8_lit("entry"), 0, sect);
+    COFF_ObjSymbol *e = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("e"), 0x222, COFF_SymStorageClass_External);
+    COFF_ObjSymbol *sym = coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_SearchLibrary, e);
+    coff_obj_writer_section_push_reloc_addr32(obj_writer, sect, 3, sym);
+    entry_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  if (!t_write_file(str8_lit("a.obj"), a_obj))         { goto exit; }
+  if (!t_write_file(str8_lit("entry.obj"), entry_obj)) { goto exit; }
+
+  // linker must pick weak symbol from entry.obj
+  int linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe entry.obj a.obj");
+  if (linker_exit_code != 0) { goto exit; }
+
+  {
+    String8             exe           = t_read_file(scratch.arena, str8_lit("a.exe"));
+    PE_BinInfo          pe            = pe_bin_info_from_data(scratch.arena, exe);
+    COFF_SectionHeader *section_table = (COFF_SectionHeader *)str8_substr(exe, pe.section_table_range).str;
+    String8             string_table  = str8_substr(exe, pe.string_table_range);
+    COFF_SectionHeader *text_sect     = t_coff_section_header_from_name(string_table, section_table, pe.section_count, str8_lit(".text"));
+    if (text_sect == 0) { goto exit; }
+    String8 text_data = str8_substr(exe, rng_1u64(text_sect->foff, text_sect->foff + text_sect->vsize));
+    String8 imm       = str8_substr(text_data, rng_1u64(3, 7));
+    U32 expected = 0x222;
+    if (!str8_match(imm, str8_struct(&expected), 0)) { goto exit; }
+  }
+
+  result = T_Result_Pass;
+exit:;
+  scratch_end(scratch);
+  return result;
+}
+
+internal T_Result
+t_weak_lib_vs_weak_alias(void)
+{
+  Temp scratch = scratch_begin(0,0);
+  T_Result result = T_Result_Fail;
+
+  String8 a_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    COFF_ObjSymbol *q = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("q"), 0x111, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_SearchAlias, q);
+    a_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  String8 entry_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    U8 text[] = {
+      0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,  // mov rax, $imm
+      0xC3 // ret
+    };
+    COFF_ObjSection *sect = coff_obj_writer_push_section(obj_writer, str8_lit(".text"), PE_TEXT_SECTION_FLAGS, str8_array_fixed(text));
+    coff_obj_writer_push_symbol_extern(obj_writer, str8_lit("entry"), 0, sect);
+    COFF_ObjSymbol *e = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("e"), 0x222, COFF_SymStorageClass_External);
+    COFF_ObjSymbol *sym = coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_SearchLibrary, e);
+    coff_obj_writer_section_push_reloc_addr32(obj_writer, sect, 3, sym);
+    entry_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  if (!t_write_file(str8_lit("a.obj"), a_obj))         { goto exit; }
+  if (!t_write_file(str8_lit("entry.obj"), entry_obj)) { goto exit; }
+
+  // linker must pick weak symbol from entry.obj
+  int linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe entry.obj a.obj");
+  if (linker_exit_code != LNK_Error_MultiplyDefinedSymbol) { goto exit; }
+
+  result = T_Result_Pass;
+exit:;
+  scratch_end(scratch);
+  return result;
+}
+
+internal T_Result
+t_weak_lib_vs_weak_antidep(void)
+{
+  Temp scratch = scratch_begin(0,0);
+  T_Result result = T_Result_Fail;
+
+  String8 a_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    COFF_ObjSymbol *q = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("q"), 0x111, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_AntiDependency, q);
+    a_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  String8 entry_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    U8 text[] = {
+      0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,  // mov rax, $imm
+      0xC3 // ret
+    };
+    COFF_ObjSection *sect = coff_obj_writer_push_section(obj_writer, str8_lit(".text"), PE_TEXT_SECTION_FLAGS, str8_array_fixed(text));
+    coff_obj_writer_push_symbol_extern(obj_writer, str8_lit("entry"), 0, sect);
+    COFF_ObjSymbol *e = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("e"), 0x222, COFF_SymStorageClass_External);
+    COFF_ObjSymbol *sym = coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_SearchLibrary, e);
+    coff_obj_writer_section_push_reloc_addr32(obj_writer, sect, 3, sym);
+    entry_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  if (!t_write_file(str8_lit("a.obj"), a_obj))         { goto exit; }
+  if (!t_write_file(str8_lit("entry.obj"), entry_obj)) { goto exit; }
+
+  // linker must pick weak symbol from a.obj
+  int linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe entry.obj a.obj");
+  if (linker_exit_code != 0) { goto exit; }
+
+  {
+    String8             exe           = t_read_file(scratch.arena, str8_lit("a.exe"));
+    PE_BinInfo          pe            = pe_bin_info_from_data(scratch.arena, exe);
+    COFF_SectionHeader *section_table = (COFF_SectionHeader *)str8_substr(exe, pe.section_table_range).str;
+    String8             string_table  = str8_substr(exe, pe.string_table_range);
+    COFF_SectionHeader *text_sect     = t_coff_section_header_from_name(string_table, section_table, pe.section_count, str8_lit(".text"));
+    if (text_sect == 0) { goto exit; }
+    String8 text_data = str8_substr(exe, rng_1u64(text_sect->foff, text_sect->foff + text_sect->vsize));
+    String8 imm       = str8_substr(text_data, rng_1u64(3, 7));
+    U32 expected = 0x222;
+    if (!str8_match(imm, str8_struct(&expected), 0)) { goto exit; }
+  }
+
+  result = T_Result_Pass;
+exit:;
+  scratch_end(scratch);
+  return result;
+}
+
+internal T_Result
+t_weak_alias_vs_weak_alias(void)
+{
+  Temp scratch = scratch_begin(0,0);
+  T_Result result = T_Result_Fail;
+
+  String8 a;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    COFF_ObjSymbol *qwe = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("qwe"), 0x111, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("sym"), COFF_WeakExt_SearchAlias, qwe);
+    a = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  String8 b;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    COFF_ObjSymbol *ewq = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("ewq"), 0x222, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("sym"), COFF_WeakExt_SearchAlias, ewq);
+    b = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  String8 entry_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    U8 text[] = {
+      0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,  // mov rax, $imm
+      0xC3 // ret
+    };
+    COFF_ObjSection *sect = coff_obj_writer_push_section(obj_writer, str8_lit(".text"), PE_TEXT_SECTION_FLAGS, str8_array_fixed(text));
+    coff_obj_writer_push_symbol_extern(obj_writer, str8_lit("entry"), 0, sect);
+    COFF_ObjSymbol *sym = coff_obj_writer_push_symbol_undef(obj_writer, str8_lit("sym"));
+    coff_obj_writer_section_push_reloc_addr32(obj_writer, sect, 3, sym);
+    entry_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  if (!t_write_file(str8_lit("a.obj"), a)) { goto exit; }
+  if (!t_write_file(str8_lit("b.obj"), b)) { goto exit; }
   if (!t_write_file(str8_lit("entry.obj"), entry_obj)) { goto exit; }
 
   int linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe a.obj b.obj entry.obj");
+  if (linker_exit_code != LNK_Error_MultiplyDefinedSymbol) { goto exit; }
+
+  result = T_Result_Pass;
+exit:;
+  scratch_end(scratch);
+  return result;
+}
+
+internal T_Result
+t_weak_alias_vs_weak_lib(void)
+{
+  Temp scratch = scratch_begin(0,0);
+  T_Result result = T_Result_Fail;
+
+  String8 a_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    COFF_ObjSymbol *q = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("q"), 0x111, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_AntiDependency, q);
+    a_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  String8 entry_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    U8 text[] = {
+      0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,  // mov rax, $imm
+      0xC3 // ret
+    };
+    COFF_ObjSection *sect = coff_obj_writer_push_section(obj_writer, str8_lit(".text"), PE_TEXT_SECTION_FLAGS, str8_array_fixed(text));
+    coff_obj_writer_push_symbol_extern(obj_writer, str8_lit("entry"), 0, sect);
+    COFF_ObjSymbol *e = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("e"), 0x222, COFF_SymStorageClass_External);
+    COFF_ObjSymbol *sym = coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_SearchAlias, e);
+    coff_obj_writer_section_push_reloc_addr32(obj_writer, sect, 3, sym);
+    entry_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  if (!t_write_file(str8_lit("a.obj"), a_obj))         { goto exit; }
+  if (!t_write_file(str8_lit("entry.obj"), entry_obj)) { goto exit; }
+
+  // linker must pick weak symbol from entry.obj
+  int linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe entry.obj a.obj");
   if (linker_exit_code != 0) { goto exit; }
+
+  {
+    String8             exe           = t_read_file(scratch.arena, str8_lit("a.exe"));
+    PE_BinInfo          pe            = pe_bin_info_from_data(scratch.arena, exe);
+    COFF_SectionHeader *section_table = (COFF_SectionHeader *)str8_substr(exe, pe.section_table_range).str;
+    String8             string_table  = str8_substr(exe, pe.string_table_range);
+    COFF_SectionHeader *text_sect     = t_coff_section_header_from_name(string_table, section_table, pe.section_count, str8_lit(".text"));
+    if (text_sect == 0) { goto exit; }
+    String8 text_data = str8_substr(exe, rng_1u64(text_sect->foff, text_sect->foff + text_sect->vsize));
+    String8 imm       = str8_substr(text_data, rng_1u64(3, 7));
+    U32 expected = 0x222;
+    if (!str8_match(imm, str8_struct(&expected), 0)) { goto exit; }
+  }
+
+  result = T_Result_Pass;
+exit:;
+  scratch_end(scratch);
+  return result;
+}
+
+internal T_Result
+t_weak_alias_vs_weak_nolib(void)
+{
+  Temp scratch = scratch_begin(0,0);
+  T_Result result = T_Result_Fail;
+
+  String8 a_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    COFF_ObjSymbol *q = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("q"), 0x111, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_NoLibrary, q);
+    a_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  String8 entry_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    U8 text[] = {
+      0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,  // mov rax, $imm
+      0xC3 // ret
+    };
+    COFF_ObjSection *sect = coff_obj_writer_push_section(obj_writer, str8_lit(".text"), PE_TEXT_SECTION_FLAGS, str8_array_fixed(text));
+    coff_obj_writer_push_symbol_extern(obj_writer, str8_lit("entry"), 0, sect);
+    COFF_ObjSymbol *e = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("e"), 0x222, COFF_SymStorageClass_External);
+    COFF_ObjSymbol *sym = coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_SearchAlias, e);
+    coff_obj_writer_section_push_reloc_addr32(obj_writer, sect, 3, sym);
+    entry_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  if (!t_write_file(str8_lit("a.obj"), a_obj))         { goto exit; }
+  if (!t_write_file(str8_lit("entry.obj"), entry_obj)) { goto exit; }
+
+  // linker must pick weak symbol from entry.obj
+  int linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe entry.obj a.obj");
+  if (linker_exit_code != 0) { goto exit; }
+
+  {
+    String8             exe           = t_read_file(scratch.arena, str8_lit("a.exe"));
+    PE_BinInfo          pe            = pe_bin_info_from_data(scratch.arena, exe);
+    COFF_SectionHeader *section_table = (COFF_SectionHeader *)str8_substr(exe, pe.section_table_range).str;
+    String8             string_table  = str8_substr(exe, pe.string_table_range);
+    COFF_SectionHeader *text_sect     = t_coff_section_header_from_name(string_table, section_table, pe.section_count, str8_lit(".text"));
+    if (text_sect == 0) { goto exit; }
+    String8 text_data = str8_substr(exe, rng_1u64(text_sect->foff, text_sect->foff + text_sect->vsize));
+    String8 imm       = str8_substr(text_data, rng_1u64(3, 7));
+    U32 expected = 0x222;
+    if (!str8_match(imm, str8_struct(&expected), 0)) { goto exit; }
+  }
+
+  result = T_Result_Pass;
+exit:;
+  scratch_end(scratch);
+  return result;
+}
+
+internal T_Result
+t_weak_alias_vs_weak_antidep(void)
+{
+  Temp scratch = scratch_begin(0,0);
+  T_Result result = T_Result_Fail;
+
+  String8 a_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    COFF_ObjSymbol *q = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("q"), 0x111, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_AntiDependency, q);
+    a_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  String8 entry_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    U8 text[] = {
+      0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,  // mov rax, $imm
+      0xC3 // ret
+    };
+    COFF_ObjSection *sect = coff_obj_writer_push_section(obj_writer, str8_lit(".text"), PE_TEXT_SECTION_FLAGS, str8_array_fixed(text));
+    coff_obj_writer_push_symbol_extern(obj_writer, str8_lit("entry"), 0, sect);
+    COFF_ObjSymbol *e = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("e"), 0x222, COFF_SymStorageClass_External);
+    COFF_ObjSymbol *sym = coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_SearchAlias, e);
+    coff_obj_writer_section_push_reloc_addr32(obj_writer, sect, 3, sym);
+    entry_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  if (!t_write_file(str8_lit("a.obj"), a_obj))         { goto exit; }
+  if (!t_write_file(str8_lit("entry.obj"), entry_obj)) { goto exit; }
+
+  // linker must pick weak symbol from entry.obj
+  int linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe entry.obj a.obj");
+  if (linker_exit_code != 0) { goto exit; }
+
+  {
+    String8             exe           = t_read_file(scratch.arena, str8_lit("a.exe"));
+    PE_BinInfo          pe            = pe_bin_info_from_data(scratch.arena, exe);
+    COFF_SectionHeader *section_table = (COFF_SectionHeader *)str8_substr(exe, pe.section_table_range).str;
+    String8             string_table  = str8_substr(exe, pe.string_table_range);
+    COFF_SectionHeader *text_sect     = t_coff_section_header_from_name(string_table, section_table, pe.section_count, str8_lit(".text"));
+    if (text_sect == 0) { goto exit; }
+    String8 text_data = str8_substr(exe, rng_1u64(text_sect->foff, text_sect->foff + text_sect->vsize));
+    String8 imm       = str8_substr(text_data, rng_1u64(3, 7));
+    U32 expected = 0x222;
+    if (!str8_match(imm, str8_struct(&expected), 0)) { goto exit; }
+  }
+
+  result = T_Result_Pass;
+exit:;
+  scratch_end(scratch);
+  return result;
+}
+
+internal T_Result
+t_weak_nolib_vs_weak_nolib(void)
+{
+  Temp scratch = scratch_begin(0,0);
+  T_Result result = T_Result_Fail;
+
+  String8 a_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    COFF_ObjSymbol *q = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("q"), 0x111, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_NoLibrary, q);
+    a_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  String8 entry_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    U8 text[] = {
+      0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,  // mov rax, $imm
+      0xC3 // ret
+    };
+    COFF_ObjSection *sect = coff_obj_writer_push_section(obj_writer, str8_lit(".text"), PE_TEXT_SECTION_FLAGS, str8_array_fixed(text));
+    coff_obj_writer_push_symbol_extern(obj_writer, str8_lit("entry"), 0, sect);
+    COFF_ObjSymbol *e = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("e"), 0x222, COFF_SymStorageClass_External);
+    COFF_ObjSymbol *sym = coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_NoLibrary, e);
+    coff_obj_writer_section_push_reloc_addr32(obj_writer, sect, 3, sym);
+    entry_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  if (!t_write_file(str8_lit("a.obj"), a_obj))         { goto exit; }
+  if (!t_write_file(str8_lit("entry.obj"), entry_obj)) { goto exit; }
+
+  int linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe entry.obj a.obj");
+  if (linker_exit_code != 0) { goto exit; }
+
+  {
+    String8             exe           = t_read_file(scratch.arena, str8_lit("a.exe"));
+    PE_BinInfo          pe            = pe_bin_info_from_data(scratch.arena, exe);
+    COFF_SectionHeader *section_table = (COFF_SectionHeader *)str8_substr(exe, pe.section_table_range).str;
+    String8             string_table  = str8_substr(exe, pe.string_table_range);
+    COFF_SectionHeader *text_sect     = t_coff_section_header_from_name(string_table, section_table, pe.section_count, str8_lit(".text"));
+    if (text_sect == 0) { goto exit; }
+    String8 text_data = str8_substr(exe, rng_1u64(text_sect->foff, text_sect->foff + text_sect->vsize));
+    String8 imm       = str8_substr(text_data, rng_1u64(3, 7));
+    U32 expected = 0x222;
+    if (!str8_match(imm, str8_struct(&expected), 0)) { goto exit; }
+  }
+
+  result = T_Result_Pass;
+exit:;
+  scratch_end(scratch);
+  return result;
+}
+
+internal T_Result
+t_weak_nolib_vs_weak_lib(void)
+{
+  Temp scratch = scratch_begin(0,0);
+  T_Result result = T_Result_Fail;
+
+  String8 a_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    COFF_ObjSymbol *q = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("q"), 0x111, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_SearchLibrary, q);
+    a_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  String8 entry_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    U8 text[] = {
+      0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,  // mov rax, $imm
+      0xC3 // ret
+    };
+    COFF_ObjSection *sect = coff_obj_writer_push_section(obj_writer, str8_lit(".text"), PE_TEXT_SECTION_FLAGS, str8_array_fixed(text));
+    coff_obj_writer_push_symbol_extern(obj_writer, str8_lit("entry"), 0, sect);
+    COFF_ObjSymbol *e = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("e"), 0x222, COFF_SymStorageClass_External);
+    COFF_ObjSymbol *sym = coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_NoLibrary, e);
+    coff_obj_writer_section_push_reloc_addr32(obj_writer, sect, 3, sym);
+    entry_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  if (!t_write_file(str8_lit("a.obj"), a_obj))         { goto exit; }
+  if (!t_write_file(str8_lit("entry.obj"), entry_obj)) { goto exit; }
+
+  int linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe entry.obj a.obj");
+  if (linker_exit_code != 0) { goto exit; }
+
+  {
+    String8             exe           = t_read_file(scratch.arena, str8_lit("a.exe"));
+    PE_BinInfo          pe            = pe_bin_info_from_data(scratch.arena, exe);
+    COFF_SectionHeader *section_table = (COFF_SectionHeader *)str8_substr(exe, pe.section_table_range).str;
+    String8             string_table  = str8_substr(exe, pe.string_table_range);
+    COFF_SectionHeader *text_sect     = t_coff_section_header_from_name(string_table, section_table, pe.section_count, str8_lit(".text"));
+    if (text_sect == 0) { goto exit; }
+    String8 text_data = str8_substr(exe, rng_1u64(text_sect->foff, text_sect->foff + text_sect->vsize));
+    String8 imm       = str8_substr(text_data, rng_1u64(3, 7));
+    U32 expected = 0x222;
+    if (!str8_match(imm, str8_struct(&expected), 0)) { goto exit; }
+  }
+
+  result = T_Result_Pass;
+exit:;
+  scratch_end(scratch);
+  return result;
+}
+
+internal T_Result
+t_weak_nolib_vs_weak_alias(void)
+{
+  Temp scratch = scratch_begin(0,0);
+  T_Result result = T_Result_Fail;
+
+  String8 a_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    COFF_ObjSymbol *q = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("q"), 0x111, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_SearchAlias, q);
+    a_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  String8 entry_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    U8 text[] = {
+      0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,  // mov rax, $imm
+      0xC3 // ret
+    };
+    COFF_ObjSection *sect = coff_obj_writer_push_section(obj_writer, str8_lit(".text"), PE_TEXT_SECTION_FLAGS, str8_array_fixed(text));
+    coff_obj_writer_push_symbol_extern(obj_writer, str8_lit("entry"), 0, sect);
+    COFF_ObjSymbol *e = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("e"), 0x222, COFF_SymStorageClass_External);
+    COFF_ObjSymbol *sym = coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_NoLibrary, e);
+    coff_obj_writer_section_push_reloc_addr32(obj_writer, sect, 3, sym);
+    entry_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  if (!t_write_file(str8_lit("a.obj"), a_obj))         { goto exit; }
+  if (!t_write_file(str8_lit("entry.obj"), entry_obj)) { goto exit; }
+
+  int linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe entry.obj a.obj");
+  if (linker_exit_code != LNK_Error_MultiplyDefinedSymbol) { goto exit; }
+
+  result = T_Result_Pass;
+exit:;
+  scratch_end(scratch);
+  return result;
+}
+
+internal T_Result
+t_weak_nolib_vs_weak_antidep(void)
+{
+  Temp scratch = scratch_begin(0,0);
+  T_Result result = T_Result_Fail;
+
+  String8 a_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    COFF_ObjSymbol *q = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("q"), 0x111, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_AntiDependency, q);
+    a_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  String8 entry_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    U8 text[] = {
+      0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,  // mov rax, $imm
+      0xC3 // ret
+    };
+    COFF_ObjSection *sect = coff_obj_writer_push_section(obj_writer, str8_lit(".text"), PE_TEXT_SECTION_FLAGS, str8_array_fixed(text));
+    coff_obj_writer_push_symbol_extern(obj_writer, str8_lit("entry"), 0, sect);
+    COFF_ObjSymbol *e = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("e"), 0x222, COFF_SymStorageClass_External);
+    COFF_ObjSymbol *sym = coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_NoLibrary, e);
+    coff_obj_writer_section_push_reloc_addr32(obj_writer, sect, 3, sym);
+    entry_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  if (!t_write_file(str8_lit("a.obj"), a_obj))         { goto exit; }
+  if (!t_write_file(str8_lit("entry.obj"), entry_obj)) { goto exit; }
+
+  int linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe entry.obj a.obj");
+  if (linker_exit_code != 0) { goto exit; }
+
+  {
+    String8             exe           = t_read_file(scratch.arena, str8_lit("a.exe"));
+    PE_BinInfo          pe            = pe_bin_info_from_data(scratch.arena, exe);
+    COFF_SectionHeader *section_table = (COFF_SectionHeader *)str8_substr(exe, pe.section_table_range).str;
+    String8             string_table  = str8_substr(exe, pe.string_table_range);
+    COFF_SectionHeader *text_sect     = t_coff_section_header_from_name(string_table, section_table, pe.section_count, str8_lit(".text"));
+    if (text_sect == 0) { goto exit; }
+    String8 text_data = str8_substr(exe, rng_1u64(text_sect->foff, text_sect->foff + text_sect->vsize));
+    String8 imm       = str8_substr(text_data, rng_1u64(3, 7));
+    U32 expected = 0x222;
+    if (!str8_match(imm, str8_struct(&expected), 0)) { goto exit; }
+  }
+
+  result = T_Result_Pass;
+exit:;
+  scratch_end(scratch);
+  return result;
+}
+
+internal T_Result
+t_weak_antidep_vs_weak_antidep(void)
+{
+  Temp scratch = scratch_begin(0,0);
+  T_Result result = T_Result_Fail;
+
+  String8 a_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    COFF_ObjSymbol *q = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("q"), 0x111, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_AntiDependency, q);
+    a_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  String8 entry_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    U8 text[] = {
+      0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,  // mov rax, $imm
+      0xC3 // ret
+    };
+    COFF_ObjSection *sect = coff_obj_writer_push_section(obj_writer, str8_lit(".text"), PE_TEXT_SECTION_FLAGS, str8_array_fixed(text));
+    coff_obj_writer_push_symbol_extern(obj_writer, str8_lit("entry"), 0, sect);
+    COFF_ObjSymbol *e = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("e"), 0x222, COFF_SymStorageClass_External);
+    COFF_ObjSymbol *sym = coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_AntiDependency, e);
+    coff_obj_writer_section_push_reloc_addr32(obj_writer, sect, 3, sym);
+    entry_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  if (!t_write_file(str8_lit("a.obj"), a_obj))         { goto exit; }
+  if (!t_write_file(str8_lit("entry.obj"), entry_obj)) { goto exit; }
+
+  int linker_exit_code;
+
+  // linker must pick weak symbol from a.obj
+  linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe a.obj entry.obj");
+  if (linker_exit_code != 0) { goto exit; }
+
+  {
+    String8             exe           = t_read_file(scratch.arena, str8_lit("a.exe"));
+    PE_BinInfo          pe            = pe_bin_info_from_data(scratch.arena, exe);
+    COFF_SectionHeader *section_table = (COFF_SectionHeader *)str8_substr(exe, pe.section_table_range).str;
+    String8             string_table  = str8_substr(exe, pe.string_table_range);
+    COFF_SectionHeader *text_sect     = t_coff_section_header_from_name(string_table, section_table, pe.section_count, str8_lit(".text"));
+    if (text_sect == 0) { goto exit; }
+    String8 text_data = str8_substr(exe, rng_1u64(text_sect->foff, text_sect->foff + text_sect->vsize));
+    String8 imm       = str8_substr(text_data, rng_1u64(3, 7));
+    U32 expected = 0x111;
+    if (!str8_match(imm, str8_struct(&expected), 0)) { goto exit; }
+  }
+
+  // linker must pick weak symbol from entry.obj
+  linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe entry.obj a.obj");
+  if (linker_exit_code != 0) { goto exit; }
+
+  {
+    String8             exe           = t_read_file(scratch.arena, str8_lit("a.exe"));
+    PE_BinInfo          pe            = pe_bin_info_from_data(scratch.arena, exe);
+    COFF_SectionHeader *section_table = (COFF_SectionHeader *)str8_substr(exe, pe.section_table_range).str;
+    String8             string_table  = str8_substr(exe, pe.string_table_range);
+    COFF_SectionHeader *text_sect     = t_coff_section_header_from_name(string_table, section_table, pe.section_count, str8_lit(".text"));
+    if (text_sect == 0) { goto exit; }
+    String8 text_data = str8_substr(exe, rng_1u64(text_sect->foff, text_sect->foff + text_sect->vsize));
+    String8 imm       = str8_substr(text_data, rng_1u64(3, 7));
+    U32 expected = 0x222;
+    if (!str8_match(imm, str8_struct(&expected), 0)) { goto exit; }
+  }
+
+  result = T_Result_Pass;
+exit:;
+  scratch_end(scratch);
+  return result;
+}
+
+internal T_Result
+t_weak_antidep_vs_weak_nolib(void)
+{
+  Temp scratch = scratch_begin(0,0);
+  T_Result result = T_Result_Fail;
+
+  String8 a_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    COFF_ObjSymbol *q = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("q"), 0x111, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_NoLibrary, q);
+    a_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  String8 entry_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    U8 text[] = {
+      0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,  // mov rax, $imm
+      0xC3 // ret
+    };
+    COFF_ObjSection *sect = coff_obj_writer_push_section(obj_writer, str8_lit(".text"), PE_TEXT_SECTION_FLAGS, str8_array_fixed(text));
+    coff_obj_writer_push_symbol_extern(obj_writer, str8_lit("entry"), 0, sect);
+    COFF_ObjSymbol *e = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("e"), 0x222, COFF_SymStorageClass_External);
+    COFF_ObjSymbol *sym = coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_AntiDependency, e);
+    coff_obj_writer_section_push_reloc_addr32(obj_writer, sect, 3, sym);
+    entry_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  if (!t_write_file(str8_lit("a.obj"), a_obj))         { goto exit; }
+  if (!t_write_file(str8_lit("entry.obj"), entry_obj)) { goto exit; }
+
+  int linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe entry.obj a.obj");
+  if (linker_exit_code != 0) { goto exit; }
+
+  {
+    String8             exe           = t_read_file(scratch.arena, str8_lit("a.exe"));
+    PE_BinInfo          pe            = pe_bin_info_from_data(scratch.arena, exe);
+    COFF_SectionHeader *section_table = (COFF_SectionHeader *)str8_substr(exe, pe.section_table_range).str;
+    String8             string_table  = str8_substr(exe, pe.string_table_range);
+    COFF_SectionHeader *text_sect     = t_coff_section_header_from_name(string_table, section_table, pe.section_count, str8_lit(".text"));
+    if (text_sect == 0) { goto exit; }
+    String8 text_data = str8_substr(exe, rng_1u64(text_sect->foff, text_sect->foff + text_sect->vsize));
+    String8 imm       = str8_substr(text_data, rng_1u64(3, 7));
+    U32 expected = 0x222;
+    if (!str8_match(imm, str8_struct(&expected), 0)) { goto exit; }
+  }
+
+  result = T_Result_Pass;
+exit:;
+  scratch_end(scratch);
+  return result;
+}
+
+internal T_Result
+t_weak_antidep_vs_weak_lib(void)
+{
+  Temp scratch = scratch_begin(0,0);
+  T_Result result = T_Result_Fail;
+
+  String8 a_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    COFF_ObjSymbol *q = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("q"), 0x111, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_SearchLibrary, q);
+    a_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  String8 entry_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    U8 text[] = {
+      0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,  // mov rax, $imm
+      0xC3 // ret
+    };
+    COFF_ObjSection *sect = coff_obj_writer_push_section(obj_writer, str8_lit(".text"), PE_TEXT_SECTION_FLAGS, str8_array_fixed(text));
+    coff_obj_writer_push_symbol_extern(obj_writer, str8_lit("entry"), 0, sect);
+    COFF_ObjSymbol *e = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("e"), 0x222, COFF_SymStorageClass_External);
+    COFF_ObjSymbol *sym = coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_AntiDependency, e);
+    coff_obj_writer_section_push_reloc_addr32(obj_writer, sect, 3, sym);
+    entry_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  if (!t_write_file(str8_lit("a.obj"), a_obj))         { goto exit; }
+  if (!t_write_file(str8_lit("entry.obj"), entry_obj)) { goto exit; }
+
+  int linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe entry.obj a.obj");
+  if (linker_exit_code != 0) { goto exit; }
+
+  {
+    String8             exe           = t_read_file(scratch.arena, str8_lit("a.exe"));
+    PE_BinInfo          pe            = pe_bin_info_from_data(scratch.arena, exe);
+    COFF_SectionHeader *section_table = (COFF_SectionHeader *)str8_substr(exe, pe.section_table_range).str;
+    String8             string_table  = str8_substr(exe, pe.string_table_range);
+    COFF_SectionHeader *text_sect     = t_coff_section_header_from_name(string_table, section_table, pe.section_count, str8_lit(".text"));
+    if (text_sect == 0) { goto exit; }
+    String8 text_data = str8_substr(exe, rng_1u64(text_sect->foff, text_sect->foff + text_sect->vsize));
+    String8 imm       = str8_substr(text_data, rng_1u64(3, 7));
+    U32 expected = 0x222;
+    if (!str8_match(imm, str8_struct(&expected), 0)) { goto exit; }
+  }
+
+  result = T_Result_Pass;
+exit:;
+  scratch_end(scratch);
+  return result;
+}
+
+internal T_Result
+t_weak_antidep_vs_weak_alias(void)
+{
+  Temp scratch = scratch_begin(0,0);
+  T_Result result = T_Result_Fail;
+
+  String8 a_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    COFF_ObjSymbol *q = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("q"), 0x111, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_SearchAlias, q);
+    a_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  String8 entry_obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    U8 text[] = {
+      0x48, 0xC7, 0xC0, 0x00, 0x00, 0x00, 0x00,  // mov rax, $imm
+      0xC3 // ret
+    };
+    COFF_ObjSection *sect = coff_obj_writer_push_section(obj_writer, str8_lit(".text"), PE_TEXT_SECTION_FLAGS, str8_array_fixed(text));
+    coff_obj_writer_push_symbol_extern(obj_writer, str8_lit("entry"), 0, sect);
+    COFF_ObjSymbol *e = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("e"), 0x222, COFF_SymStorageClass_External);
+    COFF_ObjSymbol *sym = coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("w"), COFF_WeakExt_AntiDependency, e);
+    coff_obj_writer_section_push_reloc_addr32(obj_writer, sect, 3, sym);
+    entry_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  if (!t_write_file(str8_lit("a.obj"), a_obj))         { goto exit; }
+  if (!t_write_file(str8_lit("entry.obj"), entry_obj)) { goto exit; }
+
+  int linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe entry.obj a.obj");
+  if (linker_exit_code != 0) { goto exit; }
+
+  {
+    String8             exe           = t_read_file(scratch.arena, str8_lit("a.exe"));
+    PE_BinInfo          pe            = pe_bin_info_from_data(scratch.arena, exe);
+    COFF_SectionHeader *section_table = (COFF_SectionHeader *)str8_substr(exe, pe.section_table_range).str;
+    String8             string_table  = str8_substr(exe, pe.string_table_range);
+    COFF_SectionHeader *text_sect     = t_coff_section_header_from_name(string_table, section_table, pe.section_count, str8_lit(".text"));
+    if (text_sect == 0) { goto exit; }
+    String8 text_data = str8_substr(exe, rng_1u64(text_sect->foff, text_sect->foff + text_sect->vsize));
+    String8 imm       = str8_substr(text_data, rng_1u64(3, 7));
+    U32 expected = 0x111;
+    if (!str8_match(imm, str8_struct(&expected), 0)) { goto exit; }
+  }
 
   result = T_Result_Pass;
 exit:;
@@ -1100,77 +2044,100 @@ exit:;
 }
 
 internal T_Result
-t_undef_weak(void)
+t_undef_weak_lib(void)
 {
   Temp scratch = scratch_begin(0,0);
-
   T_Result result = T_Result_Fail;
 
-  String8 entry_symbol_name = str8_lit("my_entry");
-  String8 shared_symbol_name = str8_lit("foo");
-
-  U8 weak_payload[] = { 0xDE, 0xAD, 0xBE, 0xEF };
-  String8 weak_obj_name = str8_lit("weak.obj");
+  String8 weak;
   {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0,COFF_MachineType_X64);
+    COFF_ObjSymbol *b = coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("b"), 0xc3000000, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("a"), COFF_WeakExt_SearchLibrary, b);
+    weak = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  String8 entry;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0,COFF_MachineType_X64);
+    COFF_ObjSymbol *sym = coff_obj_writer_push_symbol_undef(obj_writer, str8_lit("a"));
+    U8 text[4] = {0};
+    COFF_ObjSection *sect = coff_obj_writer_push_section(obj_writer, str8_lit(".text"), PE_TEXT_SECTION_FLAGS, str8_array_fixed(text));
+    coff_obj_writer_section_push_reloc_voff(obj_writer, sect, 0, sym);
+    coff_obj_writer_push_symbol_extern(obj_writer, str8_lit("entry"), 0, sect);
+    entry = coff_obj_writer_serialize(scratch.arena, obj_writer);
+  }
+
+  if (!t_write_file(str8_lit("weak.obj"), weak))   { goto exit; }
+  if (!t_write_file(str8_lit("entry.obj"), entry)) { goto exit; }
+
+  // undefined symbol must always replace weak symbol with search library
+  int linker_exit_code = t_invoke_linkerf("/subsystem:console /out:a.exe /entry:entry entry.obj weak.obj");
+  if (linker_exit_code != LNK_Error_UnresolvedSymbol) { goto exit; }
+
+  result = T_Result_Pass;
+exit:;
+  scratch_end(scratch);
+  return result;
+}
+
+internal T_Result
+t_undef_weak_search_alias(void)
+{
+  Temp scratch = scratch_begin(0,0);
+  T_Result result = T_Result_Fail;
+
+  String8 weak_obj;
+  {
+    U8 weak_payload[] = { 0xDE, 0xAD, 0xBE, 0xEF };
     COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
     COFF_ObjSection *weak_sect = t_push_data_section(obj_writer, str8_array_fixed(weak_payload));
     COFF_ObjSymbol *tag = coff_obj_writer_push_symbol_undef(obj_writer, str8_lit("ptr"));
-    coff_obj_writer_push_symbol_weak(obj_writer, shared_symbol_name, COFF_WeakExt_SearchAlias, tag);
-    String8 weak_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("foo"), COFF_WeakExt_SearchAlias, tag);
+    weak_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
     coff_obj_writer_release(&obj_writer);
-    if (!t_write_file(weak_obj_name, weak_obj)) {
-      goto exit;
-    }
   }
 
-  String8 ptr_obj_name = str8_lit("ptr.obj");
+  String8 ptr_obj;
   {
     COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
-    COFF_ObjSymbol *tag = coff_obj_writer_push_symbol_undef(obj_writer, entry_symbol_name);
+    COFF_ObjSymbol *tag = coff_obj_writer_push_symbol_undef(obj_writer, str8_lit("entry"));
     coff_obj_writer_push_symbol_weak(obj_writer, str8_lit("ptr"), COFF_WeakExt_SearchAlias, tag);
-    String8 ptr_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    ptr_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
     coff_obj_writer_release(&obj_writer);
-    if (!t_write_file(ptr_obj_name, ptr_obj)) {
-      goto exit;
-    }
   }
 
-  U8 undef_obj_payload[] = { 0x00, 0x00, 0x00, 0x00 };
-  String8 undef_obj_name = str8_lit("undef.obj");
+  String8 undef_obj;
   {
+    U8 undef_obj_payload[] = { 0x00, 0x00, 0x00, 0x00 };
     COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
     COFF_ObjSection *undef_sect = t_push_data_section(obj_writer, str8_array_fixed(undef_obj_payload));
-    COFF_ObjSymbol *undef_symbol = coff_obj_writer_push_symbol_undef(obj_writer, shared_symbol_name);
+    COFF_ObjSymbol *undef_symbol = coff_obj_writer_push_symbol_undef(obj_writer, str8_lit("foo"));
     coff_obj_writer_section_push_reloc(obj_writer, undef_sect, 0, undef_symbol, COFF_Reloc_X64_Addr32Nb);
-    String8 undef_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    undef_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
     coff_obj_writer_release(&obj_writer);
-    if (!t_write_file(undef_obj_name, undef_obj)) {
-      goto exit;
-    }
   }
 
-  U8 entry_payload[] = {0xC3};
-  String8 entry_obj_name = str8_lit("entry.obj");
+  String8 entry_obj;
   {
+    U8 entry_payload[] = {0xC3};
     COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
     COFF_ObjSection *text_sect = t_push_text_section(obj_writer, str8_array_fixed(entry_payload));
-    coff_obj_writer_push_symbol_extern(obj_writer, entry_symbol_name, 0, text_sect);
-    String8 entry_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_push_symbol_extern(obj_writer, str8_lit("entry"), 0, text_sect);
+    entry_obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
     coff_obj_writer_release(&obj_writer);
-    if (!t_write_file(entry_obj_name, entry_obj)) {
-      goto exit;
-    }
   }
 
-  int linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:%S /out:a.exe %S %S %S %S", entry_symbol_name, weak_obj_name, entry_obj_name, ptr_obj_name, undef_obj_name);
+  if (!t_write_file(str8_lit("weak.obj"), weak_obj))   { goto exit; }
+  if (!t_write_file(str8_lit("ptr.obj"), ptr_obj))     { goto exit; }
+  if (!t_write_file(str8_lit("undef.obj"), undef_obj)) { goto exit; }
+  if (!t_write_file(str8_lit("entry.obj"), entry_obj)) { goto exit; }
 
-  T_Linker link_ident = t_ident_linker();
-  if (linker_exit_code != 0) {
-    goto exit;
-  }
+  int linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe weak.obj entry.obj ptr.obj undef.obj");
+  if (linker_exit_code != 0) { goto exit; }
 
   result = T_Result_Pass;
-
 exit:;
   scratch_end(scratch);
   return result;
@@ -1929,9 +2896,9 @@ t_simple_lib_test(void)
   {
     COFF_LibWriter *lib_writer = coff_lib_writer_alloc();
     coff_lib_writer_push_obj(lib_writer, str8_lit("test.obj"), test_obj);
-    String8List test_lib = coff_lib_writer_serialize(scratch.arena, lib_writer, 0, 0, 1);
+    String8 test_lib = coff_lib_writer_serialize(scratch.arena, lib_writer, 0, 0, 1);
     coff_lib_writer_release(&lib_writer);
-    if (!t_write_file_list(test_lib_name, test_lib)) {
+    if (!t_write_file(test_lib_name, test_lib)) {
       goto exit;
     }
   }
@@ -2151,7 +3118,7 @@ t_import_export(void)
   }
 
   #if OS_WINDOWS
-  BOOL is_dir_set = SetDllDirectoryA(g_wdir.str);
+  BOOL is_dir_set = SetDllDirectoryA((LPCSTR)g_wdir.str);
   AssertAlways(is_dir_set);
 
   HANDLE export_dll = LoadLibrary("export.dll");
@@ -3223,9 +4190,9 @@ t_include(void)
 
     COFF_LibWriter *lib_writer = coff_lib_writer_alloc();
     coff_lib_writer_push_obj(lib_writer, str8_lit("include.obj"), obj);
-    String8List lib = coff_lib_writer_serialize(scratch.arena, lib_writer, 0, 0, 1);
+    String8 lib = coff_lib_writer_serialize(scratch.arena, lib_writer, 0, 0, 1);
     coff_lib_writer_release(&lib_writer);
-    if (!t_write_file_list(str8_lit("include.lib"), lib)) { goto exit; }
+    if (!t_write_file(str8_lit("include.lib"), lib)) { goto exit; }
   }
 
   {
@@ -3463,8 +4430,8 @@ t_import_kernel32(void)
     str8_list_pushf(scratch.arena, &launch_opts.cmd_line, "%S/a.exe", g_wdir);
     OS_Handle handle = os_process_launch(&launch_opts);
     AssertAlways(!os_handle_match(handle, os_handle_zero()));
-    int exit_code = -1;
-    os_process_join_exit_code(handle, max_U64, &exit_code);
+    U64 exit_code = max_U64;
+    os_process_join(handle, max_U64, &exit_code);
     os_process_detach(handle);
     if (exit_code != 0) { goto exit; }
 
@@ -3810,6 +4777,90 @@ exit:;
 }
 
 internal T_Result
+t_first_member_header(void)
+{
+  Temp scratch = scratch_begin(0,0);
+  T_Result result = T_Result_Fail;
+
+  String8 obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("8"), 0x8, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("1"), 0x1, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("9"), 0x9, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("7"), 0x7, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("4"), 0x4, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("5"), 0x5, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("2"), 0x2, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("3"), 0x3, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("6"), 0x6, COFF_SymStorageClass_External);
+    obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  String8 lib;
+  {
+    COFF_LibWriter *lib_writer = coff_lib_writer_alloc();
+    coff_lib_writer_push_obj(lib_writer, str8_lit("obj.obj"), obj);
+    lib = coff_lib_writer_serialize(scratch.arena, lib_writer, 0, 0, 0);
+    coff_lib_writer_release(&lib_writer);
+  }
+
+  t_write_file(str8_lit("test.lib"), lib);
+  t_write_entry_obj();
+
+  int linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe test.lib entry.obj /include:1 /include:2 /include:3 /include:4 /include:5 /include:6 /include:7 /include:8 /include:9");
+  if (linker_exit_code != 0) goto exit;
+
+  result = T_Result_Pass;
+exit:;
+  scratch_end(scratch);
+  return result;
+}
+
+internal T_Result
+t_second_member_header(void)
+{
+  Temp scratch = scratch_begin(0,0);
+  T_Result result = T_Result_Fail;
+
+  String8 obj;
+  {
+    COFF_ObjWriter *obj_writer = coff_obj_writer_alloc(0, COFF_MachineType_X64);
+    coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("8"), 0x8, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("1"), 0x1, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("9"), 0x9, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("7"), 0x7, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("4"), 0x4, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("5"), 0x5, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("2"), 0x2, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("3"), 0x3, COFF_SymStorageClass_External);
+    coff_obj_writer_push_symbol_abs(obj_writer, str8_lit("6"), 0x6, COFF_SymStorageClass_External);
+    obj = coff_obj_writer_serialize(scratch.arena, obj_writer);
+    coff_obj_writer_release(&obj_writer);
+  }
+
+  String8 lib;
+  {
+    COFF_LibWriter *lib_writer = coff_lib_writer_alloc();
+    coff_lib_writer_push_obj(lib_writer, str8_lit("obj.obj"), obj);
+    lib = coff_lib_writer_serialize(scratch.arena, lib_writer, 0, 0, 1);
+    coff_lib_writer_release(&lib_writer);
+  }
+
+  t_write_file(str8_lit("test.lib"), lib);
+  t_write_entry_obj();
+
+  int linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe test.lib entry.obj /include:1 /include:2 /include:3 /include:4 /include:5 /include:6 /include:7 /include:8 /include:9");
+  if (linker_exit_code != 0) goto exit;
+
+  result = T_Result_Pass;
+exit:;
+  scratch_end(scratch);
+  return result;
+}
+
+internal T_Result
 t_opt_ref_dangling_section(void)
 {
   Temp scratch = scratch_begin(0,0);
@@ -3863,7 +4914,7 @@ t_opt_ref_dangling_section(void)
     coff_obj_writer_release(&obj_writer);
   }
 
-  String8List b_lib;
+  String8 b_lib;
   {
     COFF_LibWriter *lib_writer = coff_lib_writer_alloc();
     coff_lib_writer_push_obj(lib_writer, str8_lit("b.obj"), b_obj);
@@ -3873,7 +4924,7 @@ t_opt_ref_dangling_section(void)
 
   if (!t_write_file(str8_lit("entry.obj"), entry_obj)) { goto exit; }
   if (!t_write_file(str8_lit("a.obj"), a_obj))         { goto exit; }
-  if (!t_write_file_list(str8_lit("b.lib"), b_lib))    { goto exit; }
+  if (!t_write_file(str8_lit("b.lib"), b_lib))         { goto exit; }
 
   int linker_exit_code = t_invoke_linkerf("/subsystem:console /entry:entry /out:a.exe entry.obj a.obj b.lib");
   if (linker_exit_code != 0) { goto exit; }
@@ -3904,54 +4955,72 @@ entry_point(CmdLine *cmdline)
   static struct {
     char *label; T_Result (*r)(void);
   } target_array[] = {
-    { "simple_link_test",                 t_simple_link_test                 },
-    { "machine_compat_check",             t_machine_compat_check             },
-    { "out_of_bounds_section_number",     t_out_of_bounds_section_number     },
-    { "merge",                            t_merge                            },
-    { "undef_section",                    t_undef_section                    },
-    { "undef_reloc_section",              t_undef_reloc_section              },
-    { "weak_vs_weak",                     t_weak_vs_weak                     },
-    { "weak_vs_common",                   t_weak_vs_common                   },
-    { "abs_vs_weak",                      t_abs_vs_weak                      },
-    { "abs_vs_regular",                   t_abs_vs_regular                   },
-    { "abs_vs_common",                    t_abs_vs_common                    },
-    { "abs_vs_abs",                       t_abs_vs_abs                       },
-    { "undef_weak",                       t_undef_weak                       },
-    { "sect_symbol",                      t_sect_symbol                      },
-    { "weak_cycle",                       t_weak_cycle                       },
-    { "weak_tag",                         t_weak_tag                         },
-    { "find_merged_pdata",                t_find_merged_pdata                },
-    { "section_sort",                     t_section_sort                     },
-    { "flag_conf",                        t_flag_conf                        },
-    { "invalid_bss",                      t_invalid_bss                      },
-    { "common_block",                     t_common_block                     },
-    { "base_relocs",                      t_base_relocs                      },
-    { "simple_lib_test",                  t_simple_lib_test                  },
-    { "sect_align",                       t_sect_align                       },
-    { "image_base",                       t_image_base                       },
-    { "comdat_any",                       t_comdat_any                       },
-    { "comdat_no_duplicates",             t_comdat_no_duplicates             },
-    { "comdat_same_size",                 t_comdat_same_size                 },
-    { "comdat_exact_match",               t_comdat_exact_match               },
-    { "comdat_largest",                   t_comdat_largest                   },
-    { "comdat_associative",               t_comdat_associative               },
-    { "comdat_associative_loop",          t_comdat_associative_loop          },
-    { "comdat_associative_non_comdat",    t_comdat_associative_non_comdat    },
-    { "comdat_associative_out_of_bounds", t_comdat_associative_out_of_bounds },
-    { "comdat_with_offset",               t_comdat_with_offset               },
-    { "reloc_against_removed_comdat",     t_reloc_against_removed_comdat     },
-    { "alt_name",                         t_alt_name                         },
-    { "include",                          t_include                          },
-    { "communal_var_vs_regular_comdat",   t_communal_var_vs_regular_comdat   },
-    { "communal_var_vs_regular",          t_communal_var_vs_regular          },
-    { "import_kernel32",                  t_import_kernel32                  },
-    { "delay_import_user32",              t_delay_import_user32              },
-    { "delay_import",                     t_delay_import                     },
-    { "empty_section",                    t_empty_section                    },
-    { "removed_section",                  t_removed_section                  },
-    { "function_pad_min",                 t_function_pad_min                 },
-    //{ "opt_ref_dangling_section",         t_opt_ref_dangling_section         },
-    //{ "import_export",        t_import_export        },
+    { "simple_link_test",                  t_simple_link_test                  },
+    { "machine_compat_check",              t_machine_compat_check              },
+    { "out_of_bounds_section_number",      t_out_of_bounds_section_number      },
+    { "merge",                             t_merge                             },
+    { "undef_section",                     t_undef_section                     },
+    { "undef_reloc_section",               t_undef_reloc_section               },
+    { "link_undef",                        t_link_undef                        },
+    { "link_unref_undef",                  t_link_unref_undef                  },
+    { "weak_lib_vs_weak_lib",              t_weak_lib_vs_weak_lib              },
+    { "weak_lib_vs_weak_nolib",            t_weak_lib_vs_weak_nolib            },
+    { "weak_lib_vs_weak_alias",            t_weak_lib_vs_weak_alias            },
+    { "weak_lib_vs_weak_antidep",          t_weak_lib_vs_weak_antidep          },
+    { "weak_alias_vs_weak_alias",          t_weak_alias_vs_weak_alias          },
+    { "weak_alias_vs_weak_lib",            t_weak_alias_vs_weak_lib            },
+    { "weak_alias_vs_weak_nolib",          t_weak_alias_vs_weak_nolib          },
+    { "weak_alias_vs_weak_antidep",        t_weak_alias_vs_weak_antidep        },
+    { "weak_nolib_vs_weak_nolib",          t_weak_nolib_vs_weak_nolib          },
+    { "weak_nolib_vs_weak_lib",            t_weak_nolib_vs_weak_lib            },
+    { "weak_nolib_vs_weak_alias",          t_weak_nolib_vs_weak_alias          },
+    { "weak_nolib_vs_weak_antidep",        t_weak_nolib_vs_weak_antidep        },
+    { "weak_antidep_vs_weak_antidep",      t_weak_antidep_vs_weak_antidep      },
+    { "weak_antidep_vs_weak_nolib",        t_weak_antidep_vs_weak_nolib        },
+    { "weak_antidep_vs_weak_lib",          t_weak_antidep_vs_weak_lib          },
+    { "weak_antidep_vs_weak_alias",        t_weak_antidep_vs_weak_alias        },
+    { "weak_vs_common",                    t_weak_vs_common                    },
+    { "abs_vs_weak",                       t_abs_vs_weak                       },
+    { "abs_vs_regular",                    t_abs_vs_regular                    },
+    { "abs_vs_common",                     t_abs_vs_common                     },
+    { "abs_vs_abs",                        t_abs_vs_abs                        },
+    { "undef_weak_lib",                    t_undef_weak_lib                    },
+    { "undef_weak_search_alias",           t_undef_weak_search_alias           },
+    { "sect_symbol",                       t_sect_symbol                       },
+    { "weak_cycle",                        t_weak_cycle                        },
+    { "weak_tag",                          t_weak_tag                          },
+    { "find_merged_pdata",                 t_find_merged_pdata                 },
+    { "section_sort",                      t_section_sort                      },
+    { "flag_conf",                         t_flag_conf                         },
+    { "invalid_bss",                       t_invalid_bss                       },
+    { "common_block",                      t_common_block                      },
+    { "base_relocs",                       t_base_relocs                       },
+    { "simple_lib_test",                   t_simple_lib_test                   },
+    { "sect_align",                        t_sect_align                        },
+    { "image_base",                        t_image_base                        },
+    { "comdat_any",                        t_comdat_any                        },
+    { "comdat_no_duplicates",              t_comdat_no_duplicates              },
+    { "comdat_same_size",                  t_comdat_same_size                  },
+    { "comdat_exact_match",                t_comdat_exact_match                },
+    { "comdat_largest",                    t_comdat_largest                    },
+    { "comdat_associative",                t_comdat_associative                },
+    { "comdat_associative_loop",           t_comdat_associative_loop           },
+    { "comdat_associative_non_comdat",     t_comdat_associative_non_comdat     },
+    { "comdat_associative_out_of_bounds",  t_comdat_associative_out_of_bounds  },
+    { "comdat_with_offset",                t_comdat_with_offset                },
+    { "reloc_against_removed_comdat",      t_reloc_against_removed_comdat      },
+    { "alt_name",                          t_alt_name                          },
+    { "include",                           t_include                           },
+    { "communal_var_vs_regular_comdat",    t_communal_var_vs_regular_comdat    },
+    { "communal_var_vs_regular",           t_communal_var_vs_regular           },
+    { "import_kernel32",                   t_import_kernel32                   },
+    { "delay_import_user32",               t_delay_import_user32               },
+    { "delay_import",                      t_delay_import                      },
+    { "empty_section",                     t_empty_section                     },
+    { "removed_section",                   t_removed_section                   },
+    { "function_pad_min",                  t_function_pad_min                  },
+    { "first_member_header",               t_first_member_header               },
+    { "second_member_header",              t_second_member_header              },
   };
 
   //
@@ -4076,7 +5145,7 @@ entry_point(CmdLine *cmdline)
   //
   {
     U64 max_label_size = 0;
-    for (U64 i = 0; i < ArrayCount(target_array); i += 1) { max_label_size = Max(max_label_size, cstring8_length(target_array[i].label)); }
+    for (U64 i = 0; i < ArrayCount(target_array); i += 1) { max_label_size = Max(max_label_size, cstring8_length((U8*)target_array[i].label)); }
 
     U64 dots_min = 10;
     U64 dots_size = max_label_size+dots_min;
@@ -4124,7 +5193,7 @@ entry_point(CmdLine *cmdline)
 
       T_Result result = t_run(target_array[target_idx].r);
 
-      U64 dots_count = (max_label_size - cstring8_length(target_array[target_idx].label)) + dots_min;
+      U64 dots_count = (max_label_size - cstring8_length((U8*)target_array[target_idx].label)) + dots_min;
       String8 msg = push_str8f(scratch.arena, "%s%.*s%s", target_array[target_idx].label, dots_count, dots, t_string_from_result(result));
 
       // run progress

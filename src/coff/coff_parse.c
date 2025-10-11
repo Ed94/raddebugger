@@ -285,6 +285,13 @@ coff_interp_from_parsed_symbol(COFF_ParsedSymbol symbol)
   return coff_interp_symbol(symbol.section_number, symbol.value, symbol.storage_class);
 }
 
+internal B32
+coff_is_undefined_data_symbol(COFF_ParsedSymbol symbol)
+{
+  COFF_SymbolValueInterpType interp = coff_interp_from_parsed_symbol(symbol);
+  return interp == COFF_SymbolValueInterp_Undefined && symbol.storage_class == COFF_SymStorageClass_External;
+}
+
 internal void
 coff_parse_secdef(COFF_ParsedSymbol symbol, B32 is_big_obj, COFF_ComdatSelectType *selection_out, U32 *number_out, U32 *length_out, U32 *check_sum_out)
 {
@@ -724,7 +731,7 @@ coff_parse_second_archive_member(COFF_ArchiveMember *member)
 }
 
 internal String8
-coff_parse_long_name(String8 long_names, String8 name)
+coff_decode_raw_member_name(String8 long_names, String8 name)
 {
   String8 result = name;
   if (name.size > 0 && name.str[0] == '/') {
@@ -742,6 +749,17 @@ coff_parse_long_name(String8 long_names, String8 name)
     }
   }
   return result;
+}
+
+internal String8
+coff_decode_member_name(String8 long_names, String8 name)
+{
+  String8 member_name = coff_decode_raw_member_name(long_names, name);
+  String8 slash = str8_lit("/");
+  if (str8_ends_with(member_name, slash, 0)) {
+    member_name = str8_chop(member_name, slash.size);
+  }
+  return member_name;
 }
 
 internal U64

@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #ifndef ELF_H
@@ -971,7 +971,8 @@ typedef struct ELF_Chdr32
 
 typedef struct ELF_Chdr64
 {
-  U64 ch_type;
+  U32 ch_type;
+  U32 ch_reserved;
   U64 ch_size;
   U64 ch_addr_align;
 } ELF_Chdr64;

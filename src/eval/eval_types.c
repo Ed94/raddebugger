@@ -514,7 +514,7 @@ e_type_key_cons_base(Type *type)
       if(type->flags & TypeFlag_IsPlainText){ flags |= E_TypeFlag_IsPlainText; }
       if(type->flags & TypeFlag_IsCodeText) { flags |= E_TypeFlag_IsCodeText; }
       if(type->flags & TypeFlag_IsPathText) { flags |= E_TypeFlag_IsPathText; }
-      result = e_type_key_cons_ptr(arch_from_context(), direct_type, 1, flags);
+      result = e_type_key_cons_ptr(Arch_CURRENT, direct_type, 1, flags);
     }break;
     case TypeKind_Array:
     {
@@ -531,7 +531,7 @@ e_type_key_cons_base(Type *type)
         e_member_list_push_new(scratch.arena, &members, .name = type->members[idx].name, .off = type->members[idx].value, .type_key = member_type_key);
       }
       E_MemberArray members_array = e_member_array_from_list(scratch.arena, &members);
-      result = e_type_key_cons(.arch    = arch_from_context(),
+      result = e_type_key_cons(.arch    = Arch_CURRENT,
                                .kind    = E_TypeKind_Struct,
                                .name    = type->name,
                                .members = members_array.v,
@@ -885,6 +885,10 @@ e_push_type_from_key(Arena *arena, E_TypeKey key)
                 if(rdi_type->flags & RDI_TypeModifierFlag_Volatile)
                 {
                   flags |= E_TypeFlag_Volatile;
+                }
+                if(rdi_type->flags & RDI_TypeModifierFlag_Restrict)
+                {
+                  flags |= E_TypeFlag_Restrict;
                 }
                 type = push_array(arena, E_Type, 1);
                 type->kind            = kind;
@@ -1679,6 +1683,10 @@ e_type_lhs_string_from_key(Arena *arena, E_TypeKey key, String8List *out, U32 pr
       {
         str8_list_push(arena, out, str8_lit("volatile "));
       }
+      if(type->flags & E_TypeFlag_Restrict)
+      {
+        str8_list_push(arena, out, str8_lit("restrict "));
+      }
     }break;
     
     case E_TypeKind_Variadic:
@@ -1945,7 +1953,8 @@ e_default_expansion_type_from_key(E_TypeKey root_key)
     // want to ignore them.
     //
     else if(kind == E_TypeKind_Lens ||
-            kind == E_TypeKind_Modifier)
+            kind == E_TypeKind_Modifier ||
+            kind == E_TypeKind_Alias)
     {
       done = 0;
     }

@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #ifndef PE_MAKE_EXPORT_TABLE_H
@@ -57,6 +57,6 @@ typedef struct PE_FinalizedExports
 
 internal PE_ExportParsePtrArray pe_array_from_export_list(Arena *arena, PE_ExportParseList list);
 internal PE_ExportParseNode * pe_export_parse_list_push(Arena *arena, PE_ExportParseList *list, PE_ExportParse data);
-internal String8List pe_make_import_lib(Arena *arena, COFF_MachineType machine, COFF_TimeStamp time_stamp, String8 dll_name, String8 debug_symbols, PE_ExportParseList export_list);
+internal String8 pe_make_import_lib(Arena *arena, COFF_MachineType machine, COFF_TimeStamp time_stamp, String8 dll_name, String8 debug_symbols, PE_ExportParseList export_list);
 
 #endif // COFF_EXPORT_TABLE_H

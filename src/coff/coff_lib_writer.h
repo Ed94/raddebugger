@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Epic Games Tools
+// Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 #ifndef COFF_LIB_WRITER_H
@@ -57,13 +57,14 @@ internal COFF_LibWriterMemberNode * coff_lib_writer_member_list_push(Arena *aren
 internal COFF_LibWriterSymbol * coff_lib_writer_symbol_array_from_list(Arena *arena, COFF_LibWriterSymbolList list);
 internal COFF_LibWriterMember * coff_lib_writer_member_array_from_list(Arena *arena, COFF_LibWriterMemberList list);
 
-internal void coff_lib_writer_symbol_array_sort(COFF_LibWriterSymbol *arr, U64 count);
+internal void coff_lib_writer_symbol_array_sort_on_name(COFF_LibWriterSymbol *arr, U64 count);
+internal void coff_lib_writer_symbol_array_sort_on_member_idx(COFF_LibWriterSymbol *arr, U64 count);
 
 internal COFF_LibWriter * coff_lib_writer_alloc(void);
 internal void             coff_lib_writer_release(COFF_LibWriter **writer_ptr);
 internal U64              coff_lib_writer_push_obj(COFF_LibWriter *writer, String8 obj_path, String8 obj_data);
 internal void             coff_lib_writer_push_import(COFF_LibWriter *lib_writer, COFF_MachineType machine, COFF_TimeStamp time_stamp, String8 dll_name, COFF_ImportByType import_by, String8 name, U16 hint_or_ordinal, COFF_ImportType import_type);
-internal String8List      coff_lib_writer_serialize(Arena *arena, COFF_LibWriter *lib_writer, COFF_TimeStamp time_stamp, U16 mode, B32 emit_second_member);
+internal String8          coff_lib_writer_serialize(Arena *arena, COFF_LibWriter *lib_writer, COFF_TimeStamp time_stamp, U16 mode, B32 emit_second_member);
 
 #endif // COFF_LIB_WRITER_H
 

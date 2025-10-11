@@ -41,21 +41,6 @@ os_handle_array_from_list(Arena *arena, OS_HandleList *list)
 }
 
 ////////////////////////////////
-//~ rjf: Command Line Argc/Argv Helper (Helper, Implemented Once)
-
-internal String8List
-os_string_list_from_argcv(Arena *arena, int argc, char **argv)
-{
-  String8List result = {0};
-  for(int i = 0; i < argc; i += 1)
-  {
-    String8 str = str8_cstring(argv[i]);
-    str8_list_push(arena, &result, str);
-  }
-  return result;
-}
-
-////////////////////////////////
 //~ rjf: Filesystem Helpers (Helpers, Implemented Once)
 
 internal String8
@@ -95,7 +80,6 @@ os_write_data_list_to_file_path(String8 path, String8List list)
     U64 write_buffer_write_pos = 0;
     U64 write_buffer_read_pos = 0;
     U64 file_off = 0;
-    U64 total_bytes_written = 0;
     {
       for(String8Node *n = list.first; n != 0; n = n->next)
       {
@@ -105,7 +89,11 @@ os_write_data_list_to_file_path(String8 path, String8List list)
           U64 write_buffer_available_size = (write_buffer_size - write_buffer_unconsumed_size);
           if(write_buffer_available_size == 0)
           {
-            os_file_write(file, r1u64(file_off, file_off+write_buffer_size), write_buffer);
+            U64 file_write_size = os_file_write(file, r1u64(file_off, file_off+write_buffer_size), write_buffer);
+            if(file_write_size != write_buffer_size)
+            {
+              goto dbl_break;
+            }
             file_off += write_buffer_size;
             write_buffer_read_pos += write_buffer_size;
           }
@@ -119,10 +107,12 @@ os_write_data_list_to_file_path(String8 path, String8List list)
       }
       if(write_buffer_write_pos > write_buffer_read_pos)
       {
-        total_bytes_written += os_file_write(file, r1u64(file_off, file_off + (write_buffer_write_pos-write_buffer_read_pos)), write_buffer);
+        U64 file_write_size = os_file_write(file, r1u64(file_off, file_off + (write_buffer_write_pos-write_buffer_read_pos)), write_buffer);
+        file_off += file_write_size;
       }
     }
-    good = (total_bytes_written == list.total_size);
+    dbl_break:;
+    good = (file_off == list.total_size);
     os_file_close(file);
     scratch_end(scratch);
   }

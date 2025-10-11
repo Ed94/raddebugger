@@ -5,7 +5,14 @@
 //~ rjf: post-0.9.20 TODO notes
 //
 //- urgent fixes
+// [ ] (use msvc assert as an example) show fastfail exception info (code, name, etc.) - comes from ExceptionInformation @fastfail
+// [ ] stepping w/ spoofs & shadow stack enabled - writing spoof will send a stack buffer overrun event @shadow_stack_step
 // [ ] hardware breakpoints regression (global eval in ctrl)
+// [ ] native filesystem dialog, resizing raddbg window -> crash!
+// [ ] stdout/stderr path target setting is now busted >:(
+// [ ] target ui entry point should override built-in entry point
+// [ ] list of all tabs in palette
+// [ ] u64 + (ptr - ptr) seems to produce unexpected results - double check with C rules?
 //
 //- memory view
 // [ ] have smaller visible range than entire memory
@@ -196,9 +203,11 @@
 #define BUILD_TITLE "The RAD Debugger"
 #define OS_FEATURE_GRAPHICAL 1
 
+#define DMN_INIT_MANUAL 1
+#define CTRL_INIT_MANUAL 1
+#define OS_GFX_INIT_MANUAL 1
+#define FP_INIT_MANUAL 1
 #define R_INIT_MANUAL 1
-#define TEX_INIT_MANUAL 1
-#define GEO_INIT_MANUAL 1
 #define FNT_INIT_MANUAL 1
 #define D_INIT_MANUAL 1
 #define RD_INIT_MANUAL 1
@@ -211,12 +220,13 @@
 #include "linker/hash_table.h"
 #include "os/os_inc.h"
 #include "async/async.h"
+#include "artifact_cache/artifact_cache.h"
 #include "rdi/rdi_local.h"
 #include "rdi_make/rdi_make_local.h"
 #include "mdesk/mdesk.h"
-#include "hash_store/hash_store.h"
+#include "content/content.h"
 #include "file_stream/file_stream.h"
-#include "text_cache/text_cache.h"
+#include "text/text.h"
 #include "mutable_text/mutable_text.h"
 #include "coff/coff.h"
 #include "coff/coff_parse.h"
@@ -235,21 +245,18 @@
 #include "rdi_from_elf/rdi_from_elf.h"
 #include "rdi_from_pdb/rdi_from_pdb.h"
 #include "rdi_from_dwarf/rdi_from_dwarf.h"
-#include "rdi_breakpad_from_pdb/rdi_breakpad_from_pdb.h"
 #include "radbin/radbin.h"
 #include "regs/regs.h"
 #include "regs/rdi/regs_rdi.h"
-#include "dbgi/dbgi.h"
-#include "dasm_cache/dasm_cache.h"
+#include "dbg_info/dbg_info.h"
+#include "dbg_info/dbg_info2.h"
+#include "disasm/disasm.h"
 #include "demon/demon_inc.h"
 #include "eval/eval_inc.h"
 #include "eval_visualization/eval_visualization_inc.h"
 #include "ctrl/ctrl_inc.h"
 #include "font_provider/font_provider_inc.h"
 #include "render/render_inc.h"
-#include "ptr_graph_cache/ptr_graph_cache.h"
-#include "texture_cache/texture_cache.h"
-#include "geo_cache/geo_cache.h"
 #include "font_cache/font_cache.h"
 #include "draw/draw.h"
 #include "ui/ui_inc.h"
@@ -261,12 +268,13 @@
 #include "linker/hash_table.c"
 #include "os/os_inc.c"
 #include "async/async.c"
+#include "artifact_cache/artifact_cache.c"
 #include "rdi/rdi_local.c"
 #include "rdi_make/rdi_make_local.c"
 #include "mdesk/mdesk.c"
-#include "hash_store/hash_store.c"
+#include "content/content.c"
 #include "file_stream/file_stream.c"
-#include "text_cache/text_cache.c"
+#include "text/text.c"
 #include "mutable_text/mutable_text.c"
 #include "coff/coff.c"
 #include "coff/coff_parse.c"
@@ -285,21 +293,18 @@
 #include "rdi_from_elf/rdi_from_elf.c"
 #include "rdi_from_pdb/rdi_from_pdb.c"
 #include "rdi_from_dwarf/rdi_from_dwarf.c"
-#include "rdi_breakpad_from_pdb/rdi_breakpad_from_pdb.c"
 #include "radbin/radbin.c"
 #include "regs/regs.c"
 #include "regs/rdi/regs_rdi.c"
-#include "dbgi/dbgi.c"
-#include "dasm_cache/dasm_cache.c"
+#include "dbg_info/dbg_info.c"
+#include "dbg_info/dbg_info2.c"
+#include "disasm/disasm.c"
 #include "demon/demon_inc.c"
 #include "eval/eval_inc.c"
 #include "eval_visualization/eval_visualization_inc.c"
 #include "ctrl/ctrl_inc.c"
 #include "font_provider/font_provider_inc.c"
 #include "render/render_inc.c"
-#include "ptr_graph_cache/ptr_graph_cache.c"
-#include "texture_cache/texture_cache.c"
-#include "geo_cache/geo_cache.c"
 #include "font_cache/font_cache.c"
 #include "draw/draw.c"
 #include "ui/ui_inc.c"
@@ -330,17 +335,17 @@ struct IPCInfo
 //- rjf: IPC resources
 #define IPC_SHARED_MEMORY_BUFFER_SIZE MB(4)
 StaticAssert(IPC_SHARED_MEMORY_BUFFER_SIZE > sizeof(IPCInfo), ipc_buffer_size_requirement);
-global OS_Handle ipc_sender2main_signal_semaphore = {0};
-global OS_Handle ipc_sender2main_lock_semaphore = {0};
+global Semaphore ipc_sender2main_signal_semaphore = {0};
+global Semaphore ipc_sender2main_lock_semaphore = {0};
 global U8 *ipc_sender2main_shared_memory_base = 0;
-global OS_Handle ipc_main2sender_signal_semaphore = {0};
-global OS_Handle ipc_main2sender_lock_semaphore = {0};
+global Semaphore ipc_main2sender_signal_semaphore = {0};
+global Semaphore ipc_main2sender_lock_semaphore = {0};
 global U8 *ipc_main2sender_shared_memory_base = 0;
 global U8  ipc_s2m_ring_buffer[MB(4)] = {0};
 global U64 ipc_s2m_ring_write_pos = 0;
 global U64 ipc_s2m_ring_read_pos = 0;
-global OS_Handle ipc_s2m_ring_mutex = {0};
-global OS_Handle ipc_s2m_ring_cv = {0};
+global Mutex ipc_s2m_ring_mutex = {0};
+global CondVar ipc_s2m_ring_cv = {0};
 
 ////////////////////////////////
 //~ rjf: IPC Signaler Thread
@@ -348,7 +353,7 @@ global OS_Handle ipc_s2m_ring_cv = {0};
 internal void
 ipc_signaler_thread__entry_point(void *p)
 {
-  ThreadNameF("[rd] ipc signaler thread");
+  ThreadNameF("rd_ipc_signaler_thread");
   for(;;)
   {
     if(os_semaphore_take(ipc_sender2main_signal_semaphore, max_U64))
@@ -358,7 +363,7 @@ ipc_signaler_thread__entry_point(void *p)
         IPCInfo *ipc_info = (IPCInfo *)ipc_sender2main_shared_memory_base;
         String8 msg = str8((U8 *)(ipc_info+1), ipc_info->msg_size);
         msg.size = Min(msg.size, IPC_SHARED_MEMORY_BUFFER_SIZE - sizeof(IPCInfo));
-        OS_MutexScope(ipc_s2m_ring_mutex) for(;;)
+        MutexScope(ipc_s2m_ring_mutex) for(;;)
         {
           U64 unconsumed_size = ipc_s2m_ring_write_pos - ipc_s2m_ring_read_pos;
           U64 available_size = (sizeof(ipc_s2m_ring_buffer) - unconsumed_size);
@@ -368,9 +373,9 @@ ipc_signaler_thread__entry_point(void *p)
             ipc_s2m_ring_write_pos += ring_write(ipc_s2m_ring_buffer, sizeof(ipc_s2m_ring_buffer), ipc_s2m_ring_write_pos, msg.str, msg.size);
             break;
           }
-          os_condition_variable_wait(ipc_s2m_ring_cv, ipc_s2m_ring_mutex, max_U64);
+          cond_var_wait(ipc_s2m_ring_cv, ipc_s2m_ring_mutex, max_U64);
         }
-        os_condition_variable_broadcast(ipc_s2m_ring_cv);
+        cond_var_broadcast(ipc_s2m_ring_cv);
         os_send_wakeup_event();
         ipc_info->msg_size = 0;
         os_semaphore_drop(ipc_sender2main_lock_semaphore);
@@ -438,9 +443,6 @@ entry_point(CmdLine *cmd_line)
     jit_attach = (jit_addr != 0);
   }
   
-  //- rjf: set up layers
-  ctrl_set_wakeup_hook(wakeup_hook_ctrl);
-  
   //- rjf: dispatch to top-level codepath based on execution mode
   switch(exec_mode)
   {
@@ -486,12 +488,15 @@ entry_point(CmdLine *cmd_line)
       
       //- rjf: manual layer initialization
       {
+        dmn_init();
+        ctrl_init();
+        os_gfx_init();
+        fp_init();
         r_init(cmd_line);
-        tex_init();
-        geo_init();
         fnt_init();
         d_init();
         rd_init(cmd_line);
+        ctrl_set_wakeup_hook(wakeup_hook_ctrl);
       }
       
       //- rjf: set up shared resources for ipc to this instance; launch IPC signaler thread
@@ -505,8 +510,8 @@ entry_point(CmdLine *cmd_line)
         String8 ipc_sender2main_lock_semaphore_name = push_str8f(scratch.arena, "_raddbg_ipc_sender2main_lock_semaphore_%i_", instance_pid);
         OS_Handle ipc_sender2main_shared_memory = os_shared_memory_alloc(IPC_SHARED_MEMORY_BUFFER_SIZE, ipc_sender2main_shared_memory_name);
         ipc_sender2main_shared_memory_base = (U8 *)os_shared_memory_view_open(ipc_sender2main_shared_memory, r1u64(0, IPC_SHARED_MEMORY_BUFFER_SIZE));
-        ipc_sender2main_signal_semaphore = os_semaphore_alloc(0, 1, ipc_sender2main_signal_semaphore_name);
-        ipc_sender2main_lock_semaphore = os_semaphore_alloc(1, 1, ipc_sender2main_lock_semaphore_name);
+        ipc_sender2main_signal_semaphore = semaphore_alloc(0, 1, ipc_sender2main_signal_semaphore_name);
+        ipc_sender2main_lock_semaphore = semaphore_alloc(1, 1, ipc_sender2main_lock_semaphore_name);
         
         // rjf: set up cross-process main -> sender ring buffer
         String8 ipc_main2sender_shared_memory_name = push_str8f(scratch.arena, "_raddbg_ipc_main2sender_shared_memory_%i_", instance_pid);
@@ -514,17 +519,17 @@ entry_point(CmdLine *cmd_line)
         String8 ipc_main2sender_lock_semaphore_name = push_str8f(scratch.arena, "_raddbg_ipc_main2sender_lock_semaphore_%i_", instance_pid);
         OS_Handle ipc_main2sender_shared_memory = os_shared_memory_alloc(IPC_SHARED_MEMORY_BUFFER_SIZE, ipc_main2sender_shared_memory_name);
         ipc_main2sender_shared_memory_base = (U8 *)os_shared_memory_view_open(ipc_main2sender_shared_memory, r1u64(0, IPC_SHARED_MEMORY_BUFFER_SIZE));
-        ipc_main2sender_signal_semaphore = os_semaphore_alloc(0, 1, ipc_main2sender_signal_semaphore_name);
-        ipc_main2sender_lock_semaphore = os_semaphore_alloc(1, 1, ipc_main2sender_lock_semaphore_name);
+        ipc_main2sender_signal_semaphore = semaphore_alloc(0, 1, ipc_main2sender_signal_semaphore_name);
+        ipc_main2sender_lock_semaphore = semaphore_alloc(1, 1, ipc_main2sender_lock_semaphore_name);
         
         // rjf: set up ipc-receiver -> main thread ring buffer; launch signaler thread
-        ipc_s2m_ring_mutex = os_mutex_alloc();
-        ipc_s2m_ring_cv = os_condition_variable_alloc();
+        ipc_s2m_ring_mutex = mutex_alloc();
+        ipc_s2m_ring_cv = cond_var_alloc();
         IPCInfo *ipc_info = (IPCInfo *)ipc_sender2main_shared_memory_base;
         if(ipc_sender2main_shared_memory_base != 0)
         {
           MemoryZeroStruct(ipc_info);
-          os_thread_launch(ipc_signaler_thread__entry_point, 0, 0);
+          thread_launch(ipc_signaler_thread__entry_point, 0);
         }
         
         scratch_end(scratch);
@@ -540,7 +545,7 @@ entry_point(CmdLine *cmd_line)
             Temp scratch = scratch_begin(0, 0);
             B32 consumed = 0;
             String8 msg = {0};
-            OS_MutexScope(ipc_s2m_ring_mutex)
+            MutexScope(ipc_s2m_ring_mutex)
             {
               U64 unconsumed_size = ipc_s2m_ring_write_pos - ipc_s2m_ring_read_pos;
               if(unconsumed_size >= sizeof(U64))
@@ -555,7 +560,7 @@ entry_point(CmdLine *cmd_line)
             }
             if(consumed)
             {
-              os_condition_variable_broadcast(ipc_s2m_ring_cv);
+              cond_var_broadcast(ipc_s2m_ring_cv);
             }
             if(msg.size != 0)
             {
@@ -700,7 +705,13 @@ entry_point(CmdLine *cmd_line)
         IPCInfo *ipc_info = (IPCInfo *)ipc_sender2main_shared_memory_base;
         U8 *buffer = (U8 *)(ipc_info+1);
         U64 buffer_max = IPC_SHARED_MEMORY_BUFFER_SIZE - sizeof(IPCInfo);
-        String8List parts = os_string_list_from_argcv(scratch.arena, cmd_line->argc - 1, cmd_line->argv + 1);
+        String8List parts = {0};
+        {
+          for EachIndex(idx, cmd_line->argc-1)
+          {
+            str8_list_push(scratch.arena, &parts, str8_cstring(cmd_line->argv[idx+1]));
+          }
+        }
         StringJoin join = {str8_lit(""), str8_lit(" "), str8_lit("")};
         String8 msg = str8_list_join(scratch.arena, &parts, &join);
         ipc_info->msg_size = Min(buffer_max, msg.size);
@@ -740,6 +751,7 @@ entry_point(CmdLine *cmd_line)
     case ExecMode_BinaryUtility:
     {
       rb_entry_point(cmd_line);
+      di2_signal_completion();
     }break;
     
     //- rjf: help message box
