@@ -322,7 +322,9 @@ dmn_w32_process_read(HANDLE process, Rng1U64 range, void *dst)
     {
       DWORD error = GetLastError();
       log_infof("'Win32 ReadProcessMemory failure': { [0x%I64x, 0x%I64x), code: %i }\n", range.min, range.max, error);
-      bytes_read += actual_read;
+      // NOTE(rjf): I have discovered that `actual_read` is *NOT* guaranteed to have
+      // a usable value if `ReadProcessMemory` fails!
+      // bytes_read += actual_read;
       (void)error;
       break;
     }
@@ -2882,7 +2884,7 @@ dmn_ctrl_run(Arena *arena, DMN_CtrlCtx *ctx, DMN_RunCtrls *ctrls)
             {
               single_step_thread_ctx = 0;
             }
-            if(ctx != 0)
+            if(single_step_thread_ctx != 0)
             {
               U64 rflags = single_step_thread_ctx->EFlags|0x2;
               U64 new_rflags = rflags & ~0x100;

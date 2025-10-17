@@ -72,7 +72,7 @@ ac_artifact_from_key_(Access *access, String8 key, AC_ArtifactParams *params, U6
   Stripe *stripe = stripe_from_slot_idx(&cache->stripes, slot_idx);
   
   //- rjf: cache * key -> existing artifact
-  B32 artifact_is_stale = 0;
+  B32 artifact_is_stale = 1;
   B32 got_artifact = 0;
   B32 need_request = 0;
   AC_Artifact artifact = {0};
@@ -161,11 +161,15 @@ ac_artifact_from_key_(Access *access, String8 key, AC_ArtifactParams *params, U6
           }
           n->v.key = str8_copy(req_batch->arena, key);
           n->v.gen = params->gen;
-          n->v.last_requested_gen = &node->last_requested_gen;
           n->v.create = params->create;
+          n->v.cancel_signal = params->cancel_signal;
         }
         cond_var_broadcast(async_tick_start_cond_var);
         ins_atomic_u32_eval_assign(&async_loop_again, 1);
+        if(params->flags & AC_Flag_HighPriority)
+        {
+          ins_atomic_u32_eval_assign(&async_loop_again_high_priority, 1);
+        }
       }
       
       // rjf: get value from node, if possible
@@ -340,23 +344,25 @@ ac_async_tick(void)
         AC_Request *r = &task->wide[idx];
         
         // rjf: any new higher priority tasks? -> cancel
-        if(task_idx == 1 && idx != 0) MutexScope(ac_shared->req_batches[0].mutex)
+        if(lane_idx() == 0)
         {
-          if(ac_shared->req_batches[0].wide_count != 0 || ac_shared->req_batches[0].thin_count != 0)
+          if(task_idx == 1 && idx != 0 && ins_atomic_u32_eval(&async_loop_again_high_priority))
           {
             ins_atomic_u64_eval_assign(cancelled_ptr, 1);
           }
         }
+        lane_sync();
         
         // rjf: cancelled? -> exit
-        if(ins_atomic_u64_eval(cancelled_ptr))
+        if(ins_atomic_u32_eval(cancelled_ptr))
         {
           break;
         }
         
         // rjf: compute val
         B32 retry = 0;
-        AC_Artifact val = r->create(r->key, r->gen, r->last_requested_gen, &retry);
+        U64 gen = r->gen;
+        AC_Artifact val = r->create(r->key, r->cancel_signal, &retry, &gen);
         
         // rjf: retry? -> resubmit request
         if(retry && lane_idx() == 0)
@@ -406,7 +412,7 @@ ac_async_tick(void)
             {
               if(str8_match(n->key, r->key, 0))
               {
-                n->last_completed_gen = r->gen;
+                n->last_completed_gen = gen;
                 n->val = val;
                 ins_atomic_u64_dec_eval(&n->working_count);
                 ins_atomic_u64_inc_eval(&n->completion_count);
@@ -437,12 +443,10 @@ ac_async_tick(void)
       for(;;)
       {
         // rjf: any new higher priority tasks? -> cancel
-        if(task_idx == 1 && ins_atomic_u64_eval(req_take_counter_ptr) >= task->thin_count/2) MutexScope(ac_shared->req_batches[0].mutex)
+        if(task_idx == 1 && ins_atomic_u64_eval(req_take_counter_ptr) >= task->thin_count/2 &&
+           ins_atomic_u32_eval(&async_loop_again_high_priority))
         {
-          if(ac_shared->req_batches[0].wide_count != 0 || ac_shared->req_batches[0].thin_count != 0)
-          {
-            ins_atomic_u64_eval_assign(cancelled_ptr, 1);
-          }
+          ins_atomic_u64_eval_assign(cancelled_ptr, 1);
         }
         
         // rjf: cancelled? -> exit
@@ -456,9 +460,18 @@ ac_async_tick(void)
         if(req_idx >= task->thin_count) { break; }
         AC_Request *r = &task->thin[req_idx];
         
+        // rjf: push thin lane ctx
+        U64 thin_lane_ctx_broadcast_memory = 0;
+        LaneCtx thin_lane_ctx = {0, 1, {0}, &thin_lane_ctx_broadcast_memory};
+        LaneCtx lane_ctx_restore = lane_ctx(thin_lane_ctx);
+        
         // rjf: compute val
         B32 retry = 0;
-        AC_Artifact val = r->create(r->key, r->gen, r->last_requested_gen, &retry);
+        U64 gen = r->gen;
+        AC_Artifact val = r->create(r->key, r->cancel_signal, &retry, &gen);
+        
+        // rjf: restore wide lane ctx
+        lane_ctx(lane_ctx_restore);
         
         // rjf: retry? -> resubmit request
         if(retry)
@@ -508,7 +521,7 @@ ac_async_tick(void)
             {
               if(str8_match(n->key, r->key, 0))
               {
-                n->last_completed_gen = r->gen;
+                n->last_completed_gen = gen;
                 n->val = val;
                 ins_atomic_u64_dec_eval(&n->working_count);
                 ins_atomic_u64_inc_eval(&n->completion_count);

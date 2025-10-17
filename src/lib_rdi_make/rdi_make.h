@@ -325,19 +325,21 @@ X(Types,                       types)\
 X(UDTs,                        udts)\
 X(LineInfo,                    line_info)\
 X(InlineLineInfo,              inline_line_info)\
-X(GlobalVariableNameMap,       global_variable_name_map)\
-X(ThreadVariableNameMap,       thread_variable_name_map)\
-X(ProcedureNameMap,            procedure_name_map)\
-X(ConstantNameMap,             constant_name_map)\
-X(TypeNameMap,                 type_name_map)\
-X(LinkNameProcedureNameMap,    link_name_procedure_name_map)\
-X(NormalSourcePathNameMap,     normal_source_path_name_map)\
+Y(GlobalVariableNameMap,       global_variable_name_map)\
+Y(ThreadVariableNameMap,       thread_variable_name_map)\
+Y(ProcedureNameMap,            procedure_name_map)\
+Y(ConstantNameMap,             constant_name_map)\
+Y(TypeNameMap,                 type_name_map)\
+Y(LinkNameProcedureNameMap,    link_name_procedure_name_map)\
+Y(NormalSourcePathNameMap,     normal_source_path_name_map)\
 
 typedef enum RDIM_Subset
 {
 #define X(name, name_lower) RDIM_Subset_##name,
+#define Y(name, name_lower) RDIM_Subset_##name,
   RDIM_Subset_XList
 #undef X
+#undef Y
 }
 RDIM_Subset;
 
@@ -345,8 +347,15 @@ typedef U32 RDIM_SubsetFlags;
 enum
 {
 #define X(name, name_lower) RDIM_SubsetFlag_##name = (1<<RDIM_Subset_##name),
+#define Y(name, name_lower) RDIM_SubsetFlag_##name = (1<<RDIM_Subset_##name),
   RDIM_Subset_XList
 #undef X
+#undef Y
+#define X(name, name_lower)
+#define Y(name, name_lower) |RDIM_SubsetFlag_##name
+  RDIM_SubsetFlag_NameMaps = 0 RDIM_Subset_XList,
+#undef X
+#undef Y
   RDIM_SubsetFlag_All = 0xffffffffu,
 };
 
@@ -540,6 +549,8 @@ struct RDIM_SrcFile
   RDIM_SrcFileLineMapFragment *first_line_map_fragment;
   RDIM_SrcFileLineMapFragment *last_line_map_fragment;
   RDI_U64 total_line_count;
+  RDI_ChecksumKind checksum_kind;
+  RDIM_String8 checksum;
 };
 
 typedef struct RDIM_SrcFileChunkNode RDIM_SrcFileChunkNode;
@@ -994,6 +1005,7 @@ struct RDIM_ScopeChunkList
 typedef struct RDIM_BakeParams RDIM_BakeParams;
 struct RDIM_BakeParams
 {
+  RDIM_SubsetFlags subset_flags;
   RDIM_TopLevelInfo top_level_info;
   RDIM_BinarySectionList binary_sections;
   RDIM_UnitChunkList units;
@@ -1310,6 +1322,19 @@ struct RDIM_SrcFileBakeResult
   RDI_U64 source_line_map_voffs_count;
 };
 
+typedef struct RDIM_ChecksumBakeResult RDIM_ChecksumBakeResult;
+struct RDIM_ChecksumBakeResult
+{
+  RDI_MD5 *md5s;
+  RDI_U64 md5s_count;
+  RDI_SHA1 *sha1s;
+  RDI_U64 sha1s_count;
+  RDI_SHA256 *sha256s;
+  RDI_U64 sha256s_count;
+  RDI_U64 *timestamps;
+  RDI_U64 timestamps_count;
+};
+
 typedef struct RDIM_LineTableBakeResult RDIM_LineTableBakeResult;
 struct RDIM_LineTableBakeResult
 {
@@ -1464,6 +1489,7 @@ struct RDIM_BakeResults
   RDIM_UnitBakeResult units;
   RDIM_UnitVMapBakeResult unit_vmap;
   RDIM_SrcFileBakeResult src_files;
+  RDIM_ChecksumBakeResult checksums;
   RDIM_LineTableBakeResult line_tables;
   RDIM_TypeNodeBakeResult type_nodes;
   RDIM_UDTBakeResult udts;
@@ -1481,9 +1507,7 @@ struct RDIM_BakeResults
   RDIM_StringBakeResult strings;
   RDIM_IndexRunBakeResult idx_runs;
   RDIM_LocationBakeResult locations;
-  RDIM_LocationBlockBakeResult location_blocks2;
-  RDIM_String8 location_blocks;
-  RDIM_String8 location_data;
+  RDIM_LocationBlockBakeResult location_blocks;
 };
 
 ////////////////////////////////
@@ -1634,10 +1658,12 @@ RDI_PROC void rdim_inline_site_chunk_list_concat_in_place(RDIM_InlineSiteChunkLi
 //~ rjf: [Building] Location Info Building
 
 //- rjf: bytecode
-RDI_PROC void rdim_bytecode_push_op(RDIM_Arena *arena, RDIM_EvalBytecode *bytecode, RDI_EvalOp op, RDI_U64 p);
+RDI_PROC RDIM_EvalBytecodeOp * rdim_bytecode_push_op(RDIM_Arena *arena, RDIM_EvalBytecode *bytecode, RDI_EvalOp op, RDI_U64 p);
 RDI_PROC void rdim_bytecode_push_uconst(RDIM_Arena *arena, RDIM_EvalBytecode *bytecode, RDI_U64 x);
 RDI_PROC void rdim_bytecode_push_sconst(RDIM_Arena *arena, RDIM_EvalBytecode *bytecode, RDI_S64 x);
+RDI_PROC void rdim_bytecode_push_convert(RDIM_Arena *arena, RDIM_EvalBytecode *bytecode, RDI_EvalTypeGroup in, RDI_EvalTypeGroup out);
 RDI_PROC void rdim_bytecode_concat_in_place(RDIM_EvalBytecode *left_dst, RDIM_EvalBytecode *right_destroyed);
+RDI_PROC B32 rdim_is_bytecode_tls_dependent(RDIM_EvalBytecode bytecode);
 
 //- rjf: locations
 RDI_PROC RDI_U64 rdim_encoded_size_from_location_info(RDIM_LocationInfo *info);
@@ -1654,6 +1680,11 @@ RDI_PROC void rdim_scope_chunk_list_concat_in_place(RDIM_ScopeChunkList *dst, RD
 RDI_PROC void rdim_scope_push_voff_range(RDIM_Arena *arena, RDIM_ScopeChunkList *list, RDIM_Scope *scope, RDIM_Rng1U64 range);
 RDI_PROC RDIM_Local *rdim_scope_push_local(RDIM_Arena *arena, RDIM_ScopeChunkList *scopes, RDIM_Scope *scope);
 RDI_PROC RDIM_LocationCase *rdim_local_push_location_case(RDIM_Arena *arena, RDIM_ScopeChunkList *scopes, RDIM_Local *local, RDIM_Location *location, RDIM_Rng1U64 voff_range);
+
+////////////////////////////////
+//~ rjf: [Building] Bake Parameter Joining
+
+RDI_PROC void rdim_bake_params_concat_in_place(RDIM_BakeParams *dst, RDIM_BakeParams *src);
 
 ////////////////////////////////
 //~ rjf: [Baking Helpers] Deduplicated String Baking Map

@@ -70,6 +70,17 @@ struct D_PathMapArray
 };
 
 ////////////////////////////////
+//~ rjf: Trap Nets
+
+typedef struct D_TrapNet D_TrapNet;
+struct D_TrapNet
+{
+  CTRL_TrapList traps;
+  B32 good_line_info;
+  B32 good_read;
+};
+
+////////////////////////////////
 //~ rjf: Tick Output Types
 
 typedef enum D_EventKind
@@ -187,6 +198,7 @@ struct D_CmdParams
   U32 pid;
   U32 rgba;
   D_TargetArray targets;
+  U64 retry_idx;
 };
 
 typedef struct D_Cmd D_Cmd;
@@ -358,18 +370,15 @@ internal void d_cmd_list_push_new(Arena *arena, D_CmdList *cmds, D_CmdKind kind,
 ////////////////////////////////
 //~ rjf: Stepping "Trap Net" Builders
 
-internal CTRL_TrapList d_trap_net_from_thread__step_over_inst(Arena *arena, CTRL_Entity *thread);
-internal CTRL_TrapList d_trap_net_from_thread__step_over_line(Arena *arena, CTRL_Entity *thread);
-internal CTRL_TrapList d_trap_net_from_thread__step_into_line(Arena *arena, CTRL_Entity *thread);
+internal D_TrapNet d_trap_net_from_thread__step_over_inst(Arena *arena, CTRL_Entity *thread);
+internal D_TrapNet d_trap_net_from_thread__step_over_line(Arena *arena, CTRL_Entity *thread);
+internal D_TrapNet d_trap_net_from_thread__step_into_line(Arena *arena, CTRL_Entity *thread);
 
 ////////////////////////////////
 //~ rjf: Debug Info Lookups
 
-//- rjf: symbol -> voff lookups
-internal U64 d_voff_from_dbgi_key_symbol_name(DI_Key *dbgi_key, String8 symbol_name);
-
 //- rjf: voff -> line info
-internal D_LineList d_lines_from_dbgi_key_voff(Arena *arena, DI_Key *dbgi_key, U64 voff);
+internal D_LineList d_lines_from_dbgi_key_voff(Arena *arena, DI_Key dbgi_key, U64 voff);
 
 //- rjf: file:line -> line info
 // TODO(rjf): this depends on file path maps, needs to move
@@ -408,8 +417,8 @@ internal DI_KeyList d_push_active_dbgi_key_list(Arena *arena);
 internal U64 d_query_cached_rip_from_thread(CTRL_Entity *thread);
 internal U64 d_query_cached_rip_from_thread_unwind(CTRL_Entity *thread, U64 unwind_count);
 internal U64 d_query_cached_tls_base_vaddr_from_process_root_rip(CTRL_Entity *process, U64 root_vaddr, U64 rip_vaddr);
-internal E_String2NumMap *d_query_cached_locals_map_from_dbgi_key_voff(DI_Key *dbgi_key, U64 voff);
-internal E_String2NumMap *d_query_cached_member_map_from_dbgi_key_voff(DI_Key *dbgi_key, U64 voff);
+internal E_String2NumMap *d_query_cached_locals_map_from_dbgi_key_voff(DI_Key dbgi_key, U64 voff);
+internal E_String2NumMap *d_query_cached_member_map_from_dbgi_key_voff(DI_Key dbgi_key, U64 voff);
 
 //- rjf: top-level command dispatch
 internal void d_push_cmd(D_CmdKind kind, D_CmdParams *params);

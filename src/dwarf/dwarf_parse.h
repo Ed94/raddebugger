@@ -319,6 +319,118 @@ typedef struct DW_Reference
   U64          info_off;
 } DW_Reference;
 
+////////////////////////////////
+//~ Expression
+
+typedef union DW_ExprOperand
+{
+  U8  u8;
+  U16 u16;
+  U32 u32;
+  U64 u64;
+
+  S8  s8;
+  S16 s16;
+  S32 s32;
+  S64 s64;
+
+  String8 block;
+} DW_ExprOperand;
+
+typedef struct DW_ExprInst
+{
+  DW_ExprOp       opcode;
+  DW_ExprOperand *operands;
+  U64             size;
+  struct DW_ExprInst *next;
+  struct DW_ExprInst *prev;
+} DW_ExprInst;
+
+typedef struct DW_Expr
+{
+  U64          count;
+  DW_ExprInst *first;
+  DW_ExprInst *last;
+} DW_Expr;
+
+////////////////////////////////
+// .debug_frame
+
+typedef enum
+{
+  DW_DescriptorEntryType_Null,
+  DW_DescriptorEntryType_CIE,
+  DW_DescriptorEntryType_FDE
+} DW_DescriptorEntryType;
+
+typedef struct DW_DescriptorEntry
+{
+  DW_DescriptorEntryType type;
+  DW_Format              format;
+  Rng1U64                entry_range;
+} DW_DescriptorEntry;
+
+typedef struct DW_CIE
+{
+  String8   insts;
+  String8   aug_string;
+  String8   aug_data;
+  U64       code_align_factor;
+  S64       data_align_factor;
+  U64       ret_addr_reg;
+  DW_Format format;
+  U8        version;
+  U8        address_size;
+  U8        segment_selector_size;
+} DW_CIE;
+
+typedef struct DW_FDE
+{
+  DW_Format format;
+  U64       cie_pointer;
+  Rng1U64   pc_range;
+  String8   insts;
+} DW_FDE;
+
+typedef union DW_CFA_Operand
+{
+  U64     u64;
+  S64     s64;
+  String8 block;
+} DW_CFA_Operand;
+
+typedef enum
+{
+  DW_CFA_ParseErrorCode_NewInst,
+  DW_CFA_ParseErrorCode_End,
+  DW_CFA_ParseErrorCode_OutOfData
+} DW_CFA_ParseErrorCode;
+
+typedef struct DW_CFA_Inst
+{
+  DW_CFA_Opcode  opcode;
+  DW_CFA_Operand operands[DW_CFA_OperandMax];
+} DW_CFA_Inst;
+
+typedef struct DW_CFA_InstNode
+{
+  DW_CFA_Inst v;
+  struct DW_CFA_InstNode *next;
+} DW_CFA_InstNode;
+
+typedef struct DW_CFA_InstList
+{
+  U64              count;
+  DW_CFA_InstNode *first;
+  DW_CFA_InstNode *last;
+} DW_CFA_InstList;
+
+#define DW_DECODE_PTR(name) U64 name(String8 data, void *ud, U64 *ptr_out)
+typedef DW_DECODE_PTR(DW_DecodePtr);
+
+#define DW_CIE_FROM_OFFSET_FUNC(name) DW_CIE * name(void *ud, U64 offset)
+typedef DW_CIE_FROM_OFFSET_FUNC(DW_CIEFromOffsetFunc);
+
 // hasher
 
 internal U64 dw_hash_from_string(String8 string);
@@ -417,27 +529,8 @@ internal DW_TagNode * dw_tag_node_from_info_off(DW_CompUnit *cu, U64 info_off);
 
 // line info
 
-internal U64 dw_read_line_file(String8      line_data,
-                               U64          line_off,
-                               DW_Input    *input,
-                               DW_Version   unit_version,
-                               DW_Format    unit_format,
-                               DW_Ext       ext,
-                               U64          address_size,
-                               DW_ListUnit *str_offsets,
-                               U64          enc_count,
-                               U64         *enc_arr,
-                               DW_LineFile *line_file_out);
-internal U64 dw_read_line_vm_header(Arena           *arena,
-                                    String8          line_data,
-                                    U64              line_off,
-                                    DW_Input        *input,
-                                    String8          cu_dir,
-                                    String8          cu_name,
-                                    U8               cu_address_size,
-                                    DW_ListUnit     *cu_str_offsets,
-                                    DW_LineVMHeader *header_out);
-
+internal U64 dw_read_line_file(String8 line_data, U64 line_off, DW_Input *input, DW_Version unit_version, DW_Format unit_format, DW_Ext ext, U64 address_size, DW_ListUnit *str_offsets, U64 enc_count, U64 *enc_arr, DW_LineFile *line_file_out);
+internal U64 dw_read_line_vm_header(Arena *arena, String8 line_data, U64 line_off, DW_Input *input, String8 cu_dir, String8 cu_name, U8 cu_address_size, DW_ListUnit *cu_str_offsets, DW_LineVMHeader *header_out);
 internal void             dw_line_vm_reset(DW_LineVMState *state, B32 default_is_stmt);
 internal void             dw_line_vm_advance(DW_LineVMState *state, U64 advance, U64 min_inst_len, U64 max_ops_for_inst);
 internal DW_LineSeqNode * dw_push_line_seq(Arena* arena, DW_LineTableParseResult *parsed_tbl);
@@ -450,5 +543,23 @@ internal DW_LineTableParseResult dw_parsed_line_table_from_data(Arena *arena, St
 // helper for .debug_pubtypes and .debug_pubnames 
 
 internal DW_PubStringsTable dw_v4_pub_strings_table_from_section_kind(Arena *arena, DW_Input *input, DW_SectionKind section_kind);
+
+// expression
+
+internal DW_Expr dw_expr_from_data(Arena *arena, DW_Format format, U64 addr_size, String8 data);
+
+// debug frame
+
+internal void              dw_cfa_inst_list_push_node(DW_CFA_InstList *list, DW_CFA_InstNode *n);
+internal DW_CFA_InstNode * dw_cfa_inst_list_push(Arena *arena, DW_CFA_InstList *list, DW_CFA_Inst v);
+
+internal U64 dw_read_debug_frame_ptr(String8 data, DW_CIE *cie, U64 *ptr_out);
+
+internal U64 dw_parse_descriptor_entry_header(String8 data, U64 off, DW_DescriptorEntry *desc_out);
+internal B32 dw_parse_cie(String8 data, DW_Format format, Arch arch, DW_CIE *cie_out);
+internal B32 dw_parse_fde(String8 data, DW_Format format, DW_CIEFromOffsetFunc *cie_from_offset_func, void *cie_from_offset_ud, DW_FDE *fde_out);
+
+internal DW_CFA_ParseErrorCode dw_parse_cfa_inst(String8 data, U64 code_align_factor, S64 data_align_factor, DW_DecodePtr *decode_ptr_func, void *decode_ptr_ud, U64 *bytes_read_out, DW_CFA_Inst *inst_out);
+internal DW_CFA_InstList       dw_parse_cfa_inst_list(Arena *arena, String8 data, U64 code_align_factor, S64 data_align_factor, DW_DecodePtr *decode_ptr_func, void *decode_ptr_ud);
 
 #endif // DWARF_PARSE_H

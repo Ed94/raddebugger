@@ -5,17 +5,28 @@
 //~ rjf: Stringification Helpers
 
 internal String8
-dw_string_from_reg_off(Arena *arena, Arch arch, U64 reg_idx, S64 reg_off)
+dw_string_from_reg_off(Arena *arena, Arch arch, DW_Reg reg_idx, S64 reg_off)
 {
   Temp scratch = scratch_begin(&arena, 1);
   String8 reg_str = dw_string_from_register(scratch.arena, arch, reg_idx);
-  String8 result = push_str8f(arena, "%S%+lld", reg_str, reg_off);
+  String8 result;
+  if (reg_off != 0) {
+    result = push_str8f(arena, "%S%+lld", reg_str, reg_off);
+  } else {
+    result = reg_str;
+  }
   scratch_end(scratch);
   return result;
 }
 
+internal String8
+dw_string_from_reg(Arena *arena, Arch arch, DW_Reg reg_idx)
+{
+  return dw_string_from_reg_off(arena, arch, reg_idx, 0);
+}
+
 internal String8List
-dw_string_list_from_expression(Arena *arena, String8 raw_data, U64 cu_base, U64 address_size, Arch arch, DW_Version ver, DW_Ext ext, DW_Format format)
+dw_string_list_from_expression(Arena *arena, String8 raw_data, U64 cu_base, U64 addr_size, Arch arch, DW_Version ver, DW_Ext ext, DW_Format format)
 {
   Temp scratch = scratch_begin(&arena, 1);
   String8List result = {0};
@@ -66,7 +77,7 @@ dw_string_list_from_expression(Arena *arena, String8 raw_data, U64 cu_base, U64 
       
       case DW_ExprOp_Addr: {
         U64 addr = 0;
-        cursor += str8_deserial_read(raw_data, cursor, &addr, address_size, 1);
+        cursor += str8_deserial_read(raw_data, cursor, &addr, addr_size, 1);
         op_value = push_str8f(scratch.arena, "%#llx", addr);
       } break;
       
@@ -258,7 +269,7 @@ dw_string_list_from_expression(Arena *arena, String8 raw_data, U64 cu_base, U64 
         cursor += str8_deserial_read_uleb128(raw_data, cursor, &block_size);
         Rng1U64     block_range = rng_1u64(cursor, cursor + block_size);
         String8     block_data  = str8_substr(raw_data, block_range);
-        String8List block_expr  = dw_string_list_from_expression(scratch.arena, block_data, cu_base, address_size, arch, ver, ext, format);
+        String8List block_expr  = dw_string_list_from_expression(scratch.arena, block_data, cu_base, addr_size, arch, ver, ext, format);
         op_value = str8_list_join(scratch.arena, &block_expr, &(StringJoin){.pre = str8_lit("{ "), .sep = str8_lit(","), .post = str8_lit(" }")});
         cursor += block_size;
       } break;
@@ -316,6 +327,174 @@ dw_string_list_from_expression(Arena *arena, String8 raw_data, U64 cu_base, U64 
 }
 
 internal String8
+dw_string_from_expression(Arena *arena, String8 expr, U64 cu_base, U64 addr_size, Arch arch, DW_Version ver, DW_Ext ext, DW_Format format)
+{
+  Temp scratch = scratch_begin(&arena, 1);
+  String8List list = dw_string_list_from_expression(scratch.arena, expr, cu_base, addr_size, arch, ver, ext, format);
+  String8 result = str8_list_join(arena, &list, &(StringJoin){.sep=str8_lit(", ")});
+  return result;
+}
+
+internal String8List
+dw_string_list_from_cfi_program(Arena              *arena,
+                                U64                 cu_base,
+                                Arch                arch,
+                                DW_Version          ver,
+                                DW_Ext              ext,
+                                DW_Format           format,
+                                U64                 pc_begin,
+                                DW_CIE     *cie,
+                                DW_DecodePtr       *decode_ptr_func,
+                                void               *deocde_ptr_ud,
+                                String8             program)
+{
+  Temp scratch = scratch_begin(&arena, 1);
+  String8List list = {0};
+
+  U64 reg_max = dw_reg_count_from_arch(arch);
+  U64 pc = pc_begin;
+  for (U64 cursor = 0, inst_size; cursor < program.size; cursor += inst_size) {
+    // unpack instruction
+    DW_CFA_Inst            inst       = {0};
+    DW_CFA_ParseErrorCode error_code = dw_parse_cfa_inst(str8_skip(program, cursor), cie->code_align_factor, cie->data_align_factor, 0, 0, &inst_size, &inst);
+    if (error_code == DW_CFA_ParseErrorCode_End) { break; }
+    if (error_code != DW_CFA_ParseErrorCode_NewInst) {
+      str8_list_pushf(arena, &list, "ERROR: failed to unpack CFA instruction @ 0x%I64", cursor);
+      break;
+    }
+
+    // error check operands
+    DW_CFA_OperandType *operand_types = dw_operand_types_from_cfa_op(inst.opcode);
+    U64                operand_count = dw_operand_count_from_cfa_opcode(inst.opcode);
+    for EachIndex(operand_idx, operand_count) {
+      switch (operand_types[operand_idx]) {
+      case DW_CFA_OperandType_Null:  break;
+      case DW_CFA_OperandType_Value: break;
+      case DW_CFA_OperandType_Register: {
+        if (inst.operands[operand_idx].u64 >= reg_max) {
+          str8_list_pushf(arena, &list, "ERROR: DW_CFA_%S @ 0x%I64x has an invalid register",
+                          dw_string_from_cfa_opcode(inst.opcode),
+                          cursor);
+        }
+      } break;
+      case DW_CFA_OperandType_Expression: {
+        DW_Expr expr = dw_expr_from_data(scratch.arena, format, cie->address_size, inst.operands[operand_idx].block);
+        for EachNode(inst, DW_ExprInst, expr.first) {
+          if (dw_is_cfa_expr_opcode_invalid(inst->opcode)) {
+            String8 expr_opcode_str = dw_string_from_expr_op(scratch.arena, ver, ext, inst->opcode);
+            str8_list_pushf(arena, &list, "ERROR: Exrepssion in DW_CFA_%S @ 0x%I64x has an invalid opcode DW_ExprOp_%S", expr_opcode_str);
+          }
+        }
+      } break;
+      default: { InvalidPath; } break;
+      }
+    }
+
+    // format operands
+    String8 operand_str = str8_lit("???");
+    switch (inst.opcode) {
+    case DW_CFA_Nop: { operand_str = str8_zero(); } break;
+    case DW_CFA_SetLoc: {
+      operand_str = str8f(arena, "0x%X", inst.operands[0].u64);
+      pc = inst.operands[0].u64;
+    } break;
+    case DW_CFA_AdvanceLoc1: {
+      U64 delta = inst.operands[0].u64;
+      pc += delta;
+      operand_str = str8f(arena, "%+u `PC 0x%I64x`", delta, pc);
+    } break;
+    case DW_CFA_AdvanceLoc2: {
+      U64 delta = inst.operands[0].u64;
+      pc += delta;
+      operand_str = str8f(arena, "%+u `PC 0x%I64x`", delta, pc);
+    } break;
+    case DW_CFA_AdvanceLoc4: {
+      U64 delta = inst.operands[0].u64;
+      pc += delta;
+      operand_str = str8f(arena, "%+u `PC 0x%I64x`", delta, pc);
+    } break;
+    case DW_CFA_OffsetExt: {
+      U64 reg    = inst.operands[0].u64;
+      S64 offset = (S64)inst.operands[1].u64;
+      operand_str = dw_string_from_reg_off(arena, arch, reg, offset);
+    } break;
+    case DW_CFA_RestoreExt: { operand_str = str8_zero(); } break;
+    case DW_CFA_Undefined: {
+      operand_str = str8f(arena, "%I64u", inst.operands[0].u64);
+    } break;
+    case DW_CFA_SameValue: {
+      operand_str = dw_string_from_reg_off(arena, arch, inst.operands[0].u64, 0);
+    } break;
+    case DW_CFA_Register: {
+      operand_str = dw_string_from_reg_off(arena, arch, inst.operands[0].u64, inst.operands[1].u64);
+    } break;
+    case DW_CFA_RememberState: { operand_str = str8_zero(); } break;
+    case DW_CFA_RestoreState:  { operand_str = str8_zero(); } break;
+    case DW_CFA_DefCfa: {
+      operand_str = dw_string_from_reg_off(arena, arch, inst.operands[0].u64, inst.operands[1].u64);
+    } break;
+    case DW_CFA_DefCfaRegister: {
+      operand_str = dw_string_from_reg_off(arena, arch, inst.operands[0].u64, 0);
+    } break;
+    case DW_CFA_DefCfaOffset: {
+      operand_str = str8f(arena, "+%I64u", inst.operands[0].u64);
+    } break;
+    case DW_CFA_DefCfaExpr: {
+      operand_str = dw_string_from_expression(arena, inst.operands[0].block, cu_base, cie->address_size, arch, ver, ext, format);
+    } break;
+    case DW_CFA_Expr: {
+      String8 reg_str  = dw_string_from_reg_off(scratch.arena, arch, inst.operands[0].u64, 0);
+      String8 expr_str = dw_string_from_expression(scratch.arena, inst.operands[1].block, cu_base, cie->address_size, arch, ver, ext, format);
+      operand_str = str8f(arena, "%S expression %S", reg_str, expr_str);
+    } break;
+    case DW_CFA_OffsetExtSf: {
+      operand_str = dw_string_from_reg_off(arena, arch, inst.operands[0].u64, inst.operands[1].s64);
+    } break;
+    case DW_CFA_DefCfaSf: {
+      operand_str = dw_string_from_reg_off(arena, arch, inst.operands[0].u64, inst.operands[1].s64);
+    } break;
+    case DW_CFA_DefCfaOffsetSf: { operand_str = str8_zero(); } break;
+    case DW_CFA_ValOffset: {
+      operand_str = str8f(arena, "value 0x%llx, offset %+I64d", inst.operands[0].u64, inst.operands[1].u64);
+    } break;
+    case DW_CFA_ValOffsetSf: {
+      operand_str = str8f(arena, "value %llu, offset %+I64d", inst.operands[0].u64, inst.operands[1].s64);
+    } break;
+    case DW_CFA_ValExpr: {
+      String8 expr_str = dw_string_from_expression(scratch.arena, inst.operands[1].block, cu_base, cie->address_size, arch, ver, ext, format);
+      operand_str = str8f(arena, "value +%I64u, expression %S", inst.operands[0].u64, expr_str);
+    } break;
+    case DW_CFA_AdvanceLoc: {
+      U64 delta = inst.operands[0].u64;
+      pc += delta;
+      operand_str = str8f(arena, "+%I64u `PC 0x%I64x`", delta, pc);
+    } break;
+    case DW_CFA_Offset: {
+      U64 reg    = inst.operands[0].u64;
+      S64 offset = (S64)inst.operands[1].u64;
+      operand_str = dw_string_from_reg_off(arena, arch, reg, offset);
+    } break;
+    case DW_CFA_Restore: {
+      operand_str = dw_string_from_reg_off(arena, arch, inst.operands[0].u64, 0);
+    } break;
+    default: {
+      str8_list_pushf(arena, &list, "ERROR: unknown CFA opcode 0x%I64u", inst.opcode);
+    } goto exit;
+    }
+
+    if (operand_str.size) {
+      str8_list_pushf(arena, &list, "DW_CFA_%S: %S", dw_string_from_cfa_opcode(inst.opcode), operand_str);
+    } else {
+      str8_list_pushf(arena, &list, "DW_CFA_%S", dw_string_from_cfa_opcode(inst.opcode));
+    }
+  }
+
+exit:;
+  scratch_end(scratch);
+  return list;
+}
+
+internal String8
 dw_single_line_string_from_expression(Arena *arena, String8 raw_data, U64 cu_base, U64 address_size, Arch arch, DW_Version ver, DW_Ext ext, DW_Format format)
 {
   Temp        scratch    = scratch_begin(&arena, 1);
@@ -327,234 +506,43 @@ dw_single_line_string_from_expression(Arena *arena, String8 raw_data, U64 cu_bas
 
 #if 0
 
-internal void
-dw_string_from_cfi_program(Arena *arena, String8List *out, String8 indent, String8 raw_data, DW_CIEUnpacked *cie, DW_EhPtrCtx *ptr_ctx, Arch arch, DW_Version ver, DW_Ext ext, DW_Format format)
-{
-  Temp scratch = scratch_begin(&arena, 1);
-  
-  U64 address_bit_size = bit_size_from_arch(arch);
-  U64 address_size     = address_bit_size / 8;
-  
-  for (U64 cursor = 0; cursor < raw_data.size; /* empty */) {
-    DW_CFA opcode = 0;
-    cursor += str8_deserial_read_struct(raw_data, cursor, &opcode);
-    
-    U64 operand = 0;
-    if ((opcode & DW_CFAMask_OpcodeHi) != 0) {
-      operand = opcode & DW_CFAMask_Operand;
-      opcode  = opcode & DW_CFAMask_OpcodeHi;
-    }
-    
-    switch (opcode) {
-      case DW_CFA_Nop: {
-        rd_printf("DW_CFA_nop");
-      } break;
-      case DW_CFA_SetLoc: {
-        U64 address = 0;
-        switch (arch) {
-          case Arch_x64: cursor += dw_unwind_parse_pointer_x64(raw_data.str, rng_1u64(0,raw_data.size), ptr_ctx, cie->addr_encoding, cursor, &address); break;
-          
-          default: NotImplemented; break;
-        }
-        rd_printf("DW_CFA_set_loc: %#llx", address);
-      } break;
-      case DW_CFA_AdvanceLoc1: {
-        U8 delta = 0;
-        cursor += str8_deserial_read_struct(raw_data, cursor, &delta);
-        
-        rd_printf("DW_CFA_advance_loc1: %+u", delta * cie->code_align_factor);
-      } break;
-      case DW_CFA_AdvanceLoc2: {
-        U16 delta = 0;
-        cursor += str8_deserial_read_struct(raw_data, cursor, &delta);
-        
-        rd_printf("DW_CFA_advance_loc2: %+u", delta * cie->code_align_factor);
-      } break;
-      case DW_CFA_AdvanceLoc4: {
-        U32 delta = 0;
-        cursor += str8_deserial_read_struct(raw_data, cursor, &delta);
-        
-        rd_printf("DW_CFA_advance_loc4: %+u", delta * cie->code_align_factor);
-      } break;
-      case DW_CFA_OffsetExt: {
-        U64 reg_idx = 0, reg_off = 0;
-        cursor += str8_deserial_read_uleb128(raw_data, cursor, &reg_idx);
-        cursor += str8_deserial_read_uleb128(raw_data, cursor, &reg_off);
-        
-        rd_printf("DW_CFA_offset_extended: %S register %llu (%S), offset %+llu", 
-                  dw_string_from_reg_off(scratch.arena, arch, reg_idx, (S64)reg_off * cie->data_align_factor));
-      } break;
-      case DW_CFA_RestoreExt: {
-        rd_printf("DW_CFA_restore_extended");
-      } break;
-      case DW_CFA_Undefined: {
-        U64 reg = 0;
-        cursor += str8_deserial_read_uleb128(raw_data, cursor, &reg);
-        
-        rd_printf("DW_CFA_undefined: %llu", reg);
-      } break;
-      case DW_CFA_SameValue: {
-        U64 reg = 0;
-        cursor += str8_deserial_read_uleb128(raw_data, cursor, &reg);
-        
-        rd_printf("DW_CFA_same_value: %S", dw_string_from_register(scratch.arena, arch, reg));
-      } break;
-      case DW_CFA_Register: {
-        U64 reg_idx = 0, reg_off = 0;
-        cursor += str8_deserial_read_uleb128(raw_data, cursor, &reg_idx);
-        cursor += str8_deserial_read_uleb128(raw_data, cursor, &reg_off);
-        
-        rd_printf("DW_CFA_register: %S", dw_string_from_reg_off(scratch.arena, arch, reg_idx, reg_off));
-      } break;
-      case DW_CFA_RememberState: {
-        rd_printf("DW_CFA_remember_state");
-      } break;
-      case DW_CFA_RestoreState: {
-        rd_printf("DW_CFA_restore_state");
-      } break;
-      case DW_CFA_DefCfa: {
-        U64 reg_idx = 0, reg_off = 0;
-        cursor += str8_deserial_read_uleb128(raw_data, cursor, &reg_idx);
-        cursor += str8_deserial_read_uleb128(raw_data, cursor, &reg_off);
-        
-        rd_printf("DW_CFA_def_cfa: %S", dw_string_from_reg_off(scratch.arena, arch, reg_idx, reg_off));
-      } break;
-      case DW_CFA_DefCfaRegister: {
-        U64 reg = 0;
-        cursor += str8_deserial_read_uleb128(raw_data, cursor, &reg);
-        
-        rd_printf("DW_CFA_register: %llu (%S)", 
-                  reg, 
-                  dw_string_from_register(arena, arch, reg));
-      } break;
-      case DW_CFA_DefCfaOffset: {
-        U64 offset = 0;
-        cursor += str8_deserial_read_uleb128(raw_data, cursor, &offset);
-        
-        rd_printf("DW_CFA_def_cfa_offset: %llu", offset);
-      } break;
-      case DW_CFA_DefCfaExpr: {
-        U64 block_size = 0;
-        cursor += str8_deserial_read_uleb128(raw_data, cursor, &block_size);
-        String8 raw_expr = str8_substr(raw_data, rng_1u64(cursor, cursor + block_size));
-        cursor += block_size;
-        
-        rd_printf("DW_CFA_def_cfa_expression: %S",
-                  dw_single_line_string_from_expression(scratch.arena, raw_expr, 0, address_size, arch, ver, ext, format));
-      } break;
-      case DW_CFA_Expr: {
-        U64 reg = 0, block_size = 0;
-        cursor += str8_deserial_read_uleb128(raw_data, cursor, &reg);
-        cursor += str8_deserial_read_uleb128(raw_data, cursor, &block_size);
-        String8 raw_expr = str8_substr(raw_data, rng_1u64(cursor, cursor + block_size));
-        cursor += block_size;
-        
-        rd_printf("DW_CFA_expression: %S, expression %S", 
-                  dw_string_from_register(scratch.arena, arch, reg), 
-                  dw_single_line_string_from_expression(scratch.arena, raw_expr, 0, address_size, arch, ver, ext, format));
-      } break;
-      case DW_CFA_OffsetExtSf: {
-        U64 reg_idx = 0;
-        S64 reg_off = 0;
-        cursor += str8_deserial_read_uleb128(raw_data, cursor, &reg_idx);
-        cursor += str8_deserial_read_sleb128(raw_data, cursor, &reg_off);
-        
-        rd_printf("DW_CFA_offset_ext_sf: %S", dw_string_from_reg_off(scratch.arena, arch, reg_idx, reg_off * cie->data_align_factor));
-      } break;
-      case DW_CFA_DefCfaSf: {
-        U64 reg_idx = 0;
-        S64 reg_off = 0;
-        cursor += str8_deserial_read_uleb128(raw_data, cursor, &reg_idx);
-        cursor += str8_deserial_read_sleb128(raw_data, cursor, &reg_off);
-        
-        rd_printf("DW_CFA_def_cfa_sf: %S", dw_string_from_reg_off(scratch.arena, arch, reg_idx, reg_off * cie->data_align_factor));
-      } break;
-      case DW_CFA_ValOffset: {
-        U64 val = 0, offset = 0;
-        cursor += str8_deserial_read_uleb128(raw_data, cursor, &val);
-        cursor += str8_deserial_read_uleb128(raw_data, cursor, &offset);
-        
-        rd_printf("DW_CFA_val_offset: value %llu, offset %+llu", val, offset);
-      } break;
-      case DW_CFA_ValOffsetSf: {
-        U64 val    = 0;
-        S64 offset = 0;
-        cursor += str8_deserial_read_uleb128(raw_data, cursor, &val);
-        cursor += str8_deserial_read_sleb128(raw_data, cursor, &offset);
-        
-        rd_printf("DW_CFA_val_offset_sf: value %llu, offset %+lld", val, offset);
-      } break;
-      case DW_CFA_ValExpr: {
-        U64 val        = 0;
-        U64 block_size = 0;
-        cursor += str8_deserial_read_uleb128(raw_data, cursor, &val);
-        cursor += str8_deserial_read_uleb128(raw_data, cursor, &block_size);
-        String8 raw_expr = str8_substr(raw_data, rng_1u64(cursor, cursor + block_size));
-        cursor += block_size;
-        
-        rd_printf("DW_CFA_val_expr: value %+llu, expression %S",
-                  val,
-                  dw_single_line_string_from_expression(scratch.arena, raw_expr, 0, address_size, arch, ver, ext, format));
-      } break;
-      case DW_CFA_AdvanceLoc: {
-        rd_printf("DW_CFA_advance_loc: %+llu", operand);
-      } break;
-      case DW_CFA_Offset: {
-        U64 offset = 0;
-        cursor += str8_deserial_read_uleb128(raw_data, cursor, &offset);
-        S64 v = (S64)offset * cie->data_align_factor;
-        
-        rd_printf("DW_CFA_offset: %S", dw_string_from_reg_off(scratch.arena, arch, operand, v));
-      } break;
-      case DW_CFA_Restore: {
-        rd_printf("DW_CFA_restore: %S", operand, dw_string_from_register(scratch.arena, arch, operand));
-      } break;
-      default: {
-        rd_errorf("unknown CFI opcode %u", opcode);
-      } break;
-    }
-  }
-  
-  scratch_end(scratch);
-}
-
 internal String8
-dw_string_from_eh_ptr_enc(Arena *arena, DW_EhPtrEnc enc)
+w_string_from_eh_ptr_enc(Arena *arena, EH_PtrEnc enc)
 {
-  U8 type = enc & DW_EhPtrEnc_TypeMask;
+  U8 type = enc & EH_PtrEnc_TypeMask;
   String8 type_str = str8_lit("NULL");
   switch (type) {
-    case DW_EhPtrEnc_Ptr:     type_str = str8_lit("PTR");      break;
-    case DW_EhPtrEnc_ULEB128: type_str = str8_lit("ULEB128");  break;
-    case DW_EhPtrEnc_UData2:  type_str = str8_lit("UDATA2");   break;
-    case DW_EhPtrEnc_UData4:  type_str = str8_lit("UDATA4");   break;
-    case DW_EhPtrEnc_UData8:  type_str = str8_lit("UDATA8");   break;
-    case DW_EhPtrEnc_Signed:  type_str = str8_lit("SIGNED");   break;
-    case DW_EhPtrEnc_SLEB128: type_str = str8_lit("SLEB128");  break;
-    case DW_EhPtrEnc_SData2:  type_str = str8_lit("SDATA2");   break;
-    case DW_EhPtrEnc_SData4:  type_str = str8_lit("SDATA4");   break;
-    case DW_EhPtrEnc_SData8:  type_str = str8_lit("SDATA8");   break;
+    case EH_PtrEnc_Ptr:     type_str = str8_lit("PTR");      break;
+    case EH_PtrEnc_ULEB128: type_str = str8_lit("ULEB128");  break;
+    case EH_PtrEnc_UData2:  type_str = str8_lit("UDATA2");   break;
+    case EH_PtrEnc_UData4:  type_str = str8_lit("UDATA4");   break;
+    case EH_PtrEnc_UData8:  type_str = str8_lit("UDATA8");   break;
+    case EH_PtrEnc_Signed:  type_str = str8_lit("SIGNED");   break;
+    case EH_PtrEnc_SLEB128: type_str = str8_lit("SLEB128");  break;
+    case EH_PtrEnc_SData2:  type_str = str8_lit("SDATA2");   break;
+    case EH_PtrEnc_SData4:  type_str = str8_lit("SDATA4");   break;
+    case EH_PtrEnc_SData8:  type_str = str8_lit("SDATA8");   break;
   }
-  U8 modifier = enc & DW_EhPtrEnc_ModifyMask;
+  U8 modifier = enc & EH_PtrEnc_ModifyMask;
   String8 modifier_str = str8_lit("NULL");
   switch (modifier) {
-    case DW_EhPtrEnc_PcRel:   modifier_str = str8_lit("PCREL");   break;
-    case DW_EhPtrEnc_TextRel: modifier_str = str8_lit("TEXTREL"); break;
-    case DW_EhPtrEnc_DataRel: modifier_str = str8_lit("DATAREL"); break;
-    case DW_EhPtrEnc_FuncRel: modifier_str = str8_lit("FUNCREL"); break;
+    case EH_PtrEnc_PcRel:   modifier_str = str8_lit("PCREL");   break;
+    case EH_PtrEnc_TextRel: modifier_str = str8_lit("TEXTREL"); break;
+    case EH_PtrEnc_DataRel: modifier_str = str8_lit("DATAREL"); break;
+    case EH_PtrEnc_FuncRel: modifier_str = str8_lit("FUNCREL"); break;
   }
   String8 indir_str = str8_lit("");
-  if (enc & DW_EhPtrEnc_Indirect) {
+  if (enc & EH_PtrEnc_Indirect) {
     indir_str = str8_lit("(INDIRECT)");
   }
   return push_str8f(arena, "Type: %S, Modifier: %S %S", type_str, modifier_str, indir_str);
 }
 
 internal void
-dw_print_eh_frame(Arena *arena, String8List *out, String8 indent, String8 raw_eh_frame, Arch arch, DW_Version ver, DW_Ext ext, DW_EhPtrCtx *ptr_ctx)
+dw_print_eh_frame(Arena *arena, String8List *out, String8 indent, String8 raw_eh_frame, Arch arch, DW_Version ver, DW_Ext ext, EH_PtrCtx *ptr_ctx)
 {
   Temp scratch = scratch_begin(&arena, 1);
-  DW_CIEUnpacked cie = {0};
+  DW_CIE cie = {0};
   
   for (U64 cursor = 0; cursor < raw_eh_frame.size; ) {
     U64 header_offset = cursor;
@@ -572,7 +560,7 @@ dw_print_eh_frame(Arena *arena, String8List *out, String8 indent, String8 raw_eh
     U32 entry_id = 0; // always 4-bytes, even when length is encoded as 64-bit integer
     cursor += str8_deserial_read_struct(raw_eh_frame, cursor, &entry_id);
     
-    // TODO: fix the freaking DW_EhPtrEnc_PCREL encoding.
+    // TODO: fix the freaking EH_PtrEnc_PCREL encoding.
     // it assumes "frame_base" points to the first byte of .eh_frame
     // but here base is start of ELF and we use range to select .eh_frame
     // bytes to read, which breaks parsing.
@@ -597,7 +585,7 @@ dw_print_eh_frame(Arena *arena, String8List *out, String8 indent, String8 raw_eh
     }
     // FDE
     else {
-      DW_FDEUnpacked fde = {0};
+      DW_FDE fde = {0};
       dw_unwind_parse_fde_x64(raw_eh_frame.str, rng_1u64(0,raw_eh_frame.size), ptr_ctx, &cie, 0, &fde);
       cfi_range = fde.cfi_range;
       
@@ -1548,8 +1536,155 @@ dw_print_debug_str_offsets(Arena *arena, String8List *out, String8 indent, DW_In
 ////////////////////////////////
 //~ rjf: Dump Entry Point
 
+internal String8
+dw_string_from_attrib_value(Arena *arena, DW_Input *input, Arch arch, DW_CompUnit *unit, DW_LineVMHeader *line_vm, DW_Attrib *attrib)
+{
+  Temp scratch = scratch_begin(&arena, 1);
+
+  String8List attrib_fmt = {0};
+  
+  // rjf: log attrib's value based on vlass
+  DW_AttribClass value_class = dw_value_class_from_attrib(unit, attrib);
+  switch(value_class)
+  {
+    default:                       {str8_list_pushf(scratch.arena, &attrib_fmt, "`unknown value class`");}break;
+    case DW_AttribClass_Undefined: {str8_list_pushf(scratch.arena, &attrib_fmt, "`undefined value class`");}break;
+    case DW_AttribClass_Address:   {str8_list_pushf(scratch.arena, &attrib_fmt, "0x%I64x", dw_address_from_attrib(input, unit, attrib));}break;
+    case DW_AttribClass_Const:     {str8_list_pushf(scratch.arena, &attrib_fmt, "0x%I64x", dw_const_u64_from_attrib(input, unit, attrib));}break;
+    case DW_AttribClass_Block:
+    {
+      String8 block = dw_block_from_attrib(input, unit, attrib);
+      String8List block_strs = numeric_str8_list_from_data(scratch.arena, 16, block, 1);
+      String8 block_str = str8_list_join(scratch.arena, &block_strs, &(StringJoin){.sep = str8_lit(", ")});
+      str8_list_pushf(scratch.arena, &attrib_fmt, "{ %S }", block_str);
+    }break;
+    case DW_AttribClass_ExprLoc:
+    {
+      String8 exprloc = dw_exprloc_from_attrib(input, unit, attrib);
+      String8 exprloc_str = dw_single_line_string_from_expression(scratch.arena, exprloc, unit->info_range.min, unit->address_size, arch, unit->version, unit->ext, unit->format);
+      str8_list_pushf(scratch.arena, &attrib_fmt, "{ %S }", exprloc_str);
+    }break;
+    case DW_AttribClass_Flag:
+    {
+      B32 flag = dw_flag_from_attrib(input, unit, attrib);
+      str8_list_pushf(scratch.arena, &attrib_fmt, "%llu (%s)", flag, flag == 0 ? "false" : "true");
+    }break;
+    case DW_AttribClass_LinePtr:
+    case DW_AttribClass_LocListPtr:
+    case DW_AttribClass_MacPtr:
+    case DW_AttribClass_RngListPtr:
+    case DW_AttribClass_RngList:
+    case DW_AttribClass_StrOffsetsPtr:
+    case DW_AttribClass_AddrPtr:
+    {
+      if(attrib->form_kind == DW_Form_SecOffset)
+      {
+        str8_list_pushf(scratch.arena, &attrib_fmt, "0x%I64x", attrib->form.sec_offset);
+      }
+      else
+      {
+        str8_list_pushf(scratch.arena, &attrib_fmt, "`unexpected form kind %S`", dw_string_from_form_kind(scratch.arena, unit->version, attrib->form_kind));
+      }
+    }break;
+    case DW_AttribClass_Reference:
+    {
+      if(attrib->form_kind == DW_Form_Ref1 ||
+         attrib->form_kind == DW_Form_Ref2 ||
+         attrib->form_kind == DW_Form_Ref4 ||
+         attrib->form_kind == DW_Form_Ref8 ||
+         attrib->form_kind == DW_Form_RefUData)
+      {
+        U64 info_off = unit->info_range.min + attrib->form.ref;
+        str8_list_pushf(scratch.arena, &attrib_fmt, "0x%I64x", info_off);
+        if(!contains_1u64(unit->info_range, info_off))
+        {
+          str8_list_pushf(scratch.arena, &attrib_fmt, ": `(out of this unit's bounds)`");
+        }
+      }
+      else
+      {
+        str8_list_pushf(scratch.arena, &attrib_fmt, "0x%I64x", attrib->form.ref);
+      }
+    }break;
+    case DW_AttribClass_String:
+    {
+      if(attrib->form_kind == DW_Form_Strp || attrib->form_kind == DW_Form_LineStrp || attrib->form_kind == DW_Form_StrpSup)
+      {
+        str8_list_pushf(scratch.arena, &attrib_fmt, "0x%I64x ", attrib->form.sec_offset);
+      }
+      String8 string = dw_string_from_attrib(input, unit, attrib);
+      str8_list_pushf(scratch.arena, &attrib_fmt, "\"%S\"", string);
+    }break;
+  }
+  
+  // rjf: extend attrib's value with enum info
+  {
+    String8 enum_info = {0};
+    switch(attrib->attrib_kind)
+    {
+      case DW_AttribKind_Language:
+      {
+        DW_Language lang = dw_const_u64_from_attrib(input, unit, attrib);
+        enum_info = dw_string_from_language(scratch.arena, lang);
+      }break;
+      case DW_AttribKind_DeclFile:
+      {
+        U64          file_idx = dw_const_u64_from_attrib(input, unit, attrib);
+        DW_LineFile *file     = dw_file_from_attrib(unit, line_vm, attrib);
+        if(file != 0)
+        {
+          enum_info = dw_path_from_file(scratch.arena, line_vm, file);
+        }
+      }break;
+      case DW_AttribKind_DeclLine:
+      {
+        enum_info = str8f(scratch.arena, "%I64u", dw_const_u64_from_attrib(input, unit, attrib));
+      }break;
+      case DW_AttribKind_Inline:
+      {
+        DW_InlKind inl = dw_const_u64_from_attrib(input, unit, attrib);
+        enum_info = dw_string_from_inl(scratch.arena, inl);
+      }break;
+      case DW_AttribKind_Accessibility:
+      {
+        DW_AccessKind access = dw_const_u64_from_attrib(input, unit, attrib);
+        enum_info = dw_string_from_access_kind(scratch.arena, access);
+      }break;
+      case DW_AttribKind_CallingConvention:
+      {
+        DW_CallingConventionKind calling_convetion = dw_const_u64_from_attrib(input, unit, attrib);
+        enum_info = dw_string_from_calling_convetion(scratch.arena, calling_convetion);
+      }break;
+      case DW_AttribKind_Encoding:
+      {
+        DW_ATE encoding = dw_const_u64_from_attrib(input, unit, attrib);
+        enum_info = dw_string_from_attrib_type_encoding(scratch.arena, encoding);
+      }break;
+    }
+
+    if(enum_info.size)
+    {
+      str8_list_pushf(scratch.arena, &attrib_fmt, " `%S`", enum_info);
+    }
+  }
+  
+  String8 result = str8_list_join(arena, &attrib_fmt, 0);
+
+  scratch_end(scratch);
+  return result;
+}
+
+internal
+DW_CIE_FROM_OFFSET_FUNC(dwarf_dump_cie_from_offset)
+{
+  return hash_table_search_u64_raw(ud, offset);
+}
+
 internal String8List
-dw_dump_list_from_sections(Arena *arena, DW_Input *input, Arch arch, DW_DumpSubsetFlags subset_flags)
+dw_dump_list_from_sections(Arena              *arena,
+                           DW_Input           *input,
+                           Arch                arch,
+                           DW_DumpSubsetFlags  subset_flags)
 {
   String8List strings = {0};
   String8 indent = str8_lit("                                                                                                                                ");
@@ -1559,39 +1694,50 @@ dw_dump_list_from_sections(Arena *arena, DW_Input *input, Arch arch, DW_DumpSubs
   Temp scratch = scratch_begin(&arena, 1);
   Rng1U64Array segment_vranges = {0};
   DW_ListUnitInput lu_input = dw_list_unit_input_from_input(scratch.arena, input);
-  Rng1U64List unit_ranges_list = dw_unit_ranges_from_data(scratch.arena, input->sec[DW_Section_Info].data);
-  Rng1U64Array unit_ranges = rng1u64_array_from_list(scratch.arena, &unit_ranges_list);
   B32 relaxed  = 1;
+
+  DW_CompUnit *cu_arr;
+  {
+    DW_ListUnitInput  lu_input      = dw_list_unit_input_from_input(scratch.arena, input);
+    Rng1U64List       cu_range_list = dw_unit_ranges_from_data(scratch.arena, input->sec[DW_Section_Info].data);
+    Rng1U64Array      cu_ranges     = rng1u64_array_from_list(scratch.arena, &cu_range_list);
+    cu_arr = push_array(scratch.arena, DW_CompUnit, cu_ranges.count);
+    for EachIndex(cu_idx, cu_ranges.count)
+    {
+      cu_arr[cu_idx] = dw_cu_from_info_off(scratch.arena, input, lu_input, cu_ranges.v[cu_idx].min, relaxed);
+    }
+  }
   
   //////////////////////////////
   //- rjf: dump .debug_info
   //
   DumpSubset(DebugInfo)
-  {
+  { Rng1U64List  unit_ranges_list = dw_unit_ranges_from_data(scratch.arena, input->sec[DW_Section_Info].data);
+    Rng1U64Array unit_ranges = rng1u64_array_from_list(scratch.arena, &unit_ranges_list);
     for EachIndex(unit_idx, unit_ranges.count)
     {
       Temp unit_temp = temp_begin(scratch.arena);
       
       //- rjf: unpack unit
       Rng1U64 unit_range = unit_ranges.v[unit_idx];
-      DW_CompUnit unit  = dw_cu_from_info_off(unit_temp.arena, input, lu_input, unit_range.min, relaxed);
-      String8 unit_dir  = dw_string_from_tag_attrib_kind(input, &unit, unit.tag, DW_AttribKind_CompDir );
-      String8 unit_name = dw_string_from_tag_attrib_kind(input, &unit, unit.tag, DW_AttribKind_Name    );
-      String8 stmt_list = dw_line_ptr_from_tag_attrib_kind(input, &unit, unit.tag, DW_AttribKind_StmtList);
+      DW_CompUnit *unit  = &cu_arr[unit_idx];
+      String8 unit_dir  = dw_string_from_tag_attrib_kind(input, unit, unit->tag, DW_AttribKind_CompDir );
+      String8 unit_name = dw_string_from_tag_attrib_kind(input, unit, unit->tag, DW_AttribKind_Name    );
+      String8 stmt_list = dw_line_ptr_from_tag_attrib_kind(input, unit, unit->tag, DW_AttribKind_StmtList);
       DW_LineVMHeader line_vm   = {0};
-      dw_read_line_vm_header(unit_temp.arena, stmt_list, 0, input, unit_dir, unit_name, unit.address_size, unit.str_offsets_lu, &line_vm);
+      dw_read_line_vm_header(unit_temp.arena, stmt_list, 0, input, unit_dir, unit_name, unit->address_size, unit->str_offsets_lu, &line_vm);
       
       //- rjf: log top-level unit info
       dumpf("unit: // compile_unit[%I64u]\n{\n", unit_idx);
-      dumpf("  version:         %u\n",        unit.version);
-      dumpf("  address_size:    %I64u\n",     unit.address_size);
-      dumpf("  abbrev_off:      0x%I64x\n",   unit.abbrev_off);
-      dumpf("  info_range:      [0x%I64x, 0x%I64x) // (%M)\n", unit.info_range.min, unit.info_range.max, dim_1u64(unit.info_range));
+      dumpf("  version:         %u\n",        unit->version);
+      dumpf("  address_size:    %I64u\n",     unit->address_size);
+      dumpf("  abbrev_off:      0x%I64x\n",   unit->abbrev_off);
+      dumpf("  info_range:      [0x%I64x, 0x%I64x) // (%M)\n", unit->info_range.min, unit->info_range.max, dim_1u64(unit->info_range));
       
       //- rjf: log tags
       S64 tag_depth = 0;
       U64 tag_idx = 0;
-      for(U64 info_off = unit.first_tag_info_off; info_off < unit.info_range.max; tag_idx += 1)
+      for(U64 info_off = unit->first_tag_info_off; info_off < unit->info_range.max; tag_idx += 1)
       {
         Temp tag_temp = temp_begin(scratch.arena);
         
@@ -1599,152 +1745,46 @@ dw_dump_list_from_sections(Arena *arena, DW_Input *input, Arch arch, DW_DumpSubs
         String8 tag_indent = str8_prefix(indent, (tag_depth+1)*2);
         U64 tag_info_off = info_off;
         DW_Tag tag = {0};
-        info_off += dw_read_tag_cu(tag_temp.arena, input, &unit, tag_info_off, &tag);
+        info_off += dw_read_tag_cu(tag_temp.arena, input, unit, tag_info_off, &tag);
         
         // rjf: log top-level tag info
-        dumpf("%Stag: // compile_unit[%I64u].tag[%I64u]\n%S{\n", tag_indent, unit_idx, tag_idx, tag_indent);
-        dumpf("%S  kind:      %S\n", tag_indent, dw_string_from_tag_kind(tag_temp.arena, tag.kind));
-        dumpf("%S  info_off:  0x%I64x\n", tag_indent, tag_info_off);
-        dumpf("%S  abbrev_id: %I64u\n", tag_indent, tag.abbrev_id);
+        dumpf("%Stag: // info_off: 0x%I64x, abbrev_id: %I64u, compile_unit[%I64u].tag[%I64u]\n%S{\n", tag_indent, tag_info_off, tag.abbrev_id, unit_idx, tag_idx, tag_indent);
+        dumpf("%S  kind: %S\n", tag_indent, dw_string_from_tag_kind(tag_temp.arena, tag.kind));
         
-        // rjf: log attribs
-        for(DW_AttribNode *attrib_n = tag.attribs.first;
-            attrib_n != 0;
-            attrib_n = attrib_n->next)
+        // log attribs
         {
-          Temp attrib_temp = temp_begin(tag_temp.arena);
-          DW_Attrib *attrib = &attrib_n->v;
-          
-          // rjf: log attrib begin
-          dumpf("%S  attrib: {");
-          
-          // rjf: log basic info
-          dumpf(" off: 0x%I64x", attrib->info_off);
-          dumpf(", kind: %S", dw_string_from_attrib_kind(attrib_temp.arena, unit.version, unit.ext, attrib->attrib_kind));
-          dumpf(", form_kind: %S", dw_string_from_form_kind(attrib_temp.arena, unit.version, attrib->form_kind));
-          
-          // rjf: log attrib's value based on vlass
-          dumpf(", ");
-          DW_AttribClass value_class = dw_value_class_from_attrib(&unit, attrib);
-          switch(value_class)
+          // compute columns' max widths
+          U64 attrib_name_max_size = 0, form_kind_max_size = 0, value_max_size = 0;
+          for EachNode(attrib_n, DW_AttribNode, tag.attribs.first)
           {
-            default:                       {dumpf("`unknown value class`");}break;
-            case DW_AttribClass_Undefined: {dumpf("`undefined value class`");}break;
-            case DW_AttribClass_Address:   {dumpf("0x%I64x", dw_address_from_attrib(input, &unit, attrib));}break;
-            case DW_AttribClass_Const:     {dumpf("0x%I64x", dw_const_u64_from_attrib(input, &unit, attrib));}break;
-            case DW_AttribClass_Block:
-            {
-              String8 block = dw_block_from_attrib(input, &unit, attrib);
-              String8List block_strs = numeric_str8_list_from_data(attrib_temp.arena, 16, block, 1);
-              String8 block_str = str8_list_join(attrib_temp.arena, &block_strs, &(StringJoin){.sep = str8_lit(", ")});
-              dump(block_str);
-            }break;
-            case DW_AttribClass_ExprLoc:
-            {
-              String8 exprloc = dw_exprloc_from_attrib(input, &unit, attrib);
-              String8 exprloc_str = dw_single_line_string_from_expression(attrib_temp.arena, exprloc, unit_range.min, unit.address_size, arch, unit.version, unit.ext, unit.format);
-              dump(exprloc_str);
-            }break;
-            case DW_AttribClass_Flag:
-            {
-              B32 flag = dw_flag_from_attrib(input, &unit, attrib);
-              dumpf("%llu: %s", flag, flag == 0 ? "false" : "true");
-            }break;
-            case DW_AttribClass_LinePtr:
-            case DW_AttribClass_LocListPtr:
-            case DW_AttribClass_MacPtr:
-            case DW_AttribClass_RngListPtr:
-            case DW_AttribClass_RngList:
-            case DW_AttribClass_StrOffsetsPtr:
-            case DW_AttribClass_AddrPtr:
-            {
-              if(attrib->form_kind == DW_Form_SecOffset)
-              {
-                dumpf("0x%I64x", attrib->form.sec_offset);
-              }
-              else
-              {
-                dumpf("`unexpected form kind %S`", dw_string_from_form_kind(attrib_temp.arena, unit.version, attrib->form_kind));
-              }
-            }break;
-            case DW_AttribClass_Reference:
-            {
-              if(attrib->form_kind == DW_Form_Ref1 ||
-                 attrib->form_kind == DW_Form_Ref2 ||
-                 attrib->form_kind == DW_Form_Ref4 ||
-                 attrib->form_kind == DW_Form_Ref8 ||
-                 attrib->form_kind == DW_Form_RefUData)
-              {
-                U64 info_off = unit.info_range.min + attrib->form.ref;
-                dumpf("0x%I64x", info_off);
-                if(!contains_1u64(unit.info_range, attrib->form.ref))
-                {
-                  dumpf(": `(out of this unit's bounds)`");
-                }
-              }
-              else
-              {
-                dumpf("0x%I64x", attrib->form.ref);
-              }
-            }break;
-            case DW_AttribClass_String:
-            {
-              if(attrib->form_kind == DW_Form_Strp)
-              {
-                dumpf("0x%I64x", attrib->form.sec_offset);
-              }
-              String8 string = dw_string_from_attrib(input, &unit, attrib);
-              dumpf(": \"%S\"", string);
-            }break;
+            Temp attrib_temp = temp_begin(tag_temp.arena);
+            attrib_name_max_size = Max(attrib_name_max_size, dw_string_from_attrib_kind(attrib_temp.arena, unit->version, unit->ext, attrib_n->v.attrib_kind).size);
+            form_kind_max_size   = Max(form_kind_max_size, dw_string_from_form_kind(attrib_temp.arena, unit->version, attrib_n->v.form_kind).size);
+            value_max_size       = Max(value_max_size, dw_string_from_attrib_value(attrib_temp.arena, input, arch, unit, &line_vm, &attrib_n->v).size);
+            temp_end(attrib_temp);
           }
-          
-          // rjf: extend attrib's value with enum info
-          switch(attrib->attrib_kind)
+          value_max_size = Min(120, value_max_size);
+
+          // log
+          for EachNode(attrib_n, DW_AttribNode, tag.attribs.first)
           {
-            case DW_AttribKind_Language:
-            {
-              DW_Language lang = dw_const_u64_from_attrib(input, &unit, attrib);
-              dumpf(": %S", dw_string_from_language(attrib_temp.arena, lang));
-            }break;
-            case DW_AttribKind_DeclFile:
-            {
-              U64          file_idx = dw_const_u64_from_attrib(input, &unit, attrib);
-              DW_LineFile *file     = dw_file_from_attrib(&unit, &line_vm, attrib);
-              if(file != 0)
-              {
-                dumpf(": %S", dw_path_from_file(attrib_temp.arena, &line_vm, file));
-              }
-            }break;
-            case DW_AttribKind_DeclLine:
-            {
-              dumpf(": %I64u", dw_const_u64_from_attrib(input, &unit, attrib));
-            }break;
-            case DW_AttribKind_Inline:
-            {
-              DW_InlKind inl = dw_const_u64_from_attrib(input, &unit, attrib);
-              dumpf(": %S", dw_string_from_inl(attrib_temp.arena, inl));
-            }break;
-            case DW_AttribKind_Accessibility:
-            {
-              DW_AccessKind access = dw_const_u64_from_attrib(input, &unit, attrib);
-              dumpf(": %S", dw_string_from_access_kind(attrib_temp.arena, access));
-            }break;
-            case DW_AttribKind_CallingConvention:
-            {
-              DW_CallingConventionKind calling_convetion = dw_const_u64_from_attrib(input, &unit, attrib);
-              dumpf(": %S", dw_string_from_calling_convetion(attrib_temp.arena, calling_convetion));
-            }break;
-            case DW_AttribKind_Encoding:
-            {
-              DW_ATE encoding = dw_const_u64_from_attrib(input, &unit, attrib);
-              dumpf(": %S", dw_string_from_attrib_type_encoding(attrib_temp.arena, encoding));
-            }break;
+            DW_Attrib *attrib = &attrib_n->v;
+
+            Temp attrib_temp = temp_begin(tag_temp.arena);
+
+            String8 attrib_kind_str = dw_string_from_attrib_kind(attrib_temp.arena, unit->version, unit->ext, attrib->attrib_kind);
+            String8 form_kind_str   = dw_string_from_form_kind(attrib_temp.arena, unit->version, attrib->form_kind);
+            String8 value_str       = dw_string_from_attrib_value(attrib_temp.arena, input, arch, unit, &line_vm, attrib);
+
+            dumpf("%S  attrib: { kind: %S, %.*sform_kind: %S, %.*svalue: %S, %.*s} // info_off: 0x%I64x\n",
+                tag_indent,
+                attrib_kind_str, attrib_name_max_size - attrib_kind_str.size, indent.str,
+                form_kind_str,   form_kind_max_size - form_kind_str.size, indent.str,
+                value_str,       value_str.size < value_max_size ? value_max_size - value_str.size: 0, indent.str,
+                attrib->info_off, unit_idx, tag_idx);
+
+            temp_end(attrib_temp);
           }
-          
-          // rjf: log attrib end
-          dumpf(" }\n");
-          
-          temp_end(attrib_temp);
         }
         
         // rjf: log tag closes
@@ -1758,7 +1798,7 @@ dw_dump_list_from_sections(Arena *arena, DW_Input *input, Arch arch, DW_DumpSubs
         {
           tag_depth += 1;
         }
-        if(tag.abbrev_id)
+        if(!tag.abbrev_id)
         {
           tag_depth -= 1;
         }
@@ -1822,17 +1862,20 @@ dw_dump_list_from_sections(Arena *arena, DW_Input *input, Arch arch, DW_DumpSubs
   //
   DumpSubset(DebugLine)
   {
+    Rng1U64List  unit_ranges_list = dw_unit_ranges_from_data(scratch.arena, input->sec[DW_Section_Line].data);
+    Rng1U64Array unit_ranges = rng1u64_array_from_list(scratch.arena, &unit_ranges_list);
     for EachIndex(unit_idx, unit_ranges.count)
     {
       Temp unit_temp = temp_begin(scratch.arena);
       
       // rjf: unpack unit
-      String8         unit_data      = str8_substr(input->sec[DW_Section_Line].data, unit_ranges.v[unit_idx]);
-      String8         cu_dir         = {0};
-      String8         cu_name        = {0};
-      DW_ListUnit     cu_str_offsets = {0};
+      String8      raw_lines    = str8_substr(input->sec[DW_Section_Line].data, unit_ranges.v[unit_idx]);
+      DW_CompUnit *cu           = &cu_arr[unit_idx];
+      String8      cu_stmt_list = dw_line_ptr_from_tag_attrib_kind(input, cu, cu->tag, DW_AttribKind_StmtList);
+      String8      cu_dir       = dw_string_from_tag_attrib_kind(input, cu, cu->tag, DW_AttribKind_CompDir);
+      String8      cu_name      = dw_string_from_tag_attrib_kind(input, cu, cu->tag, DW_AttribKind_Name);
       DW_LineVMHeader line_vm        = {0};
-      U64             line_vm_size   = dw_read_line_vm_header(unit_temp.arena, unit_data, 0, input, cu_dir, cu_name, line_vm.address_size, &cu_str_offsets, &line_vm);
+      U64             line_vm_size   = dw_read_line_vm_header(unit_temp.arena, raw_lines, 0, input, cu_dir, cu_name, cu->address_size, cu->str_offsets_lu, &line_vm);
       if(line_vm_size == 0)
       {
         continue;
@@ -1892,7 +1935,7 @@ dw_dump_list_from_sections(Arena *arena, DW_Input *input, Arch arch, DW_DumpSubs
       // rjf: log opcodes
       DeferLoop(dumpf("  opcodes:\n  {\n"), dumpf("  }\n\n"))
       {
-        String8        opcodes    = str8_skip(unit_data, line_vm_size);
+        String8        opcodes    = str8_skip(raw_lines, line_vm_size);
         B32            end_of_seq = 0;
         DW_LineVMState vm_state   = {0};
         dw_line_vm_reset(&vm_state, line_vm.default_is_stmt);
@@ -2098,6 +2141,148 @@ dw_dump_list_from_sections(Arena *arena, DW_Input *input, Arch arch, DW_DumpSubs
       String8 string = {0};
       read_size = str8_deserial_read_cstr(data, cursor, &string);
       dumpf("  { 0x%08I64x  %llu  \"%S\" }\n", cursor, string.size, string);
+    }
+  }
+
+  //////////////////////////////
+  //~ dump .debug_frame
+  DumpSubset(DebugFrame)
+  {
+    HashTable *cie_ht = hash_table_init(scratch.arena, 0x2000);
+    String8   debug_frame = input->sec[DW_Section_Frame].data;
+    U64       addr_size   = byte_size_from_arch(arch);
+
+    // make offset -> CIE hash table
+    for (U64 cursor = 0, desc_size; cursor < debug_frame.size; cursor += desc_size) {
+      DW_DescriptorEntry desc = {0};
+      desc_size = dw_parse_descriptor_entry_header(debug_frame, cursor, &desc);
+      if (desc.type == DW_DescriptorEntryType_CIE) {
+        String8         raw_cie     = str8_substr(debug_frame, desc.entry_range);
+        U64             restore_pos = arena_pos(scratch.arena);
+        DW_CIE *cie         = push_array(scratch.arena, DW_CIE, 1);
+        if (dw_parse_cie(raw_cie, desc.format, arch, cie)) {
+          hash_table_push_u64_raw(scratch.arena, cie_ht, cursor, cie);
+        } else {
+          arena_pop_to(scratch.arena, restore_pos);
+        }
+      }
+    }
+    
+    for (U64 cursor = 0, desc_size; cursor < debug_frame.size; cursor += desc_size) {
+      DW_DescriptorEntry desc = {0};
+      desc_size = dw_parse_descriptor_entry_header(debug_frame, cursor, &desc);
+      String8 raw_desc  = str8_substr(debug_frame, desc.entry_range);
+      switch (desc.type) {
+      case DW_DescriptorEntryType_Null: {} break;
+      case DW_DescriptorEntryType_CIE: {
+        DW_CIE cie = {0};
+        if (dw_parse_cie(raw_desc, desc.format, arch, &cie)) {
+          String8List init_insts_str_list = dw_string_list_from_cfi_program(scratch.arena, 0, arch, DW_Version_5, DW_Ext_All, cie.format, 0, &cie, dw_decode_ptr_debug_frame, &cie, cie.insts);
+
+          dumpf("CIE: // entry range: %r\n", desc.entry_range);
+          dumpf("{\n");
+          dumpf("  Format:          %S\n",    dw_string_from_format(desc.format));
+          dumpf("  Version:         %u\n",    cie.version);
+          dumpf("  Aug string:      %S\n",    cie.aug_string.size ? cie.aug_string : str8_lit("None"));
+          dumpf("  Code align:      %I64u\n", cie.code_align_factor);
+          dumpf("  Data align:      %I64d\n", cie.data_align_factor);
+          dumpf("  Return addr reg: %u\n",    cie.ret_addr_reg);
+          if (cie.version > DW_Version_3) {
+            dumpf("  Address size:          %u\n", cie.address_size);
+            dumpf("  Segment selector size: %u\n", cie.segment_selector_size);
+          }
+          dumpf("  Initial Insturction:\n");
+          dumpf("  {\n");
+          for EachNode(n, String8Node, init_insts_str_list.first) { dumpf("    %S\n", n->string); }
+          dumpf("  }\n");
+          dumpf("}\n");
+        } else {
+          dumpf("ERROR: unable to parse CIE @ %I64x\n", desc.entry_range.min);
+        }
+      } break;
+      case DW_DescriptorEntryType_FDE: {
+        DW_FDE fde = {0};
+        if (dw_parse_fde(raw_desc, desc.format, dwarf_dump_cie_from_offset, cie_ht, &fde)) {
+          DW_Version version = DW_Version_5;
+          DW_Ext ext = DW_Ext_All;
+
+          DW_CIE *cie = hash_table_search_u64_raw(cie_ht, fde.cie_pointer);
+          String8List insts_str_list = dw_string_list_from_cfi_program(scratch.arena, 0, arch, version, ext, fde.format, fde.pc_range.min, cie, dw_decode_ptr_debug_frame, cie, fde.insts);
+
+          dumpf("FDE: // entry range: %r\n", desc.entry_range, dw_string_from_format(fde.format), fde.cie_pointer, fde.pc_range);
+          dumpf("{\n");
+          {
+            dumpf("  Format:      %S\n",      dw_string_from_format(fde.format));
+            dumpf("  CIE pointer: 0x%I64x\n", fde.cie_pointer);
+            dumpf("  PC range:    %r\n",      fde.pc_range);
+            dumpf("  Instructions:\n");
+            dumpf("  {\n");
+            for EachNode(n, String8Node, insts_str_list.first) { dumpf("    %S\n", n->string); }
+            dumpf("  }\n");
+          }
+
+          dumpf("  Unwind:\n");
+          dumpf("  {\n");
+          DW_CFI_Unwind *cfi_unwind = dw_cfi_unwind_init(scratch.arena, arch, cie, &fde, dw_decode_ptr_debug_frame, cie);
+          do {
+            String8 cfa_str = str8_lit("???");
+            DW_CFA cfa = cfi_unwind->row->cfa;
+            switch (cfa.rule) {
+            case DW_CFA_Rule_Null: {} break;
+            case DW_CFA_Rule_RegOff:     { cfa_str = dw_string_from_reg_off(scratch.arena, arch, cfa.reg, cfa.off); } break;
+            case DW_CFA_Rule_Expression: { cfa_str = dw_string_from_expression(scratch.arena, cfa.expr, max_U64, cie->address_size, arch, version, ext, fde.format); } break;
+            default: { InvalidPath; } break;
+            }
+
+            String8 cfi_regs_str = {0};
+            {
+              String8List cfi_regs_list = {0};
+              for EachIndex(reg_idx, cfi_unwind->reg_count) {
+                DW_CFI_Register *cfi_reg = &cfi_unwind->row->regs[reg_idx];
+                String8 rule_str = str8_lit("???");
+                switch (cfi_reg->rule) {
+                case DW_CFI_RegisterRule_Undefined: {
+                  rule_str = str8f(scratch.arena, "Undefined(%S)", dw_string_from_reg(scratch.arena, arch, cfi_reg->n));
+                } break;
+                case DW_CFI_RegisterRule_SameValue: {
+                  rule_str = str8_zero();
+                } break;
+                case DW_CFI_RegisterRule_Offset: {
+                  rule_str = str8f(scratch.arena, "[CFA%+I64d]", cfi_reg->n);
+                } break;
+                case DW_CFI_RegisterRule_ValOffset: {
+                  rule_str = str8f(scratch.arena, "Val(CFA%+I64d)", cfi_reg->n);
+                } break;
+                case DW_CFI_RegisterRule_Expression: {
+                  rule_str = str8f(scratch.arena, "Expression(%S)", dw_string_from_expression(scratch.arena, cfi_reg->expr, max_U64, cie->address_size, arch, version, ext, fde.format));
+                } break;
+                case DW_CFI_RegisterRule_ValExpression: {
+                  rule_str = str8f(scratch.arena, "ValExpression(%S)", dw_string_from_expression(scratch.arena, cfi_reg->expr, max_U64, cie->address_size, arch, version, ext, fde.format));
+                } break;
+                case DW_CFI_RegisterRule_Architectural: {
+                  rule_str = str8_lit("???");
+                } break;
+                default: { InvalidPath; } break;
+                }
+
+                if (rule_str.size) {
+                  str8_list_pushf(scratch.arena, &cfi_regs_list, "%S: %S", dw_string_from_reg(scratch.arena, arch, reg_idx), rule_str);
+                }
+              }
+
+              cfi_regs_str = str8_list_join(scratch.arena, &cfi_regs_list, &(StringJoin){.sep=str8_lit(", ")});
+            }
+
+            dumpf("    { PC: 0x%I64x, CFA: %-7S, Rules: { %S }\n", cfi_unwind->pc, cfa_str, cfi_regs_str);
+          } while (dw_cfi_next_row(scratch.arena, cfi_unwind));
+          dumpf("  }\n");
+
+          dumpf("}\n");
+        } else {
+          dumpf("ERROR: unable to parse FDE @ %I64x\n", desc.entry_range.min);
+        }
+      } break;
+      }
     }
   }
   

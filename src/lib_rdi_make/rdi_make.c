@@ -941,7 +941,7 @@ rdim_inline_site_chunk_list_concat_in_place(RDIM_InlineSiteChunkList *dst, RDIM_
 
 //- rjf: bytecode
 
-RDI_PROC void
+RDI_PROC RDIM_EvalBytecodeOp *
 rdim_bytecode_push_op(RDIM_Arena *arena, RDIM_EvalBytecode *bytecode, RDI_EvalOp op, RDI_U64 p)
 {
   RDI_U16 ctrlbits = rdi_eval_op_ctrlbits_table[op];
@@ -955,6 +955,8 @@ rdim_bytecode_push_op(RDIM_Arena *arena, RDIM_EvalBytecode *bytecode, RDI_EvalOp
   RDIM_SLLQueuePush(bytecode->first_op, bytecode->last_op, node);
   bytecode->op_count += 1;
   bytecode->encoded_size += 1 + p_size;
+  
+  return node;
 }
 
 RDI_PROC void
@@ -1003,6 +1005,12 @@ rdim_bytecode_push_sconst(RDIM_Arena *arena, RDIM_EvalBytecode *bytecode, RDI_S6
 }
 
 RDI_PROC void
+rdim_bytecode_push_convert(RDIM_Arena *arena, RDIM_EvalBytecode *bytecode, RDI_EvalTypeGroup in, RDI_EvalTypeGroup out)
+{
+  rdim_bytecode_push_op(arena, bytecode, RDI_EvalOp_Convert, (U16)(in) | ((U16)(out) << 8));
+}
+
+RDI_PROC void
 rdim_bytecode_concat_in_place(RDIM_EvalBytecode *left_dst, RDIM_EvalBytecode *right_destroyed)
 {
   if(right_destroyed->first_op != 0)
@@ -1020,6 +1028,21 @@ rdim_bytecode_concat_in_place(RDIM_EvalBytecode *left_dst, RDIM_EvalBytecode *ri
     }
     rdim_memzero_struct(right_destroyed);
   }
+}
+
+RDI_PROC B32
+rdim_is_bytecode_tls_dependent(RDIM_EvalBytecode bytecode)
+{
+  B32 result = 0;
+  for(RDIM_EvalBytecodeOp *n = bytecode.first_op; n != 0; n = n->next)
+  {
+    if(n->op == RDI_EvalOp_TLSOff)
+    {
+      result = 1;
+      break;
+    }
+  }
+  return result;
 }
 
 //- rjf: locations
@@ -1146,6 +1169,90 @@ RDI_PROC RDIM_LocationCase *
 rdim_local_push_location_case(RDIM_Arena *arena, RDIM_ScopeChunkList *scopes, RDIM_Local *local, RDIM_Location *location, RDIM_Rng1U64 voff_range)
 {
   return rdim_push_location_case(arena, scopes, &local->location_cases, location, voff_range);
+}
+
+////////////////////////////////
+//~ rjf: [Building] Bake Parameter Joining
+
+RDI_PROC void
+rdim_bake_params_concat_in_place(RDIM_BakeParams *dst, RDIM_BakeParams *src)
+{
+  // rjf: join top-level info (deduplicate - throw away conflicts)
+  {
+    dst->subset_flags |= src->subset_flags;
+    if(dst->top_level_info.arch == RDI_Arch_NULL)
+    {
+      dst->top_level_info.arch = src->top_level_info.arch;
+    }
+    if(dst->top_level_info.exe_name.size == 0)
+    {
+      dst->top_level_info.exe_name = src->top_level_info.exe_name;
+    }
+    if(dst->top_level_info.exe_hash == 0)
+    {
+      dst->top_level_info.exe_hash = src->top_level_info.exe_hash;
+    }
+    if(dst->top_level_info.voff_max == 0)
+    {
+      dst->top_level_info.voff_max = src->top_level_info.voff_max;
+    }
+    if(dst->top_level_info.producer_name.size == 0)
+    {
+      dst->top_level_info.producer_name = src->top_level_info.producer_name;
+    }
+  }
+  
+  // rjf: join binary sections (deduplicate)
+  {
+    RDIM_Temp scratch = rdim_scratch_begin(0, 0);
+    RDI_U64 slots_count = 256;
+    RDIM_BinarySectionNode **slots = rdim_push_array(scratch.arena, RDIM_BinarySectionNode *, slots_count);
+    for(RDIM_BinarySectionNode *n = dst->binary_sections.first; n != 0; n = n->next)
+    {
+      RDIM_BinarySectionNode *hash_node = rdim_push_array(scratch.arena, RDIM_BinarySectionNode, 1);
+      RDI_U64 hash = rdi_hash(n->v.name.str, n->v.name.size);
+      RDI_U64 slot_idx = hash%slots_count;
+      RDIM_SLLStackPush(slots[slot_idx], hash_node);
+      hash_node->v = n->v;
+    }
+    for(RDIM_BinarySectionNode *n = src->binary_sections.first, *next = 0; n != 0; n = next)
+    {
+      next = n->next;
+      RDI_U64 hash = rdi_hash(n->v.name.str, n->v.name.size);
+      RDI_U64 slot_idx = hash%slots_count;
+      RDI_S32 is_duplicate = 0;
+      for(RDIM_BinarySectionNode *hash_n = slots[slot_idx]; hash_n != 0; hash_n = hash_n->next)
+      {
+        if(rdim_str8_match(hash_n->v.name, n->v.name, 0))
+        {
+          is_duplicate = 1;
+          break;
+        }
+      }
+      if(!is_duplicate)
+      {
+        RDIM_SLLQueuePush(dst->binary_sections.first, dst->binary_sections.last, n);
+        dst->binary_sections.count += 1;
+      }
+    }
+    rdim_scratch_end(scratch);
+  }
+  
+  // rjf: join non-top-level chunk lists
+  {
+    rdim_unit_chunk_list_concat_in_place(&dst->units, &src->units);
+    rdim_type_chunk_list_concat_in_place(&dst->types, &src->types);
+    rdim_udt_chunk_list_concat_in_place(&dst->udts, &src->udts);
+    rdim_src_file_chunk_list_concat_in_place(&dst->src_files, &src->src_files);
+    rdim_line_table_chunk_list_concat_in_place(&dst->line_tables, &src->line_tables);
+    rdim_location_chunk_list_concat_in_place(&dst->locations, &src->locations);
+    rdim_symbol_chunk_list_concat_in_place(&dst->global_variables, &src->global_variables);
+    rdim_symbol_chunk_list_concat_in_place(&dst->thread_variables, &src->thread_variables);
+    rdim_symbol_chunk_list_concat_in_place(&dst->constants, &src->constants);
+    rdim_symbol_chunk_list_concat_in_place(&dst->procedures, &src->procedures);
+    rdim_scope_chunk_list_concat_in_place(&dst->scopes, &src->scopes);
+    rdim_inline_site_chunk_list_concat_in_place(&dst->inline_sites, &src->inline_sites);
+  }
 }
 
 ////////////////////////////////
@@ -2022,15 +2129,13 @@ rdim_serialized_section_bundle_from_bake_results(RDIM_BakeResults *results)
   bundle.sections[RDI_SectionKind_ScopeVMap]            = rdim_serialized_section_make_unpacked_array(results->scope_vmap.vmap.vmap, results->scope_vmap.vmap.count);
   bundle.sections[RDI_SectionKind_InlineSites]          = rdim_serialized_section_make_unpacked_array(results->inline_sites.inline_sites, results->inline_sites.inline_sites_count);
   bundle.sections[RDI_SectionKind_Locals]               = rdim_serialized_section_make_unpacked_array(results->scopes.locals, results->scopes.locals_count);
-  bundle.sections[RDI_SectionKind_LocationBlocks]       = rdim_serialized_section_make_unpacked_array(results->location_blocks.str, results->location_blocks.size);
-  bundle.sections[RDI_SectionKind_LocationData]         = rdim_serialized_section_make_unpacked_array(results->location_data.str, results->location_data.size);
-  if(results->location_blocks.size == 0)
-  {
-    bundle.sections[RDI_SectionKind_LocationBlocks]       = rdim_serialized_section_make_unpacked_array(results->location_blocks2.location_blocks, results->location_blocks2.location_blocks_count);
-    bundle.sections[RDI_SectionKind_LocationData]         = rdim_serialized_section_make_unpacked_array(results->locations.location_data, results->locations.location_data_size);
-  }
+  bundle.sections[RDI_SectionKind_LocationBlocks]       = rdim_serialized_section_make_unpacked_array(results->location_blocks.location_blocks, results->location_blocks.location_blocks_count);
+  bundle.sections[RDI_SectionKind_LocationData]         = rdim_serialized_section_make_unpacked_array(results->locations.location_data, results->locations.location_data_size);
   bundle.sections[RDI_SectionKind_ConstantValueData]    = rdim_serialized_section_make_unpacked_array(results->constants.constant_value_data, results->constants.constant_value_data_size);
   bundle.sections[RDI_SectionKind_ConstantValueTable]   = rdim_serialized_section_make_unpacked_array(results->constants.constant_values, results->constants.constant_values_count);
+  bundle.sections[RDI_SectionKind_MD5Checksums]         = rdim_serialized_section_make_unpacked_array(results->checksums.md5s, results->checksums.md5s_count);
+  bundle.sections[RDI_SectionKind_SHA1Checksums]        = rdim_serialized_section_make_unpacked_array(results->checksums.sha1s, results->checksums.sha1s_count);
+  bundle.sections[RDI_SectionKind_SHA256Checksums]      = rdim_serialized_section_make_unpacked_array(results->checksums.sha256s, results->checksums.sha256s_count);
   bundle.sections[RDI_SectionKind_NameMaps]             = rdim_serialized_section_make_unpacked_array(results->top_level_name_maps.name_maps, results->top_level_name_maps.name_maps_count);
   bundle.sections[RDI_SectionKind_NameMapBuckets]       = rdim_serialized_section_make_unpacked_array(results->name_maps.buckets, results->name_maps.buckets_count);
   bundle.sections[RDI_SectionKind_NameMapNodes]         = rdim_serialized_section_make_unpacked_array(results->name_maps.nodes, results->name_maps.nodes_count);

@@ -8,6 +8,7 @@
 
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include <memory>
 #if !_WIN32
 # define RADDBG_MARKUP_STUBS
@@ -523,6 +524,20 @@ type_coverage_eval_tests(void)
   
   Has_Enums has_enums = {(Kind)4, (Flag)7};
   
+  struct EnumBitfields
+  {
+    Kind k1 : 4;
+    Kind k2 : 3;
+    Kind k3 : 1;
+    Kind k4 : 16;
+  };
+  
+  EnumBitfields enum_bitfields = {};
+  enum_bitfields.k1 = Kind_First;
+  enum_bitfields.k2 = Kind_Second;
+  enum_bitfields.k3 = Kind_None;
+  enum_bitfields.k4 = Kind_Fourth;
+  
   Crazy_Union crazy_union = {};
   
   crazy_union.kind = Kind_First;
@@ -554,6 +569,20 @@ type_coverage_eval_tests(void)
   discriminated_union.fourth.flags = (Flag)7;
   
   Linked_List list = {&list, &list, 0};
+  
+  struct SLLNode
+  {
+    SLLNode *next;
+    SLLNode *the_real_next_ptr;
+    int x;
+  };
+  SLLNode node6 = {0, 0, 6};
+  SLLNode node5 = {0, &node6, 5};
+  SLLNode node4 = {0, &node5, 4};
+  SLLNode node3 = {0, &node4, 3};
+  SLLNode node2 = {0, &node3, 2};
+  SLLNode node1 = {0, &node2, 1};
+  raddbg_pin(list(node1, the_real_next_ptr));
   
   Alias1 a1 = has_enums.kind;
   Alias2 a2 = has_enums.flags;
@@ -634,6 +663,13 @@ type_coverage_eval_tests(void)
   int_vector.push_back(5);
   int_vector.push_back(6);
   int_vector.push_back(7);
+  
+  std::unordered_map<std::string, int> people =
+  {
+    {"Peter", 1},
+    {"Oliver", 2},
+    {"Jack", 3},
+  };
   
   std::vector<int> *pint_vector = &int_vector;
   std::vector<int> &rint_vector =  int_vector;

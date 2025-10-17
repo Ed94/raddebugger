@@ -10,7 +10,7 @@
 #ifndef RDI_C
 #define RDI_C
 
-RDI_U16 rdi_section_element_size_table[40] =
+RDI_U16 rdi_section_element_size_table[44] =
 {
 sizeof(RDI_U8),
 sizeof(RDI_TopLevelInfo),
@@ -48,13 +48,17 @@ sizeof(RDI_LocationBlock),
 sizeof(RDI_U8),
 sizeof(RDI_U8),
 sizeof(RDI_U32),
+sizeof(RDI_MD5),
+sizeof(RDI_SHA1),
+sizeof(RDI_SHA256),
+sizeof(RDI_U64),
 sizeof(RDI_NameMap),
 sizeof(RDI_NameMapBucket),
 sizeof(RDI_NameMapNode),
 sizeof(RDI_U8),
 };
 
-RDI_U16 rdi_eval_op_ctrlbits_table[52] =
+RDI_U16 rdi_eval_op_ctrlbits_table[53] =
 {
 RDI_EVAL_CTRLBITS(0, 0, 0),
 RDI_EVAL_CTRLBITS(0, 0, 0),
@@ -81,8 +85,8 @@ RDI_EVAL_CTRLBITS(1, 2, 1),
 RDI_EVAL_CTRLBITS(1, 2, 1),
 RDI_EVAL_CTRLBITS(1, 2, 1),
 RDI_EVAL_CTRLBITS(1, 2, 1),
-RDI_EVAL_CTRLBITS(1, 2, 1),
-RDI_EVAL_CTRLBITS(1, 2, 1),
+RDI_EVAL_CTRLBITS(2, 2, 1),
+RDI_EVAL_CTRLBITS(2, 2, 1),
 RDI_EVAL_CTRLBITS(1, 2, 1),
 RDI_EVAL_CTRLBITS(1, 2, 1),
 RDI_EVAL_CTRLBITS(1, 2, 1),
@@ -107,6 +111,7 @@ RDI_EVAL_CTRLBITS(1, 1, 1),
 RDI_EVAL_CTRLBITS(4, 0, 0),
 RDI_EVAL_CTRLBITS(4, 0, 0),
 RDI_EVAL_CTRLBITS(8, 0, 0),
+RDI_EVAL_CTRLBITS(0, 2, 2),
 RDI_EVAL_CTRLBITS(0, 0, 0),
 };
 
@@ -315,6 +320,23 @@ rdi_explanation_string_from_eval_conversion_kind(RDI_EvalConversionKind kind, RD
 {
   *size_out = rdi_eval_conversion_kind_message_string_table[kind].size;
   return rdi_eval_conversion_kind_message_string_table[kind].str;
+}
+
+RDI_PROC RDI_SectionKind
+rdi_section_kind_from_checksum_kind(RDI_ChecksumKind kind)
+{
+RDI_SectionKind result = 0;
+switch(kind)
+{
+default:{}break;
+case RDI_ChecksumKind_NULL:{result = RDI_SectionKind_NULL;}break;
+case RDI_ChecksumKind_MD5:{result = RDI_SectionKind_MD5Checksums;}break;
+case RDI_ChecksumKind_SHA1:{result = RDI_SectionKind_SHA1Checksums;}break;
+case RDI_ChecksumKind_SHA256:{result = RDI_SectionKind_SHA256Checksums;}break;
+case RDI_ChecksumKind_Timestamp:{result = RDI_SectionKind_Timestamps;}break;
+case RDI_ChecksumKind_COUNT:{result = RDI_SectionKind_NULL;}break;
+}
+return result;
 }
 
 #endif // RDI_C

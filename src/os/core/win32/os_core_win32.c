@@ -336,6 +336,11 @@ os_file_open(OS_AccessFlags flags, String8 path)
   {
     result.u64[0] = (U64)file;
   }
+  else
+  {
+    DWORD err = GetLastError();
+    (void)err;
+  }
   scratch_end(scratch);
   return result;
 }
@@ -1151,6 +1156,7 @@ internal void
 os_mutex_release(Mutex mutex)
 {
   OS_W32_Entity *entity = (OS_W32_Entity*)PtrFromInt(mutex.u64[0]);
+  DeleteCriticalSection(&entity->mutex);
   os_w32_entity_release(entity);
 }
 
@@ -1336,7 +1342,11 @@ internal Barrier
 os_barrier_alloc(U64 count)
 {
   OS_W32_Entity *entity = os_w32_entity_alloc(OS_W32_EntityKind_Barrier);
-  BOOL init_good = InitializeSynchronizationBarrier(&entity->sb, count, -1);
+  if(entity != 0)
+  {
+    BOOL init_good = InitializeSynchronizationBarrier(&entity->sb, count, -1);
+    (void)init_good;
+  }
   Barrier result = {IntFromPtr(entity)};
   return result;
 }
@@ -1345,15 +1355,21 @@ internal void
 os_barrier_release(Barrier barrier)
 {
   OS_W32_Entity *entity = (OS_W32_Entity*)PtrFromInt(barrier.u64[0]);
-  DeleteSynchronizationBarrier(&entity->sb);
-  os_w32_entity_release(entity);
+  if(entity != 0)
+  {
+    DeleteSynchronizationBarrier(&entity->sb);
+    os_w32_entity_release(entity);
+  }
 }
 
 internal void
 os_barrier_wait(Barrier barrier)
 {
   OS_W32_Entity *entity = (OS_W32_Entity*)PtrFromInt(barrier.u64[0]);
-  EnterSynchronizationBarrier(&entity->sb, 0);
+  if(entity != 0)
+  {
+    EnterSynchronizationBarrier(&entity->sb, 0);
+  }
 }
 
 ////////////////////////////////

@@ -5,84 +5,12 @@
 #define RADDBG_CORE_H
 
 ////////////////////////////////
-//~ rjf: Config IDs
-
-typedef U64 RD_CfgID;
-
-typedef struct RD_CfgIDNode RD_CfgIDNode;
-struct RD_CfgIDNode
-{
-  RD_CfgIDNode *next;
-  RD_CfgID v;
-};
-
-typedef struct RD_CfgIDList RD_CfgIDList;
-struct RD_CfgIDList
-{
-  RD_CfgIDNode *first;
-  RD_CfgIDNode *last;
-  U64 count;
-};
-
-////////////////////////////////
-//~ rjf: Key Bindings
-
-typedef struct RD_Binding RD_Binding;
-struct RD_Binding
-{
-  OS_Key key;
-  OS_Modifiers modifiers;
-};
-
-typedef struct RD_KeyMapNode RD_KeyMapNode;
-struct RD_KeyMapNode
-{
-  RD_KeyMapNode *name_hash_next;
-  RD_KeyMapNode *binding_hash_next;
-  RD_CfgID cfg_id;
-  String8 name;
-  RD_Binding binding;
-};
-
-typedef struct RD_KeyMapNodePtr RD_KeyMapNodePtr;
-struct RD_KeyMapNodePtr
-{
-  RD_KeyMapNodePtr *next;
-  RD_KeyMapNode *v;
-};
-
-typedef struct RD_KeyMapNodePtrList RD_KeyMapNodePtrList;
-struct RD_KeyMapNodePtrList
-{
-  RD_KeyMapNodePtr *first;
-  RD_KeyMapNodePtr *last;
-  U64 count;
-};
-
-typedef struct RD_KeyMapSlot RD_KeyMapSlot;
-struct RD_KeyMapSlot
-{
-  RD_KeyMapNode *first;
-  RD_KeyMapNode *last;
-};
-
-typedef struct RD_KeyMap RD_KeyMap;
-struct RD_KeyMap
-{
-  U64 name_slots_count;
-  RD_KeyMapSlot *name_slots;
-  U64 binding_slots_count;
-  RD_KeyMapSlot *binding_slots;
-};
-
-////////////////////////////////
 //~ rjf: Evaluation Spaces
 
 typedef U64 RD_EvalSpaceKind;
 enum
 {
-  RD_EvalSpaceKind_CtrlEntity = E_SpaceKind_FirstUserDefined,
-  RD_EvalSpaceKind_MetaQuery,
+  RD_EvalSpaceKind_MetaQuery = CTRL_EvalSpaceKind_FirstUserDefined,
   RD_EvalSpaceKind_MetaCfg,
   RD_EvalSpaceKind_MetaCmd,
   RD_EvalSpaceKind_MetaTheme,
@@ -198,7 +126,7 @@ struct RD_ViewState
   // rjf: hash links & key
   RD_ViewState *hash_next;
   RD_ViewState *hash_prev;
-  RD_CfgID cfg_id;
+  CFG_ID cfg_id;
   
   // rjf: touch info
   U64 last_frame_index_touched;
@@ -269,59 +197,6 @@ struct RD_VocabInfoMap
 };
 
 ////////////////////////////////
-//~ rjf: Config Tree
-
-typedef struct RD_Cfg RD_Cfg;
-struct RD_Cfg
-{
-  RD_Cfg *first;
-  RD_Cfg *last;
-  RD_Cfg *next;
-  RD_Cfg *prev;
-  RD_Cfg *parent;
-  RD_CfgID id;
-  String8 string;
-};
-
-typedef struct RD_CfgNode RD_CfgNode;
-struct RD_CfgNode
-{
-  RD_CfgNode *next;
-  RD_CfgNode *prev;
-  RD_Cfg *v;
-};
-
-typedef struct RD_CfgSlot RD_CfgSlot;
-struct RD_CfgSlot
-{
-  RD_CfgNode *first;
-  RD_CfgNode *last;
-};
-
-typedef struct RD_CfgList RD_CfgList;
-struct RD_CfgList
-{
-  RD_CfgNode *first;
-  RD_CfgNode *last;
-  U64 count;
-};
-
-typedef struct RD_CfgArray RD_CfgArray;
-struct RD_CfgArray
-{
-  RD_Cfg **v;
-  U64 count;
-};
-
-typedef struct RD_CfgRec RD_CfgRec;
-struct RD_CfgRec
-{
-  RD_Cfg *next;
-  S32 push_count;
-  S32 pop_count;
-};
-
-////////////////////////////////
 //~ rjf: Structured Locations, Parsed From Config Trees
 
 typedef struct RD_Location RD_Location;
@@ -330,48 +205,6 @@ struct RD_Location
   String8 file_path;
   TxtPt pt;
   String8 expr;
-};
-
-////////////////////////////////
-//~ rjf: Structured Panel Trees, Parsed From Config Trees
-
-typedef struct RD_PanelNode RD_PanelNode;
-struct RD_PanelNode
-{
-  // rjf: links data
-  RD_PanelNode *first;
-  RD_PanelNode *last;
-  RD_PanelNode *next;
-  RD_PanelNode *prev;
-  RD_PanelNode *parent;
-  U64 child_count;
-  RD_Cfg *cfg;
-  
-  // rjf: split data
-  Axis2 split_axis;
-  F32 pct_of_parent;
-  
-  // rjf: tab params
-  Side tab_side;
-  
-  // rjf: which tabs are attached
-  RD_CfgList tabs;
-  RD_Cfg *selected_tab;
-};
-
-typedef struct RD_PanelTree RD_PanelTree;
-struct RD_PanelTree
-{
-  RD_PanelNode *root;
-  RD_PanelNode *focused;
-};
-
-typedef struct RD_PanelNodeRec RD_PanelNodeRec;
-struct RD_PanelNodeRec
-{
-  RD_PanelNode *next;
-  S32 push_count;
-  S32 pop_count;
 };
 
 ////////////////////////////////
@@ -433,7 +266,7 @@ struct RD_WindowState
   RD_WindowState *order_prev;
   RD_WindowState *hash_next;
   RD_WindowState *hash_prev;
-  RD_CfgID cfg_id;
+  CFG_ID cfg_id;
   U64 frames_alive;
   U64 last_frame_index_touched;
   
@@ -471,8 +304,8 @@ struct RD_WindowState
   B32 query_is_active;
   Arena *query_arena;
   RD_Regs *query_regs;
-  RD_CfgID query_view_id;
-  RD_CfgID query_last_view_id;
+  CFG_ID query_view_id;
+  CFG_ID query_last_view_id;
   
   // rjf: hover eval state
   B32 hover_eval_focused;
@@ -509,25 +342,6 @@ struct RD_WindowStateSlot
 
 ////////////////////////////////
 //~ rjf: Main Per-Process Graphical State
-
-read_only global U64 rd_name_bucket_chunk_sizes[] =
-{
-  16,
-  64,
-  256,
-  1024,
-  4096,
-  16384,
-  65536,
-  0xffffffffffffffffull,
-};
-
-typedef struct RD_NameChunkNode RD_NameChunkNode;
-struct RD_NameChunkNode
-{
-  RD_NameChunkNode *next;
-  U64 size;
-};
 
 typedef struct RD_AmbiguousPathNode RD_AmbiguousPathNode;
 struct RD_AmbiguousPathNode
@@ -576,9 +390,6 @@ struct RD_State
   C_Key cmdln_cfg_string_key;
   C_Key transient_cfg_string_key;
   
-  // rjf: schema table
-  MD_NodePtrList *schemas;
-  
   // rjf: default theme table
   MD_Node *theme_preset_trees[RD_ThemePreset_COUNT];
   
@@ -600,12 +411,6 @@ struct RD_State
   // rjf: frame parameters
   F32 frame_dt;
   Access *frame_access;
-  DI_Scope *frame_di_scope;
-  CTRL_CallStackTree frame_call_stack_tree;
-  B32 got_frame_call_stack_tree;
-  
-  // rjf: dbgi match store
-  DI_MatchStore *match_store;
   
   // rjf: evaluation cache
   E_Cache *eval_cache;
@@ -615,7 +420,7 @@ struct RD_State
   RD_AmbiguousPathNode **ambiguous_path_slots;
   
   // rjf: key map (constructed from-scratch each frame)
-  RD_KeyMap *key_map;
+  CFG_KeyMap *key_map;
   
   // rjf: slot -> font tag map (constructed from-scratch each frame)
   FNT_Tag font_slot_table[RD_FontSlot_COUNT];
@@ -672,38 +477,30 @@ struct RD_State
   RD_DragDropState drag_drop_state;
   
   // rjf: cfg state
-  RD_NameChunkNode *free_name_chunks[ArrayCount(rd_name_bucket_chunk_sizes)];
-  RD_Cfg *free_cfg;
-  RD_Cfg *root_cfg;
-  U64 cfg_id_slots_count;
-  RD_CfgSlot *cfg_id_slots;
-  RD_CfgNode *free_cfg_id_node;
-  U64 cfg_id_gen;
-  RD_CfgID cfg_last_accessed_id;
-  RD_Cfg *cfg_last_accessed;
-  U64 cfg_change_gen;
+  CFG_State *cfg;
+  CFG_SchemaTable *cfg_schema_table;
   
   // rjf: window state cache
   U64 window_state_slots_count;
   RD_WindowStateSlot *window_state_slots;
   RD_WindowState *free_window_state;
-  RD_CfgID last_focused_window;
+  CFG_ID last_focused_window;
   RD_WindowState *first_window_state;
   RD_WindowState *last_window_state;
-  RD_CfgID window_state_last_accessed_id;
+  CFG_ID window_state_last_accessed_id;
   RD_WindowState *window_state_last_accessed;
   
   // rjf: view state cache
   U64 view_state_slots_count;
   RD_ViewStateSlot *view_state_slots;
   RD_ViewState *free_view_state;
-  RD_CfgID view_state_last_accessed_id;
+  CFG_ID view_state_last_accessed_id;
   RD_ViewState *view_state_last_accessed;
   
   // rjf: bind change
   Arena *bind_change_arena;
   B32 bind_change_active;
-  RD_CfgID bind_change_binding_id;
+  CFG_ID bind_change_binding_id;
   String8 bind_change_cmd_name;
   
   // rjf: pre-stop focused window
@@ -714,27 +511,6 @@ struct RD_State
 //~ rjf: Globals
 
 read_only global RD_VocabInfo rd_nil_vocab_info = {0};
-
-read_only global RD_Cfg rd_nil_cfg =
-{
-  &rd_nil_cfg,
-  &rd_nil_cfg,
-  &rd_nil_cfg,
-  &rd_nil_cfg,
-  &rd_nil_cfg,
-};
-
-read_only global RD_PanelNode rd_nil_panel_node =
-{
-  &rd_nil_panel_node,
-  &rd_nil_panel_node,
-  &rd_nil_panel_node,
-  &rd_nil_panel_node,
-  &rd_nil_panel_node,
-  0,
-  &rd_nil_cfg,
-  .selected_tab = &rd_nil_cfg,
-};
 
 read_only global RD_CmdKindInfo rd_nil_cmd_kind_info = {0};
 
@@ -760,14 +536,8 @@ read_only global RD_WindowState rd_nil_window_state =
 };
 
 global RD_State *rd_state = 0;
-global RD_CfgID rd_last_drag_drop_panel = 0;
-global RD_CfgID rd_last_drag_drop_prev_tab = 0;
-
-////////////////////////////////
-//~ rjf: Config ID Type Functions
-
-internal void rd_cfg_id_list_push(Arena *arena, RD_CfgIDList *list, RD_CfgID id);
-internal RD_CfgIDList rd_cfg_id_list_copy(Arena *arena, RD_CfgIDList *src);
+global CFG_ID rd_last_drag_drop_panel = 0;
+global CFG_ID rd_last_drag_drop_prev_tab = 0;
 
 ////////////////////////////////
 //~ rjf: Registers Type Functions
@@ -800,65 +570,20 @@ internal void rd_set_hover_regs(RD_RegSlot slot);
 internal RD_Regs *rd_get_hover_regs(void);
 
 ////////////////////////////////
-//~ rjf: Name Allocation
+//~ rjf: Config Functions
 
-internal U64 rd_name_bucket_num_from_string_size(U64 size);
-internal String8 rd_name_alloc(String8 string);
-internal void rd_name_release(String8 string);
+internal B32 rd_cfg_is_project_filtered(CFG_Node *cfg);
 
-////////////////////////////////
-//~ rjf: Config Tree Functions
+internal Vec4F32 rd_hsva_from_cfg(CFG_Node *cfg);
+internal Vec4F32 rd_color_from_cfg(CFG_Node *cfg);
 
-internal RD_Cfg *rd_cfg_alloc(void);
-internal void rd_cfg_release(RD_Cfg *cfg);
-internal void rd_cfg_release_all_children(RD_Cfg *cfg);
-internal RD_Cfg *rd_cfg_from_id(RD_CfgID id);
-internal RD_Cfg *rd_cfg_new(RD_Cfg *parent, String8 string);
-internal RD_Cfg *rd_cfg_newf(RD_Cfg *parent, char *fmt, ...);
-internal RD_Cfg *rd_cfg_new_replace(RD_Cfg *parent, String8 string);
-internal RD_Cfg *rd_cfg_new_replacef(RD_Cfg *parent, char *fmt, ...);
-internal RD_Cfg *rd_cfg_deep_copy(RD_Cfg *src_root);
-internal void rd_cfg_equip_string(RD_Cfg *cfg, String8 string);
-internal void rd_cfg_equip_stringf(RD_Cfg *cfg, char *fmt, ...);
-internal void rd_cfg_insert_child(RD_Cfg *parent, RD_Cfg *prev_child, RD_Cfg *new_child);
-internal void rd_cfg_unhook(RD_Cfg *parent, RD_Cfg *child);
-internal RD_Cfg *rd_cfg_child_from_string(RD_Cfg *parent, String8 string);
-internal RD_Cfg *rd_cfg_child_from_string_or_alloc(RD_Cfg *parent, String8 string);
-internal RD_Cfg *rd_cfg_child_from_string_or_parent(RD_Cfg *parent, String8 string);
-internal RD_CfgList rd_cfg_child_list_from_string(Arena *arena, RD_Cfg *parent, String8 string);
-internal RD_CfgList rd_cfg_top_level_list_from_string(Arena *arena, String8 string);
-internal RD_CfgArray rd_cfg_array_from_list(Arena *arena, RD_CfgList *list);
-internal RD_CfgList rd_cfg_tree_list_from_string(Arena *arena, String8 root_path, String8 string);
-internal String8 rd_string_from_cfg_tree(Arena *arena, String8 root_path, RD_Cfg *cfg);
-internal RD_CfgRec rd_cfg_rec__depth_first(RD_Cfg *root, RD_Cfg *cfg);
-internal void rd_cfg_list_push(Arena *arena, RD_CfgList *list, RD_Cfg *cfg);
-internal void rd_cfg_list_push_front(Arena *arena, RD_CfgList *list, RD_Cfg *cfg);
-#define rd_cfg_list_first(list) ((list)->count ? (list)->first->v : &rd_nil_cfg)
-#define rd_cfg_list_last(list)  ((list)->count ? (list)->last->v  : &rd_nil_cfg)
+internal B32 rd_disabled_from_cfg(CFG_Node *cfg);
+internal RD_Location rd_location_from_cfg(CFG_Node *cfg);
+internal String8 rd_label_from_cfg(CFG_Node *cfg);
+internal String8 rd_expr_from_cfg(CFG_Node *cfg);
+internal String8 rd_path_from_cfg(CFG_Node *cfg);
+internal D_Target rd_target_from_cfg(Arena *arena, CFG_Node *cfg);
 
-internal RD_PanelTree rd_panel_tree_from_cfg(Arena *arena, RD_Cfg *cfg);
-internal RD_PanelNodeRec rd_panel_node_rec__depth_first(RD_PanelNode *root, RD_PanelNode *panel, U64 sib_off, U64 child_off);
-#define rd_panel_node_rec__depth_first_pre(root, p)     rd_panel_node_rec__depth_first((root), (p), OffsetOf(RD_PanelNode, next), OffsetOf(RD_PanelNode, first))
-#define rd_panel_node_rec__depth_first_pre_rev(root, p) rd_panel_node_rec__depth_first((root), (p), OffsetOf(RD_PanelNode, prev), OffsetOf(RD_PanelNode, last))
-internal RD_PanelNode *rd_panel_node_from_tree_cfg(RD_PanelNode *root, RD_Cfg *cfg);
-internal Rng2F32 rd_target_rect_from_panel_node_child(Rng2F32 parent_rect, RD_PanelNode *parent, RD_PanelNode *panel);
-internal Rng2F32 rd_target_rect_from_panel_node(Rng2F32 root_rect, RD_PanelNode *root, RD_PanelNode *panel);
-
-internal B32 rd_cfg_is_project_filtered(RD_Cfg *cfg);
-internal RD_KeyMapNodePtrList rd_key_map_node_ptr_list_from_name(Arena *arena, String8 string);
-internal RD_KeyMapNodePtrList rd_key_map_node_ptr_list_from_binding(Arena *arena, RD_Binding binding);
-
-internal Vec4F32 rd_hsva_from_cfg(RD_Cfg *cfg);
-internal Vec4F32 rd_color_from_cfg(RD_Cfg *cfg);
-
-internal B32 rd_disabled_from_cfg(RD_Cfg *cfg);
-internal RD_Location rd_location_from_cfg(RD_Cfg *cfg);
-internal String8 rd_label_from_cfg(RD_Cfg *cfg);
-internal String8 rd_expr_from_cfg(RD_Cfg *cfg);
-internal String8 rd_path_from_cfg(RD_Cfg *cfg);
-internal D_Target rd_target_from_cfg(Arena *arena, RD_Cfg *cfg);
-
-internal MD_NodePtrList rd_schemas_from_name(String8 name);
 internal String8 rd_default_setting_from_names(String8 schema_name, String8 setting_name);
 
 internal String8 rd_setting_from_name(String8 name);
@@ -866,8 +591,8 @@ internal B32 rd_setting_b32_from_name(String8 name);
 internal U64 rd_setting_u64_from_name(String8 name);
 internal F32 rd_setting_f32_from_name(String8 name);
 
-internal RD_Cfg *rd_immediate_cfg_from_key(String8 string);
-internal RD_Cfg *rd_immediate_cfg_from_keyf(char *fmt, ...);
+internal CFG_Node *rd_immediate_cfg_from_key(String8 string);
+internal CFG_Node *rd_immediate_cfg_from_keyf(char *fmt, ...);
 
 internal String8 rd_mapped_from_file_path(Arena *arena, String8 file_path);
 internal String8List rd_possible_overrides_from_file_path(Arena *arena, String8 file_path);
@@ -882,8 +607,8 @@ internal String8 rd_name_from_ctrl_entity(Arena *arena, CTRL_Entity *entity);
 //~ rjf: Evaluation Spaces
 
 //- rjf: cfg <-> eval space
-internal RD_Cfg *rd_cfg_from_eval_space(E_Space space);
-internal E_Space rd_eval_space_from_cfg(RD_Cfg *cfg);
+internal CFG_Node *rd_cfg_from_eval_space(E_Space space);
+internal E_Space rd_eval_space_from_cfg(CFG_Node *cfg);
 
 //- rjf: ctrl entity <-> eval space
 internal CTRL_Entity *rd_ctrl_entity_from_eval_space(E_Space space);
@@ -893,9 +618,9 @@ internal E_Space rd_eval_space_from_ctrl_entity(CTRL_Entity *entity, E_SpaceKind
 internal String8 rd_cmd_name_from_eval(E_Eval eval);
 
 //- rjf: eval space reads/writes
-internal U64 rd_eval_space_gen(void *u, E_Space space);
-internal B32 rd_eval_space_read(void *u, E_Space space, void *out, Rng1U64 range);
-internal B32 rd_eval_space_write(void *u, E_Space space, void *in, Rng1U64 range);
+internal U64 rd_eval_space_gen(E_Space space);
+internal B32 rd_eval_space_read(E_Space space, void *out, Rng1U64 range);
+internal B32 rd_eval_space_write(E_Space space, void *in, Rng1U64 range);
 
 //- rjf: asynchronous streamed reads -> hashes from spaces
 internal C_Key rd_key_from_eval_space_range(E_Space space, Rng1U64 range, B32 zero_terminated);
@@ -920,8 +645,8 @@ internal String8 rd_query_from_eval_string(Arena *arena, String8 string);
 ////////////////////////////////
 //~ rjf: View Functions
 
-internal RD_Cfg *rd_view_from_eval(RD_Cfg *parent, E_Eval eval);
-internal RD_ViewState *rd_view_state_from_cfg(RD_Cfg *cfg);
+internal CFG_Node *rd_view_from_eval(CFG_Node *parent, E_Eval eval);
+internal RD_ViewState *rd_view_state_from_cfg(CFG_Node *cfg);
 internal void rd_view_ui(Rng2F32 rect);
 
 ////////////////////////////////
@@ -963,8 +688,8 @@ internal void rd_store_view_paramf(String8 key, char *fmt, ...);
 //~ rjf: Window Functions
 
 internal String8 rd_push_window_title(Arena *arena);
-internal RD_Cfg *rd_window_from_cfg(RD_Cfg *cfg);
-internal RD_WindowState *rd_window_state_from_cfg(RD_Cfg *cfg);
+internal CFG_Node *rd_window_from_cfg(CFG_Node *cfg);
+internal RD_WindowState *rd_window_state_from_cfg(CFG_Node *cfg);
 internal RD_WindowState *rd_window_state_from_os_handle(OS_Handle os);
 internal void rd_window_frame(void);
 

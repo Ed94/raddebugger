@@ -114,6 +114,7 @@ struct RD_WatchCellList
   RD_WatchCell *first;
   RD_WatchCell *last;
   U64 count;
+  F32 pct_sum;
 };
 
 typedef struct RD_WatchRowInfo RD_WatchRowInfo;
@@ -123,8 +124,8 @@ struct RD_WatchRowInfo
   B32 can_expand;
   B32 expr_is_editable;
   String8 group_cfg_name;
-  RD_Cfg *group_cfg_parent;
-  RD_Cfg *group_cfg_child;
+  CFG_Node *group_cfg_parent;
+  CFG_Node *group_cfg_child;
   CTRL_Entity *group_entity;
   CTRL_Entity *callstack_thread;
   U64 callstack_unwind_index;
@@ -139,7 +140,7 @@ typedef struct RD_WatchRowCellInfo RD_WatchRowCellInfo;
 struct RD_WatchRowCellInfo
 {
   RD_WatchCellFlags flags;
-  RD_Cfg *cfg;
+  CFG_Node *cfg;
   CTRL_Entity *entity;
   String8 cmd_name;
   String8 file_path;
@@ -206,7 +207,6 @@ internal RD_CodeViewBuildResult rd_code_view_build(Arena *arena, RD_CodeViewStat
 
 //- rjf: cell list building
 internal U64 rd_id_from_watch_cell(RD_WatchCell *cell);
-internal RD_WatchCell *rd_watch_cell_list_push(Arena *arena, RD_WatchCellList *list);
 internal RD_WatchCell *rd_watch_cell_list_push_new_(Arena *arena, RD_WatchCellList *list, RD_WatchCell *params);
 #define rd_watch_cell_list_push_new(arena, list, kind_, eval_, ...) rd_watch_cell_list_push_new_((arena), (list), &(RD_WatchCell){.kind = (kind_), .eval = (eval_), __VA_ARGS__})
 

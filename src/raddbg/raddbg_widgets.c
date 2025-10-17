@@ -5,7 +5,7 @@
 //~ rjf: UI Widgets: Fancy Title Strings
 
 internal DR_FStrList
-rd_title_fstrs_from_cfg(Arena *arena, RD_Cfg *cfg, B32 include_extras)
+rd_title_fstrs_from_cfg(Arena *arena, CFG_Node *cfg, B32 include_extras)
 {
   DR_FStrList result = {0};
   {
@@ -32,8 +32,8 @@ rd_title_fstrs_from_cfg(Arena *arena, RD_Cfg *cfg, B32 include_extras)
     RD_IconKind icon_kind = rd_icon_kind_from_code_name(cfg->string);
     B32 is_from_command_line = 0;
     {
-      RD_Cfg *cmd_line_root = rd_cfg_child_from_string(rd_state->root_cfg, str8_lit("command_line"));
-      for(RD_Cfg *p = cfg->parent; p != &rd_nil_cfg; p = p->parent)
+      CFG_Node *cmd_line_root = cfg_node_child_from_string(cfg_node_root(), str8_lit("command_line"));
+      for(CFG_Node *p = cfg->parent; p != &cfg_nil_node; p = p->parent)
       {
         if(p == cmd_line_root)
         {
@@ -44,7 +44,7 @@ rd_title_fstrs_from_cfg(Arena *arena, RD_Cfg *cfg, B32 include_extras)
     }
     B32 is_within_window = 0;
     {
-      for(RD_Cfg *p = cfg->parent; p != &rd_nil_cfg; p = p->parent)
+      for(CFG_Node *p = cfg->parent; p != &cfg_nil_node; p = p->parent)
       {
         if(str8_match(p->string, str8_lit("window"), 0))
         {
@@ -105,7 +105,7 @@ rd_title_fstrs_from_cfg(Arena *arena, RD_Cfg *cfg, B32 include_extras)
       CTRL_Event stop_event = d_ctrl_last_stop_event();
       if(stop_event.cause == CTRL_EventCause_UserBreakpoint)
       {
-        RD_Cfg *bp = rd_cfg_from_id(stop_event.u64_code);
+        CFG_Node *bp = cfg_node_from_id(stop_event.u64_code);
         if(bp == cfg)
         {
           CTRL_Entity *thread = ctrl_entity_from_handle(&d_state->ctrl_entity_store->ctx, stop_event.entity);
@@ -147,7 +147,7 @@ rd_title_fstrs_from_cfg(Arena *arena, RD_Cfg *cfg, B32 include_extras)
     }
     
     //- rjf: push bucket name
-    if(cfg->parent == rd_state->root_cfg)
+    if(cfg->parent == cfg_node_root())
     {
       if(str8_match(cfg->string, str8_lit("user"), 0))
       {
@@ -328,7 +328,7 @@ rd_title_fstrs_from_cfg(Arena *arena, RD_Cfg *cfg, B32 include_extras)
     
     //- rjf: push conditions
     {
-      String8 condition = rd_cfg_child_from_string(cfg, str8_lit("condition"))->first->string;
+      String8 condition = cfg_node_child_from_string(cfg, str8_lit("condition"))->first->string;
       if(condition.size != 0)
       {
         dr_fstrs_push_new(arena, &result, &params, str8_lit("if "), .font = rd_font_from_slot(RD_FontSlot_Code), .raster_flags = rd_raster_flags_from_slot(RD_FontSlot_Code));
@@ -350,7 +350,7 @@ rd_title_fstrs_from_cfg(Arena *arena, RD_Cfg *cfg, B32 include_extras)
     
     //- rjf: push hit count
     {
-      String8 hit_count_value_string = rd_cfg_child_from_string(cfg, str8_lit("hit_count"))->first->string;
+      String8 hit_count_value_string = cfg_node_child_from_string(cfg, str8_lit("hit_count"))->first->string;
       U64 hit_count = 0;
       if(try_u64_from_str8_c_rules(hit_count_value_string, &hit_count) && hit_count != 0)
       {
@@ -362,8 +362,8 @@ rd_title_fstrs_from_cfg(Arena *arena, RD_Cfg *cfg, B32 include_extras)
     //- rjf: special case: type views
     if(str8_match(cfg->string, str8_lit("type_view"), 0))
     {
-      String8 src_string = rd_cfg_child_from_string(cfg, str8_lit("type"))->first->string;
-      String8 dst_string = rd_cfg_child_from_string(cfg, str8_lit("expr"))->first->string;
+      String8 src_string = cfg_node_child_from_string(cfg, str8_lit("type"))->first->string;
+      String8 dst_string = cfg_node_child_from_string(cfg, str8_lit("expr"))->first->string;
       Vec4F32 src_color = rgba;
       Vec4F32 dst_color = rgba;
       DR_FStrList src_fstrs = {0};
@@ -398,8 +398,8 @@ rd_title_fstrs_from_cfg(Arena *arena, RD_Cfg *cfg, B32 include_extras)
     //- rjf: special case: file path maps
     if(str8_match(cfg->string, str8_lit("file_path_map"), 0))
     {
-      String8 src_string = rd_cfg_child_from_string(cfg, str8_lit("source"))->first->string;
-      String8 dst_string = rd_cfg_child_from_string(cfg, str8_lit("dest"))->first->string;
+      String8 src_string = cfg_node_child_from_string(cfg, str8_lit("source"))->first->string;
+      String8 dst_string = cfg_node_child_from_string(cfg, str8_lit("dest"))->first->string;
       Vec4F32 src_color = rgba;
       Vec4F32 dst_color = rgba;
       if(src_string.size == 0)
@@ -422,8 +422,8 @@ rd_title_fstrs_from_cfg(Arena *arena, RD_Cfg *cfg, B32 include_extras)
     //- rjf: special case: colors
     if(str8_match(cfg->string, str8_lit("theme_color"), 0))
     {
-      String8 tags = rd_cfg_child_from_string(cfg, str8_lit("tags"))->first->string;
-      String8 color_string = rd_cfg_child_from_string(cfg, str8_lit("value"))->first->string;
+      String8 tags = cfg_node_child_from_string(cfg, str8_lit("tags"))->first->string;
+      String8 color_string = cfg_node_child_from_string(cfg, str8_lit("value"))->first->string;
       U32 color_u32 = e_value_from_stringf("(uint32)(%S)", color_string).u32;
       Vec4F32 color = linear_from_srgba(rgba_from_u32(color_u32));
       if(tags.size != 0)
@@ -548,7 +548,6 @@ rd_title_fstrs_from_ctrl_entity(Arena *arena, CTRL_Entity *entity, B32 include_e
     Vec4F32 symbol_color = ui_color_from_name(str8_lit("code_symbol"));
     dr_fstrs_push_new(arena, &result, &params, str8_lit(" "));
     Access *access = access_open();
-    DI_Scope *di_scope = di_scope_open();
     CTRL_Entity *process = ctrl_entity_ancestor_from_kind(entity, CTRL_EntityKind_Process);
     Arch arch = entity->arch;
     B32 call_stack_high_priority = ctrl_handle_match(entity->handle, rd_base_regs()->thread);
@@ -565,7 +564,7 @@ rd_title_fstrs_from_ctrl_entity(Arena *arena, CTRL_Entity *entity, B32 include_e
       String8 name = {0};
       {
         DI_Key dbgi_key = ctrl_dbgi_key_from_module(module);
-        RDI_Parsed *rdi = di_rdi_from_key(di_scope, &dbgi_key, 1, 0);
+        RDI_Parsed *rdi = di_rdi_from_key(access, dbgi_key, 0, 0);
         if(rdi != &rdi_parsed_nil)
         {
           RDI_Procedure *procedure = rdi_procedure_from_voff(rdi, rip_voff);
@@ -591,22 +590,21 @@ rd_title_fstrs_from_ctrl_entity(Arena *arena, CTRL_Entity *entity, B32 include_e
         }
       }
     }
-    di_scope_close(di_scope);
     access_close(access);
   }
   
   //- rjf: modules get debug info status extras
   if(entity->kind == CTRL_EntityKind_Module && include_extras)
   {
-    DI_Scope *di_scope = di_scope_open();
+    Access *access = access_open();
     DI_Key dbgi_key = ctrl_dbgi_key_from_module(entity);
-    RDI_Parsed *rdi = di_rdi_from_key(di_scope, &dbgi_key, 1, 0);
+    RDI_Parsed *rdi = di_rdi_from_key(access, dbgi_key, 0, 0);
     if(rdi->raw_data_size == 0)
     {
       dr_fstrs_push_new(arena, &result, &params, str8_lit(" "));
-      dr_fstrs_push_new(arena, &result, &params, str8_lit("(Symbols not found)"), .font = rd_font_from_slot(RD_FontSlot_Main), .raster_flags = rd_raster_flags_from_slot(RD_FontSlot_Main), .size = extras_size, .color = secondary_color);
+      dr_fstrs_push_new(arena, &result, &params, str8_lit("(Debug information not loaded)"), .font = rd_font_from_slot(RD_FontSlot_Main), .raster_flags = rd_raster_flags_from_slot(RD_FontSlot_Main), .size = extras_size, .color = secondary_color);
     }
-    di_scope_close(di_scope);
+    access_close(access);
   }
   
   return result;
@@ -756,22 +754,22 @@ internal void
 rd_cmd_binding_buttons(String8 name, String8 filter, B32 add_new)
 {
   Temp scratch = scratch_begin(0, 0);
-  RD_KeyMapNodePtrList key_map_nodes = rd_key_map_node_ptr_list_from_name(scratch.arena, name);
+  CFG_KeyMapNodePtrList key_map_nodes = cfg_key_map_node_ptr_list_from_name(scratch.arena, rd_state->key_map, name);
   
   //- rjf: build buttons for each binding
-  UI_CornerRadius(ui_top_font_size()*0.5f) for(RD_KeyMapNodePtr *n = key_map_nodes.first; n != 0; n = n->next)
+  UI_CornerRadius(ui_top_font_size()*0.5f) for(CFG_KeyMapNodePtr *n = key_map_nodes.first; n != 0; n = n->next)
   {
     ui_spacer(ui_em(1.f, 1.f));
-    RD_Binding binding = n->v->binding;
+    CFG_Binding binding = n->v->binding;
     B32 rebinding_active_for_this_binding = (rd_state->bind_change_active &&
                                              str8_match(rd_state->bind_change_cmd_name, name, 0) &&
                                              n->v->cfg_id == rd_state->bind_change_binding_id);
     
     //- rjf: grab all conflicts
     B32 has_conflicts = 0;
-    RD_KeyMapNodePtrList nodes_with_this_binding = rd_key_map_node_ptr_list_from_binding(scratch.arena, binding);
+    CFG_KeyMapNodePtrList nodes_with_this_binding = cfg_key_map_node_ptr_list_from_binding(scratch.arena, rd_state->key_map, binding);
     {
-      for(RD_KeyMapNodePtr *n2 = nodes_with_this_binding.first; n2 != 0; n2 = n2->next)
+      for(CFG_KeyMapNodePtr *n2 = nodes_with_this_binding.first; n2 != 0; n2 = n2->next)
       {
         if(!str8_match(n->v->name, n2->v->name, 0))
         {
@@ -842,7 +840,7 @@ rd_cmd_binding_buttons(String8 name, String8 filter, B32 add_new)
       if(ui_hovering(sig) && has_conflicts) UI_Tooltip
       {
         UI_PrefWidth(ui_children_sum(1)) rd_error_label(str8_lit("This binding conflicts with those for:"));
-        for(RD_KeyMapNodePtr *n2 = nodes_with_this_binding.first; n2 != 0; n2 = n2->next)
+        for(CFG_KeyMapNodePtr *n2 = nodes_with_this_binding.first; n2 != 0; n2 = n2->next)
         {
           if(!str8_match(n2->v->name, n->v->name, 0))
           {
@@ -862,7 +860,7 @@ rd_cmd_binding_buttons(String8 name, String8 filter, B32 add_new)
       UI_Signal sig = rd_icon_button(RD_IconKind_X, 0, str8_lit("###delete_binding"));
       if(ui_clicked(sig))
       {
-        rd_cfg_release(rd_cfg_from_id(rd_state->bind_change_binding_id));
+        cfg_node_release(rd_state->cfg, cfg_node_from_id(rd_state->bind_change_binding_id));
         rd_state->bind_change_active = 0;
       }
     }
@@ -974,7 +972,7 @@ rd_cmd_list_menu_buttons(U64 count, String8 *cmd_names, U32 *fastpath_codepoints
     {
       rd_cmd(RD_CmdKind_RunCommand, .cmd_name = cmd_names[idx]);
       ui_ctx_menu_close();
-      RD_Cfg *window = rd_cfg_from_id(rd_regs()->window);
+      CFG_Node *window = cfg_node_from_id(rd_regs()->window);
       RD_WindowState *ws = rd_window_state_from_cfg(window);
       ws->menu_bar_focused = 0;
     }
@@ -1310,14 +1308,14 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
   //- rjf: dragging cfgs/entities/expressions? -> drop site
   //
   B32 drop_can_hit_lines = 0;
-  RD_Cfg *drop_cfg = &rd_nil_cfg;
+  CFG_Node *drop_cfg = &cfg_nil_node;
   CTRL_Entity *drop_thread = &ctrl_entity_nil;
   String8 drop_expr = {0};
   Vec4F32 drop_color = pop_color;
   UI_Key drop_site_key = ui_key_from_stringf(top_container_box->key, "drop_site");
   if(rd_drag_is_active())
   {
-    RD_Cfg *cfg = rd_cfg_from_id(rd_state->drag_drop_regs->cfg);
+    CFG_Node *cfg = cfg_node_from_id(rd_state->drag_drop_regs->cfg);
     if(rd_state->drag_drop_regs_slot == RD_RegSlot_Cfg &&
        (str8_match(cfg->string, str8_lit("breakpoint"), 0) ||
         str8_match(cfg->string, str8_lit("watch_pin"), 0)))
@@ -1490,7 +1488,7 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
                 D_Line *line = 0;
                 for(D_LineNode *n = lines->first; n != 0; n = n->next)
                 {
-                  if(di_key_match(&n->v.dbgi_key, &dbgi_key))
+                  if(di_key_match(n->v.dbgi_key, dbgi_key))
                   {
                     line = &n->v;
                     break;
@@ -1555,8 +1553,8 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
           line_num += 1, line_idx += 1)
       {
         CTRL_EntityList line_ips  = params->line_ips[line_idx];
-        RD_CfgList line_bps       = params->line_bps[line_idx];
-        RD_CfgList line_pins      = params->line_pins[line_idx];
+        CFG_NodePtrList line_bps       = params->line_bps[line_idx];
+        CFG_NodePtrList line_pins      = params->line_pins[line_idx];
         ui_set_next_hover_cursor(OS_Cursor_HandPoint);
         ui_set_next_background_color(v4f32(0, 0, 0, 0));
         UI_Box *line_margin_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable*!!(params->flags & RD_CodeSliceFlag_Clickable)|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawActiveEffects, "line_margin_%I64x", line_num);
@@ -1644,7 +1642,7 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
                 D_Line *line = 0;
                 for(D_LineNode *n = lines->first; n != 0; n = n->next)
                 {
-                  if(di_key_match(&n->v.dbgi_key, &dbgi_key))
+                  if(di_key_match(n->v.dbgi_key, dbgi_key))
                   {
                     line = &n->v;
                     break;
@@ -1685,9 +1683,9 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
           }
           
           //- rjf: build margin breakpoint ui
-          for(RD_CfgNode *n = line_bps.first; n != 0; n = n->next)
+          for(CFG_NodePtrNode *n = line_bps.first; n != 0; n = n->next)
           {
-            RD_Cfg *bp = n->v;
+            CFG_Node *bp = n->v;
             Vec4F32 bp_rgba = rd_color_from_cfg(bp);
             if(bp_rgba.w == 0)
             {
@@ -1703,14 +1701,14 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
             RD_BreakpointBoxDrawExtData *bp_draw = push_array(ui_build_arena(), RD_BreakpointBoxDrawExtData, 1);
             {
               RD_Regs *hover_regs = rd_get_hover_regs();
-              B32 is_hovering = (rd_cfg_from_id(hover_regs->cfg) == bp && rd_state->hover_regs_slot == RD_RegSlot_Cfg);
+              B32 is_hovering = (cfg_node_from_id(hover_regs->cfg) == bp && rd_state->hover_regs_slot == RD_RegSlot_Cfg);
               bp_draw->color    = bp_rgba;
               bp_draw->alive_t  = ui_anim(ui_key_from_stringf(ui_key_zero(), "cfg_alive_t_%p", bp), 1.f, .rate = entity_alive_t_rate);
               bp_draw->hover_t  = ui_anim(ui_key_from_stringf(ui_key_zero(), "cfg_hover_t_%p", bp), (F32)!!is_hovering, .rate = entity_hover_t_rate);
               bp_draw->do_lines = do_bp_lines;
               bp_draw->do_glow  = do_bp_glow;
               bp_draw->is_disabled = bp_is_disabled;
-              bp_draw->is_conditioned = (rd_cfg_child_from_string(bp, str8_lit("condition"))->first->string.size != 0);
+              bp_draw->is_conditioned = (cfg_node_child_from_string(bp, str8_lit("condition"))->first->string.size != 0);
               if(params->line_vaddrs[line_idx] == 0)
               {
                 D_LineList *lines = &params->line_infos[line_idx];
@@ -1775,9 +1773,9 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
           }
           
           //- rjf: build margin watch pin ui
-          for(RD_CfgNode *n = line_pins.first; n != 0; n = n->next)
+          for(CFG_NodePtrNode *n = line_pins.first; n != 0; n = n->next)
           {
-            RD_Cfg *pin = n->v;
+            CFG_Node *pin = n->v;
             Vec4F32 color = rd_color_from_cfg(pin);
             if(color.w == 0)
             {
@@ -1867,19 +1865,14 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
         // rjf: line info on this line -> adjust bg color to visualize
         B32 has_line_info = 0;
         {
-          U64 best_stamp = 0;
           S64 line_info_line_num = 0;
           F32 line_info_t = 0;
           D_LineList *lines = &params->line_infos[line_idx];
           for(D_LineNode *n = lines->first; n != 0; n = n->next)
           {
-            if(n->v.dbgi_key.min_timestamp >= best_stamp)
-            {
-              has_line_info = (n->v.pt.line == line_num || params->line_vaddrs[line_idx] != 0);
-              line_info_line_num = n->v.pt.line;
-              best_stamp = n->v.dbgi_key.min_timestamp;
-              line_info_t = ui_anim(ui_key_from_stringf(ui_key_zero(), "dbgi_alive_t_%S", n->v.dbgi_key.path), 1.f);
-            }
+            has_line_info = (has_line_info || n->v.pt.line == line_num || params->line_vaddrs[line_idx] != 0);
+            line_info_line_num = n->v.pt.line;
+            line_info_t = ui_anim(ui_key_from_stringf(ui_key_zero(), "dbgi_alive_t_%I64x_%I64x", n->v.dbgi_key.u64[0], n->v.dbgi_key.u64[1]), 1.f);
           }
           if(has_line_info)
           {
@@ -2019,13 +2012,12 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
   //
   UI_Focus(UI_FocusKind_Off)
   {
-    DI_Scope *scope = di_scope_open();
     U64 line_idx = 0;
     for(S64 line_num = params->line_num_range.min;
         line_num < params->line_num_range.max;
         line_num += 1, line_idx += 1)
     {
-      RD_CfgList immediate_pins = {0};
+      CFG_NodePtrList immediate_pins = {0};
       String8 line_text = params->line_text[line_idx];
       for(U64 off = 0, next_off = line_text.size;
           off < line_text.size;
@@ -2094,29 +2086,29 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
         // rjf: build immediate pin for this markup
         if(expr_string.size != 0)
         {
-          RD_Cfg *immediate_root = rd_immediate_cfg_from_keyf("markup_pin_%I64x_%I64x", line_num, off);
-          RD_Cfg *pin = rd_cfg_child_from_string_or_alloc(immediate_root, str8_lit("watch_pin"));
-          RD_Cfg *expr = rd_cfg_child_from_string_or_alloc(pin, str8_lit("expression"));
-          rd_cfg_new_replace(expr, expr_string);
-          rd_cfg_list_push(scratch.arena, &immediate_pins, pin);
+          CFG_Node *immediate_root = rd_immediate_cfg_from_keyf("markup_pin_%I64x_%I64x", line_num, off);
+          CFG_Node *pin = cfg_node_child_from_string_or_alloc(rd_state->cfg, immediate_root, str8_lit("watch_pin"));
+          CFG_Node *expr = cfg_node_child_from_string_or_alloc(rd_state->cfg, pin, str8_lit("expression"));
+          cfg_node_new_replace(rd_state->cfg, expr, expr_string);
+          cfg_node_ptr_list_push(scratch.arena, &immediate_pins, pin);
         }
       }
-      RD_CfgList pin_lists[] =
+      CFG_NodePtrList pin_lists[] =
       {
         params->line_pins[line_idx],
         immediate_pins,
       };
       E_ParentKey(e_key_zero()) for EachElement(list_idx, pin_lists)
       {
-        RD_CfgList pins = pin_lists[list_idx];
+        CFG_NodePtrList pins = pin_lists[list_idx];
         if(pins.count != 0) UI_Parent(line_extras_boxes[line_idx])
           RD_Font(RD_FontSlot_Code)
           UI_FontSize(params->font_size)
           UI_PrefHeight(ui_px(params->line_height_px, 1.f))
         {
-          for(RD_CfgNode *n = pins.first; n != 0; n = n->next)
+          for(CFG_NodePtrNode *n = pins.first; n != 0; n = n->next)
           {
-            RD_Cfg *pin = n->v;
+            CFG_Node *pin = n->v;
             String8 pin_expr = rd_expr_from_cfg(pin);
             E_Eval eval = e_eval_from_string(pin_expr);
             String8 eval_string = {0};
@@ -2152,7 +2144,6 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
         }
       }
     }
-    di_scope_close(scope);
   }
   
   //////////////////////////////
@@ -2252,7 +2243,7 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
                .cursor     = line_vaddr == 0 ? txt_pt(line_num, 1) : txt_pt(0, 0),
                .vaddr      = line_vaddr);
       }
-      if(rd_state->drag_drop_regs_slot == RD_RegSlot_Cfg && drop_cfg != &rd_nil_cfg)
+      if(rd_state->drag_drop_regs_slot == RD_RegSlot_Cfg && drop_cfg != &cfg_nil_node)
       {
         S64 line_num = mouse_pt.line;
         U64 line_idx = line_num - params->line_num_range.min;
@@ -2275,7 +2266,7 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
           D_LineList *lines = &params->line_infos[line_idx];
           for(D_LineNode *n = lines->first; n != 0; n = n->next)
           {
-            CTRL_EntityList modules = ctrl_modules_from_dbgi_key(scratch.arena, &d_state->ctrl_entity_store->ctx, &n->v.dbgi_key);
+            CTRL_EntityList modules = ctrl_modules_from_dbgi_key(scratch.arena, &d_state->ctrl_entity_store->ctx, n->v.dbgi_key);
             CTRL_Entity *module = ctrl_module_from_thread_candidates(&d_state->ctrl_entity_store->ctx, thread, &modules);
             if(module != &ctrl_entity_nil)
             {
@@ -2574,7 +2565,7 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
   {
     E_Eval eval = e_eval_from_string(mouse_expr);
     B32 eval_implicit_hover = (eval.irtree.mode != E_Mode_Null &&
-                               eval.space.kind == RD_EvalSpaceKind_CtrlEntity);
+                               eval.space.kind == CTRL_EvalSpaceKind_Entity);
     if(eval.msgs.max_kind == E_MsgKind_Null && (eval_implicit_hover || mouse_expr_is_explicit))
     {
       U64 line_vaddr = 0;
@@ -2805,7 +2796,7 @@ rd_code_slice(RD_CodeSliceParams *params, TxtPt *cursor, TxtPt *mark, S64 *prefe
           for(D_LineNode *n = lines->first; n != 0; n = n->next)
           {
             if((n->v.pt.line == line_num || params->line_vaddrs[line_idx] != 0) &&
-               ((di_key_match(&n->v.dbgi_key, &hover_regs->dbgi_key) &&
+               ((di_key_match(n->v.dbgi_key, hover_regs->dbgi_key) &&
                  n->v.voff_range.min <= hover_voff_range.min && hover_voff_range.min < n->v.voff_range.max) ||
                 (params->line_vaddrs[line_idx] == hover_regs->vaddr_range.min && hover_regs->vaddr_range.min != 0)))
             {
@@ -3381,8 +3372,10 @@ rd_cell(RD_CellParams *params, String8 string)
   B32 build_bindings      = !!(params->flags & RD_CellFlag_Bindings) && !is_focus_active;
   B32 build_lhs_name_desc = (params->meta_fstrs.node_count != 0 || params->description.size != 0);
   B32 build_line_edit     = (params->pre_edit_value.size != 0 || params->value_fstrs.node_count != 0);
+  B32 build_note          = (params->note_fstrs.node_count != 0 && !is_focus_active);
   DR_FStrList lhs_name_fstrs = params->meta_fstrs;
   DR_FStrList value_name_fstrs = params->value_fstrs;
+  DR_FStrList note_fstrs = params->note_fstrs;
   
   //////////////////////////////
   //- rjf: determine autocompletion string
@@ -3811,6 +3804,15 @@ rd_cell(RD_CellParams *params, String8 string)
   }
   
   //////////////////////////////
+  //- rjf: build notes
+  //
+  if(build_note) UI_Parent(box) UI_PrefWidth(params->note_width)
+  {
+    UI_Box *note_box = ui_build_box_from_key(UI_BoxFlag_DrawText, ui_key_zero());
+    ui_box_equip_display_fstrs(note_box, &note_fstrs);
+  }
+  
+  //////////////////////////////
   //- rjf: do non-textual edits (delete, copy, cut)
   //
   B32 commit = 0;
@@ -3915,7 +3917,7 @@ rd_cell(RD_CellParams *params, String8 string)
       // rjf: any valid *additive* op & autocomplete hint? -> perform autocomplete first, then re-compute op
       if(!(evt->flags & UI_EventFlag_Delete) && autocomplete_hint_string.size != 0)
       {
-        RD_Cfg *window = rd_cfg_from_id(rd_regs()->window);
+        CFG_Node *window = cfg_node_from_id(rd_regs()->window);
         RD_WindowState *ws = rd_window_state_from_cfg(window);
         RD_AutocompCursorInfo *autocomp_cursor_info = &ws->autocomp_cursor_info;
         String8 new_string = ui_push_string_replace_range(scratch.arena, edit_string, r1s64(autocomp_cursor_info->replaced_range.min+1, autocomp_cursor_info->replaced_range.max+1), autocomplete_hint_string);
@@ -4013,7 +4015,7 @@ rd_cell(RD_CellParams *params, String8 string)
       }
       if(autocomplete_hint_string.size != 0)
       {
-        RD_Cfg *window = rd_cfg_from_id(rd_regs()->window);
+        CFG_Node *window = cfg_node_from_id(rd_regs()->window);
         RD_WindowState *ws = rd_window_state_from_cfg(window);
         RD_AutocompCursorInfo *autocomp_cursor_info = &ws->autocomp_cursor_info;
         String8 autocomplete_append_string = str8_skip(autocomplete_hint_string, params->cursor->column-1 - autocomp_cursor_info->replaced_range.min);

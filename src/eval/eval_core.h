@@ -570,6 +570,7 @@ struct E_ConsTypeSlot
 typedef struct E_Module E_Module;
 struct E_Module
 {
+  DI_Key dbgi_key;
   RDI_Parsed *rdi;
   Rng1U64 vaddr_range;
   Arch arch;
@@ -744,8 +745,8 @@ struct E_AutoHookParams
 ////////////////////////////////
 //~ rjf: Evaluation Context
 
-typedef U64 E_SpaceGenFunction(void *user_data, E_Space space);
-typedef B32 E_SpaceRWFunction(void *user_data, E_Space space, void *out, Rng1U64 offset_range);
+typedef U64 E_SpaceGenFunction(E_Space space);
+typedef B32 E_SpaceRWFunction(E_Space space, void *out, Rng1U64 offset_range);
 
 //- rjf: base context
 
@@ -763,10 +764,8 @@ struct E_BaseCtx
   E_Module *modules;
   U64 modules_count;
   E_Module *primary_module;
-  DI_MatchStore *dbgi_match_store;
   
   // rjf: space hooks
-  void *space_rw_user_data;
   E_SpaceGenFunction *space_gen;
   E_SpaceRWFunction *space_read;
   E_SpaceRWFunction *space_write;
@@ -1112,7 +1111,7 @@ read_only global E_String2ExprMap e_string2expr_map_nil = {0};
 read_only global E_Expr e_expr_nil = {&e_expr_nil, &e_expr_nil, &e_expr_nil, &e_expr_nil, &e_expr_nil};
 read_only global E_IRNode e_irnode_nil = {&e_irnode_nil, &e_irnode_nil, &e_irnode_nil};
 read_only global E_Eval e_eval_nil = {{0}, {0}, {0}, &e_expr_nil, {&e_irnode_nil}};
-read_only global E_Module e_module_nil = {&rdi_parsed_nil};
+read_only global E_Module e_module_nil = {{0}, &rdi_parsed_nil};
 read_only global E_CacheBundle e_cache_bundle_nil = {0, {0}, {0}, {0}, {{0}, 0, &e_expr_nil, &e_expr_nil}, {&e_irnode_nil}};
 thread_static E_BaseCtx *e_base_ctx = 0;
 thread_static E_IRCtx *e_ir_ctx = 0;

@@ -24,7 +24,7 @@
 // [ ] fix type intepretations of cursor in bottom pane
 //
 //- bug fixes
-// [ ] disassembly sometimes has a problem where source line annotations are
+// [x] disassembly sometimes has a problem where source line annotations are
 //     periodically removed/inserted... maybe updating on fs change when we
 //     shouldn't, non-deterministic line annotation path?
 //
@@ -110,10 +110,10 @@
 //
 //- visualizer improvements
 // [ ] disasm starting address - need to use debug info for more correct results...
-// [ ] linked list view
 // [ ] multidimensional `array`
 // [ ] 2-vector, 3-vector, quaternion
 // [ ] audio waveform views
+// [x] linked list view
 //
 //- eval improvements
 // [ ] maybe add extra caching layer to process memory querying? we pay a pretty
@@ -148,13 +148,13 @@
 // [ ] step-out-of-loop
 //
 //- late-conversion performance improvements
-// [ ] investigate wide-conversion performance
-//  [ ] oversubscribing cores?
-//  [ ] conversion crashes?
 // [ ] live++ investigations - ctrl+alt+f11 in UE?
+// [x] investigate wide-conversion performance
+//  [x] oversubscribing cores?
+//  [x] conversion crashes?
 //
 //- memory usage improvements
-// [ ] "root" concept in hash store, which buckets keys & allows usage code to
+// [x] "root" concept in hash store, which buckets keys & allows usage code to
 //     jettison a collection of keys in retained mode fashion
 //
 //- short-to-medium term future features
@@ -219,11 +219,11 @@
 #include "base/base_inc.h"
 #include "linker/hash_table.h"
 #include "os/os_inc.h"
-#include "async/async.h"
 #include "artifact_cache/artifact_cache.h"
 #include "rdi/rdi_local.h"
 #include "rdi_make/rdi_make_local.h"
 #include "mdesk/mdesk.h"
+#include "config/config_inc.h"
 #include "content/content.h"
 #include "file_stream/file_stream.h"
 #include "text/text.h"
@@ -240,6 +240,7 @@
 #include "pdb/pdb.h"
 #include "pdb/pdb_parse.h"
 #include "pdb/pdb_stringize.h"
+#include "eh/eh_frame.h"
 #include "dwarf/dwarf_inc.h"
 #include "rdi_from_coff/rdi_from_coff.h"
 #include "rdi_from_elf/rdi_from_elf.h"
@@ -249,7 +250,6 @@
 #include "regs/regs.h"
 #include "regs/rdi/regs_rdi.h"
 #include "dbg_info/dbg_info.h"
-#include "dbg_info/dbg_info2.h"
 #include "disasm/disasm.h"
 #include "demon/demon_inc.h"
 #include "eval/eval_inc.h"
@@ -267,11 +267,11 @@
 #include "base/base_inc.c"
 #include "linker/hash_table.c"
 #include "os/os_inc.c"
-#include "async/async.c"
 #include "artifact_cache/artifact_cache.c"
 #include "rdi/rdi_local.c"
 #include "rdi_make/rdi_make_local.c"
 #include "mdesk/mdesk.c"
+#include "config/config_inc.c"
 #include "content/content.c"
 #include "file_stream/file_stream.c"
 #include "text/text.c"
@@ -288,6 +288,7 @@
 #include "pdb/pdb.c"
 #include "pdb/pdb_parse.c"
 #include "pdb/pdb_stringize.c"
+#include "eh/eh_frame.c"
 #include "dwarf/dwarf_inc.c"
 #include "rdi_from_coff/rdi_from_coff.c"
 #include "rdi_from_elf/rdi_from_elf.c"
@@ -297,7 +298,6 @@
 #include "regs/regs.c"
 #include "regs/rdi/regs_rdi.c"
 #include "dbg_info/dbg_info.c"
-#include "dbg_info/dbg_info2.c"
 #include "disasm/disasm.c"
 #include "demon/demon_inc.c"
 #include "eval/eval_inc.c"
@@ -582,7 +582,7 @@ entry_point(CmdLine *cmd_line)
                   if(dst_ws->cfg_id != rd_regs()->window)
                   {
                     Temp scratch = scratch_begin(0, 0);
-                    RD_PanelTree panel_tree = rd_panel_tree_from_cfg(scratch.arena, rd_cfg_from_id(dst_ws->cfg_id));
+                    CFG_PanelTree panel_tree = cfg_panel_tree_from_cfg(scratch.arena, cfg_node_from_id(dst_ws->cfg_id));
                     rd_regs()->window = dst_ws->cfg_id;
                     rd_regs()->panel  = panel_tree.focused->cfg->id;
                     rd_regs()->tab    = panel_tree.focused->selected_tab->id;
@@ -751,7 +751,7 @@ entry_point(CmdLine *cmd_line)
     case ExecMode_BinaryUtility:
     {
       rb_entry_point(cmd_line);
-      di2_signal_completion();
+      di_signal_completion();
     }break;
     
     //- rjf: help message box

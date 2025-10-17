@@ -10,9 +10,6 @@
 typedef struct E_InterpretCtx E_InterpretCtx;
 struct E_InterpretCtx
 {
-  void *space_rw_user_data;
-  E_SpaceRWFunction *space_read;
-  E_SpaceRWFunction *space_write;
   E_Space primary_space;
   Arch reg_arch;
   E_Space reg_space;
