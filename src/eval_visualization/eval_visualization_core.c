@@ -150,8 +150,14 @@ ev_type_key_is_editable(E_TypeKey type_key)
   B32 done = 0;
   for(E_TypeKey t = type_key; !result && !done; t = e_type_key_direct(t))
   {
-    E_TypeKind kind = e_type_kind_from_key(t);
-    switch(kind)
+    E_Type *type = e_type_from_key(t);
+    E_TypeKind kind = type->kind;
+    if(type->flags & E_TypeFlag_IsNotEditable)
+    {
+      result = 0;
+      done = 1;
+    }
+    else switch(kind)
     {
       case E_TypeKind_Null:
       case E_TypeKind_Function:
@@ -167,7 +173,6 @@ ev_type_key_is_editable(E_TypeKey type_key)
       }break;
       case E_TypeKind_Array:
       {
-        E_Type *type = e_type_from_key(t);
         if(type->flags & E_TypeFlag_IsNotText)
         {
           result = 0;
@@ -1906,17 +1911,25 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
             {
               U64 vaddr = ptr_data->value_eval.value.u64;
               E_Module *module = &e_module_nil;
-              U32 module_idx = 0;
               for EachIndex(idx, e_base_ctx->modules_count)
               {
                 if(contains_1u64(e_base_ctx->modules[idx].vaddr_range, vaddr))
                 {
                   module = &e_base_ctx->modules[idx];
-                  module_idx = (U32)idx;
                   break;
                 }
               }
-              RDI_Parsed *rdi = module->rdi;
+              E_DbgInfo *dbg_info = e_dbg_info_from_module(module);
+              if(dbg_info == &e_dbg_info_nil)
+              {
+                dbg_info = e_dbg_info_from_type_key(type_key);
+              }
+              U32 dbg_info_num = 0;
+              if(dbg_info != &e_dbg_info_nil)
+              {
+                dbg_info_num = (U32)(dbg_info - e_base_ctx->dbg_infos) + 1;
+              }
+              RDI_Parsed *rdi = dbg_info->rdi;
               U64 voff = vaddr - module->vaddr_range.min;
               B32 good_symbol_match = 0;
               
@@ -1965,7 +1978,7 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
                   if(inline_site != 0)
                   {
                     RDI_TypeNode *type_node = rdi_element_from_name_idx(rdi, TypeNodes, inline_site->type_idx);
-                    E_TypeKey type = e_type_key_ext(e_type_kind_from_rdi(type_node->kind), inline_site->type_idx, module_idx);
+                    E_TypeKey type = e_type_key_ext(e_type_kind_from_rdi(type_node->kind), inline_site->type_idx, dbg_info_num);
                     String8 name = {0};
                     name.str = rdi_string_from_idx(rdi, inline_site->name_string_idx, &name.size);
                     if(inline_site->type_idx != 0)
@@ -1995,7 +2008,7 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
                   U64 proc_idx = scope->proc_idx;
                   RDI_Procedure *procedure = rdi_element_from_name_idx(rdi, Procedures, proc_idx);
                   RDI_TypeNode *type_node = rdi_element_from_name_idx(rdi, TypeNodes, procedure->type_idx);
-                  E_TypeKey type = e_type_key_ext(e_type_kind_from_rdi(type_node->kind), procedure->type_idx, module_idx);
+                  E_TypeKey type = e_type_key_ext(e_type_kind_from_rdi(type_node->kind), procedure->type_idx, dbg_info_num);
                   String8 name = {0};
                   name.str = rdi_string_from_idx(rdi, procedure->name_string_idx, &name.size);
                   if(procedure->type_idx != 0)

@@ -313,7 +313,7 @@ di_open(DI_Key key)
 }
 
 internal void
-di_close(DI_Key key)
+di_close(DI_Key key, B32 force_closed)
 {
   //- rjf: unpack key
   U64 hash = u64_hash_from_str8(str8_struct(&key));
@@ -341,7 +341,14 @@ di_close(DI_Key key)
     }
     if(node)
     {
-      node->refcount -= 1;
+      if(force_closed)
+      {
+        node->refcount = 0;
+      }
+      else
+      {
+        node->refcount -= 1;
+      }
       if(node->refcount == 0)
       {
         for(;;)
@@ -687,6 +694,7 @@ di_async_tick(void)
         }
         U64 og_size = t->og_size;
         B32 og_is_rdi = t->og_is_rdi;
+        B32 og_is_good = (og_size > 0);
         
         //- rjf: compute key's RDI path
         String8 rdi_path = {0};
@@ -754,8 +762,31 @@ di_async_tick(void)
           threads_available = (max_threads >= needed_threads);
         }
         
+        //- rjf: if this conversion will overwrite an RDI we already have in cache,
+        // then we need to evict the old one from the cache.
+        B32 ready_to_launch_conversion = (threads_available && !og_is_rdi && rdi_is_stale && t->thread_count != 0 && t->status != DI_LoadTaskStatus_Active);
+        if(ready_to_launch_conversion)
+        {
+          U64 path2key_hash = u64_hash_from_str8(og_path);
+          U64 path2key_slot_idx = path2key_hash%di_shared->path2key_slots_count;
+          DI_KeySlot *path2key_slot = &di_shared->path2key_slots[path2key_slot_idx];
+          Stripe *path2key_stripe = stripe_from_slot_idx(&di_shared->path2key_stripes, path2key_slot_idx);
+          RWMutexScope(path2key_stripe->rw_mutex, 0)
+          {
+            // NOTE(rjf): we need to iterate from last -> first, since we want to evict the
+            // most recent key.
+            for(DI_KeyPathNode *n = path2key_slot->last; n != 0; n = n->prev)
+            {
+              if(str8_match(n->path, og_path, 0) && !di_key_match(key, n->key))
+              {
+                di_close(n->key, 1);
+              }
+            }
+          }
+        }
+        
         //- rjf: launch conversion processes
-        if(threads_available && !og_is_rdi && rdi_is_stale && t->thread_count != 0 && t->status != DI_LoadTaskStatus_Active)
+        if(og_is_good && ready_to_launch_conversion)
         {
           B32 should_compress = 0;
           OS_ProcessLaunchParams params = {0};
@@ -818,6 +849,12 @@ di_async_tick(void)
               di_shared->conversion_thread_count -= t->thread_count;
             }
           }
+        }
+        
+        //- rjf: ready to launch, but bad O.G. file -> just immediately mark as done
+        if(!og_is_good && ready_to_launch_conversion)
+        {
+          t->status = DI_LoadTaskStatus_Done;
         }
         
         //- rjf: if the RDI for this task is not stale, then we're already done - mark this
@@ -961,7 +998,10 @@ di_async_tick(void)
             MemoryCopyStruct(&node->rdi, &rdi_parsed);
             node->completion_count += 1;
             node->working_count -= 1;
-            ins_atomic_u64_inc_eval(&di_shared->load_gen);
+            if(node->rdi.raw_data_size != 0)
+            {
+              ins_atomic_u64_inc_eval(&di_shared->load_gen);
+            }
             ins_atomic_u64_inc_eval(&di_shared->load_count);
           }
           else
@@ -1143,8 +1183,9 @@ di_search_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *
           for EachInRange(idx, range)
           {
             //- rjf: every so often, check if we need to cancel, and cancel
+            if(idx%10000 == 0 && !!ins_atomic_u32_eval(cancel_signal))
             {
-              // TODO(rjf)
+              break;
             }
             
             //- rjf: get element, map to string; if empty, continue to next element
@@ -1245,6 +1286,14 @@ di_search_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *
     }
     lane_sync();
     
+    //- rjf: decide if we cancelled
+    B32 cancelled = 0;
+    if(lane_idx() == 0 && !!ins_atomic_u32_eval(cancel_signal))
+    {
+      cancelled = 1;
+    }
+    lane_sync_u64(&cancelled, 0);
+    
     //- rjf: produce sort records
     typedef struct SortRecord SortRecord;
     struct SortRecord
@@ -1255,15 +1304,15 @@ di_search_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *
     U64 sort_records_count = all_items->total_count;
     SortRecord *sort_records = 0;
     SortRecord *sort_records__swap = 0;
-    ProfScope("produce sort records")
+    if(!cancelled) ProfScope("produce sort records")
     {
       if(lane_idx() == 0)
       {
-        sort_records = push_array(scratch.arena, SortRecord, sort_records_count);
+        sort_records = push_array_no_zero(scratch.arena, SortRecord, sort_records_count);
       }
       if(lane_idx() == lane_from_task_idx(1))
       {
-        sort_records__swap = push_array(scratch.arena, SortRecord, sort_records_count);
+        sort_records__swap = push_array_no_zero(scratch.arena, SortRecord, sort_records_count);
       }
       lane_sync_u64(&sort_records, 0);
       lane_sync_u64(&sort_records__swap, lane_from_task_idx(1));
@@ -1283,7 +1332,7 @@ di_search_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *
     lane_sync();
     
     //- rjf: sort records
-    ProfScope("sort records")
+    if(!cancelled) ProfScope("sort records")
     {
       //- rjf: set up common data
       U64 bits_per_digit = 8;
@@ -1382,12 +1431,12 @@ di_search_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *
     
     //- rjf: produce final array
     DI_SearchItemArray items = {0};
-    ProfScope("produce final array")
+    if(!cancelled) ProfScope("produce final array")
     {
       if(lane_idx() == 0)
       {
         items.count = all_items->total_count;
-        items.v = push_array(arena, DI_SearchItem, items.count);
+        items.v = push_array_no_zero(arena, DI_SearchItem, items.count);
       }
       lane_sync_u64(&items.count, 0);
       lane_sync_u64(&items.v, 0);
@@ -1402,10 +1451,19 @@ di_search_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *
     lane_sync();
     
     //- rjf: bundle as artifact
-    artifact.u64[0] = (U64)arenas;
-    artifact.u64[1] = arenas_count;
-    artifact.u64[2] = (U64)items.v;
-    artifact.u64[3] = items.count;
+    if(!cancelled) 
+    {
+      artifact.u64[0] = (U64)arenas;
+      artifact.u64[1] = arenas_count;
+      artifact.u64[2] = (U64)items.v;
+      artifact.u64[3] = items.count;
+    }
+    
+    //- rjf: release results on cancel
+    else
+    {
+      arena_release(arena);
+    }
   }
   scratch_end(scratch);
   access_close(access);
@@ -1446,7 +1504,7 @@ di_search_item_array_from_target_query(Access *access, RDI_SectionKind target, S
     String8 key = str8_list_join(scratch.arena, &key_parts, 0);
     
     // rjf: get artifact
-    AC_Artifact artifact = ac_artifact_from_key(access, key, di_search_artifact_create, di_search_artifact_destroy, endt_us, .gen = di_load_gen(), .flags = AC_Flag_Wide, .stale_out = stale_out);
+    AC_Artifact artifact = ac_artifact_from_key(access, key, di_search_artifact_create, di_search_artifact_destroy, endt_us, .gen = di_load_gen(), .flags = AC_Flag_Wide, .evict_threshold_us = 100000, .stale_out = stale_out);
     
     // rjf: unpack artifact
     result.v = (DI_SearchItem *)artifact.u64[2];
@@ -1482,68 +1540,82 @@ di_match_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *g
   //- rjf: get all loaded keys
   DI_KeyArray dbgi_keys = di_push_all_loaded_keys(scratch.arena);
   
-  //- rjf: wide search across all debug infos
-  DI_Match *lane_matches = 0;
+  //- rjf: take cancellation signal
+  B32 cancelled = 0;
   if(lane_idx() == 0)
   {
-    lane_matches = push_array(scratch.arena, DI_Match, lane_count());
+    cancelled = ins_atomic_u32_eval(cancel_signal);
   }
-  lane_sync_u64(&lane_matches, 0);
+  lane_sync_u64(&cancelled, 0);
+  
+  //- rjf: wide search across all debug infos
+  DI_Match *lane_matches = 0;
+  if(!cancelled)
   {
-    read_only local_persist RDI_NameMapKind name_map_kinds[] =
+    if(lane_idx() == 0)
     {
-      RDI_NameMapKind_GlobalVariables,
-      RDI_NameMapKind_ThreadVariables,
-      RDI_NameMapKind_Constants,
-      RDI_NameMapKind_Procedures,
-      RDI_NameMapKind_Types,
-    };
-    read_only local_persist RDI_SectionKind name_map_section_kinds[] =
+      lane_matches = push_array(scratch.arena, DI_Match, lane_count());
+    }
+    lane_sync_u64(&lane_matches, 0);
     {
-      RDI_SectionKind_GlobalVariables,
-      RDI_SectionKind_ThreadVariables,
-      RDI_SectionKind_Constants,
-      RDI_SectionKind_Procedures,
-      RDI_SectionKind_TypeNodes,
-    };
-    Rng1U64 range = lane_range(dbgi_keys.count);
-    for EachInRange(dbgi_idx, range)
-    {
-      Access *access = access_open();
+      read_only local_persist RDI_NameMapKind name_map_kinds[] =
       {
-        DI_Key dbgi_key = dbgi_keys.v[dbgi_idx];
-        RDI_Parsed *rdi = di_rdi_from_key(access, dbgi_key, 0, 0);
-        for EachElement(name_map_kind_idx, name_map_kinds)
+        RDI_NameMapKind_GlobalVariables,
+        RDI_NameMapKind_ThreadVariables,
+        RDI_NameMapKind_Constants,
+        RDI_NameMapKind_Procedures,
+        RDI_NameMapKind_Types,
+      };
+      read_only local_persist RDI_SectionKind name_map_section_kinds[] =
+      {
+        RDI_SectionKind_GlobalVariables,
+        RDI_SectionKind_ThreadVariables,
+        RDI_SectionKind_Constants,
+        RDI_SectionKind_Procedures,
+        RDI_SectionKind_TypeNodes,
+      };
+      Rng1U64 range = lane_range(dbgi_keys.count);
+      for EachInRange(dbgi_idx, range)
+      {
+        Access *access = access_open();
         {
-          RDI_NameMap *name_map = rdi_element_from_name_idx(rdi, NameMaps, name_map_kinds[name_map_kind_idx]);
-          RDI_ParsedNameMap parsed_name_map = {0};
-          rdi_parsed_from_name_map(rdi, name_map, &parsed_name_map);
-          RDI_NameMapNode *map_node = rdi_name_map_lookup(rdi, &parsed_name_map, name.str, name.size);
-          U32 num = 0;
-          U32 *run = rdi_matches_from_map_node(rdi, map_node, &num);
-          if(num != 0)
+          DI_Key dbgi_key = dbgi_keys.v[dbgi_idx];
+          RDI_Parsed *rdi = di_rdi_from_key(access, dbgi_key, 0, 0);
+          for EachElement(name_map_kind_idx, name_map_kinds)
           {
-            lane_matches[lane_idx()].key          = dbgi_key;
-            lane_matches[lane_idx()].section_kind = name_map_section_kinds[name_map_kind_idx];
-            lane_matches[lane_idx()].idx          = run[num-1];
+            RDI_NameMap *name_map = rdi_element_from_name_idx(rdi, NameMaps, name_map_kinds[name_map_kind_idx]);
+            RDI_ParsedNameMap parsed_name_map = {0};
+            rdi_parsed_from_name_map(rdi, name_map, &parsed_name_map);
+            RDI_NameMapNode *map_node = rdi_name_map_lookup(rdi, &parsed_name_map, name.str, name.size);
+            U32 num = 0;
+            U32 *run = rdi_matches_from_map_node(rdi, map_node, &num);
+            if(num != 0)
+            {
+              lane_matches[lane_idx()].key          = dbgi_key;
+              lane_matches[lane_idx()].section_kind = name_map_section_kinds[name_map_kind_idx];
+              lane_matches[lane_idx()].idx          = run[num-1];
+            }
           }
         }
+        access_close(access);
       }
-      access_close(access);
     }
   }
   lane_sync();
   
   //- rjf: pick match
   DI_Match match = {0};
-  for EachIndex(idx, lane_count())
+  if(lane_matches != 0)
   {
-    if(lane_matches[idx].idx != 0)
+    for EachIndex(idx, lane_count())
     {
-      match = lane_matches[idx];
-      if(di_key_match(di_key_zero(), preferred_key) || di_key_match(match.key, preferred_key))
+      if(lane_matches[idx].idx != 0)
       {
-        break;
+        match = lane_matches[idx];
+        if(di_key_match(di_key_zero(), preferred_key) || di_key_match(match.key, preferred_key))
+        {
+          break;
+        }
       }
     }
   }
@@ -1579,7 +1651,7 @@ di_match_from_string(String8 string, U64 index, DI_Key preferred_dbgi_key, U64 e
     String8 key = str8_list_join(scratch.arena, &key_parts, 0);
     U64 dbgi_count = di_load_count();
     B32 wide = (dbgi_count > 256);
-    AC_Artifact artifact = ac_artifact_from_key(access, key, di_match_artifact_create, 0, endt_us, .flags = wide ? AC_Flag_Wide : 0, .gen = di_load_gen());
+    AC_Artifact artifact = ac_artifact_from_key(access, key, di_match_artifact_create, 0, endt_us, .flags = wide ? AC_Flag_Wide : 0, .gen = di_load_gen(), .evict_threshold_us = wide ? 20000000 : 10000000);
     result.key.u64[0]   = artifact.u64[0];
     result.key.u64[1]   = artifact.u64[1];
     result.section_kind = artifact.u64[2];

@@ -548,7 +548,14 @@ os_w32_wnd_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
       case WM_DPICHANGED:
       {
         F32 new_dpi = (F32)(wParam & 0xffff);
+        RECT suggested_new_rect = *(RECT *)lParam;
         window->dpi = new_dpi;
+        SetWindowPos(window->hwnd, 0,
+                     suggested_new_rect.left,
+                     suggested_new_rect.top,
+                     suggested_new_rect.right - suggested_new_rect.left,
+                     suggested_new_rect.bottom - suggested_new_rect.top,
+                     0);
       }break;
       
       //- rjf: [file drop]
@@ -565,7 +572,9 @@ os_w32_wnd_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
           U64 name_size = DragQueryFile(drop, idx, 0, 0) + 1;
           U8 *name_ptr = push_array(os_w32_event_arena, U8, name_size);
           DragQueryFile(drop, idx, (char *)name_ptr, name_size);
-          str8_list_push(os_w32_event_arena, &event->strings, str8(name_ptr, name_size - 1));
+          String8 path_string = str8(name_ptr, name_size - 1);
+          String8 path_string__normalized = path_normalized_from_string(os_w32_event_arena, path_string);
+          str8_list_push(os_w32_event_arena, &event->strings, path_string__normalized);
         }
         DragFinish(drop);
       }break;
