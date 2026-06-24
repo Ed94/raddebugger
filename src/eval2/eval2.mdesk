@@ -1,0 +1,147 @@
+// Copyright (c) Epic Games Tools
+// Licensed under the MIT license (https://opensource.org/license/mit/)
+
+@table(name parse_kind precedence pre sep pos chain)
+E2_OpTable:
+{
+  {Dot      Binary        1 ""        "."  ""  "" }
+  {Index    Binary        1 ""        "["  "]" "" }
+  {Call     Call          1 ""        "("  ")" ","}
+  {DerefAsm UnaryPrefix   1 "["       ""   "]" "" }
+  {SizeOf   UnaryPrefix   1 "sizeof " ""   ""  "" }
+  {Deref    UnaryPrefix   2 "*"       ""   ""  "" }
+  {Address  UnaryPrefix   2 "&"       ""   ""  "" }
+  {Pos      UnaryPrefix   2 "+"       ""   ""  "" }
+  {Neg      UnaryPrefix   2 "-"       ""   ""  "" }
+  {LogNot   UnaryPrefix   2 "!"       ""   ""  "" }
+  {BitNot   UnaryPrefix   2 "~"       ""   ""  "" }
+  {Mul      Binary        3 ""        "*"  ""  "" }
+  {Div      Binary        3 ""        "/"  ""  "" }
+  {Mod      Binary        3 ""        "%"  ""  "" }
+  {Add      Binary        4 ""        "+"  ""  "" }
+  {Sub      Binary        4 ""        "-"  ""  "" }
+  {LShift   Binary        5 ""        "<<" ""  "" }
+  {RShift   Binary        5 ""        ">>" ""  "" }
+  {Less     Binary        6 ""        "<"  ""  "" }
+  {LtEq     Binary        6 ""        "<=" ""  "" }
+  {Grtr     Binary        6 ""        ">"  ""  "" }
+  {GrEq     Binary        6 ""        ">=" ""  "" }
+  {EqEq     Binary        7 ""        "==" ""  "" }
+  {NtEq     Binary        7 ""        "!=" ""  "" }
+  {BitAnd   Binary        8 ""        "&"  ""  "" }
+  {BitXor   Binary        9 ""        "^"  ""  "" }
+  {BitOr    Binary       10 ""        "|"  ""  "" }
+  {LogAnd   Binary       11 ""        "&&" ""  "" }
+  {LogOr    Binary       12 ""        "||" ""  "" }
+  {Define   Binary       13 ""        "="  ""  "" }
+  {Cond     Ternary      14 ""        "?"  ""  ":"}
+}
+
+@enum E2_OpKind:
+{
+  Null,
+  @expand(E2_OpTable a) `$(a.name)`,
+  COUNT,
+}
+
+@data(E2_OpInfo) e2_op_kind_info_table:
+{
+  `{0}`,
+  @expand(E2_OpTable a) `{E2_OpParseKind_$(a.parse_kind), $(a.precedence), str8_lit_comp("$(a.pre)"), str8_lit_comp("$(a.sep)"), str8_lit_comp("$(a.pos)"), str8_lit_comp("$(a.chain)")}`
+}
+
+@table(name                 basic_string          basic_byte_size)
+// NOTE(rjf): basic_byte_size == 0xFF? => address sized
+E2_TypeKindTable:
+{
+  {Null                      ""                    0    }
+  {Void                      "void"                0    }
+  {Handle                    "HANDLE"              0xFF }
+  {HResult                   "HRESULT"             4    }
+  {Char8                     "char8"               1    }
+  {Char16                    "char16"              2    }
+  {Char32                    "char32"              4    }
+  {UChar8                    "uchar8"              1    }
+  {UChar16                   "uchar16"             2    }
+  {UChar32                   "uchar32"             4    }
+  {U8                        "uint8"               1    }
+  {U16                       "uint16"              2    }
+  {U32                       "uint32"              4    }
+  {U64                       "uint64"              8    }
+  {U128                      "uint128"             16   }
+  {U256                      "uint256"             32   }
+  {U512                      "uint512"             64   }
+  {S8                        "int8"                1    }
+  {S16                       "int16"               2    }
+  {S32                       "int32"               4    }
+  {S64                       "int64"               8    }
+  {S128                      "int128"              16   }
+  {S256                      "int256"              32   }
+  {S512                      "int512"              64   }
+  {Bool                      "bool"                1    }
+  {F16                       "float16"             2    }
+  {F32                       "float32"             4    }
+  {F32PP                     "float32PP"           4    }
+  {F48                       "float48"             6    }
+  {F64                       "float64"             8    }
+  {F80                       "float80"             10   }
+  {F128                      "float128"            16   }
+  {ComplexF32                "complex_float32"     8    }
+  {ComplexF64                "complex_float64"     16   }
+  {ComplexF80                "complex_float80"     20   }
+  {ComplexF128               "complex_float128"    32   }
+  {Modifier                  "modifier"            0    }
+  {Ptr                       "ptr"                 0    }
+  {LRef                      "lref"                0    }
+  {RRef                      "rref"                0    }
+  {Array                     "array"               0    }
+  {Function                  "function"            0    }
+  {Method                    "method"              0    }
+  {MemberPtr                 "member_ptr"          0    }
+  {Struct                    "struct"              0    }
+  {Class                     "class"               0    }
+  {Union                     "union"               0    }
+  {Enum                      "enum"                0    }
+  {Alias                     "typedef"             0    }
+  {IncompleteStruct          "struct"              0    }
+  {IncompleteUnion           "union"               0    }
+  {IncompleteClass           "class"               0    }
+  {IncompleteEnum            "enum"                0    }
+  {Bitfield                  "bitfield"            0    }
+  {Variadic                  "variadic"            0    }
+  {Set                       "set"                 0    }
+  {Lens                      "lens"                0    }
+  {LensSpec                  "lens_spec"           0    }
+  {MetaExpr                  "meta_expr"           0    }
+  {MetaDisplayName           "meta_display_name"   0    }
+  {MetaDescription           "meta_description"    0    }
+}
+
+@enum E2_TypeKind:
+{
+  @expand(E2_TypeKindTable a) `$(a.name)`,
+  COUNT,
+  `FirstBasic      = E2_TypeKind_Void`,
+  `LastBasic       = E2_TypeKind_ComplexF128`,
+  `FirstInteger    = E2_TypeKind_Char8`,
+  `LastInteger     = E2_TypeKind_S512`,
+  `FirstSigned1    = E2_TypeKind_Char8`,
+  `LastSigned1     = E2_TypeKind_Char32`,
+  `FirstSigned2    = E2_TypeKind_S8`,
+  `LastSigned2     = E2_TypeKind_S512`,
+  `FirstIncomplete = E2_TypeKind_IncompleteStruct`,
+  `LastIncomplete  = E2_TypeKind_IncompleteEnum`,
+  `FirstMeta       = E2_TypeKind_MetaExpr`,
+  `LastMeta        = E2_TypeKind_MetaDescription`,
+}
+
+@data(U8) e2_type_kind_basic_byte_size_table:
+{
+  @expand(E2_TypeKindTable a) `$(a.basic_byte_size)`
+}
+
+@data(String8) e2_type_kind_basic_string_table:
+{
+  @expand(E2_TypeKindTable a) `str8_lit_comp("$(a.basic_string)")`
+}
+

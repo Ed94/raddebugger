@@ -1,0 +1,21 @@
+// Copyright (c) Epic Games Tools
+// Licensed under the MIT license (https://opensource.org/license/mit/)
+
+@table(name  namespace_lower)
+UWND_UnwinderTable:
+{
+  {PEx64      pe_x64 }
+  {EHFrame    eh     }
+}
+
+@enum UWND_Unwinder:
+{
+  Null,
+  @expand(UWND_UnwinderTable a) `$(a.name)`,
+  COUNT
+}
+
+@xlist UWND_Unwinder_XList:
+{
+  @expand(UWND_UnwinderTable a) `$(a.name), $(a.namespace_lower)`
+}

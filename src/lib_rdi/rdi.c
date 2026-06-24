@@ -30,24 +30,24 @@ sizeof(RDI_U32),
 sizeof(RDI_U64),
 sizeof(RDI_Unit),
 sizeof(RDI_VMapEntry),
+sizeof(RDI_Namespace),
 sizeof(RDI_TypeNode),
 sizeof(RDI_UDT),
 sizeof(RDI_Member),
 sizeof(RDI_EnumMember),
-sizeof(RDI_GlobalVariable),
-sizeof(RDI_VMapEntry),
-sizeof(RDI_ThreadVariable),
-sizeof(RDI_Constant),
-sizeof(RDI_Procedure),
 sizeof(RDI_Scope),
 sizeof(RDI_U64),
 sizeof(RDI_VMapEntry),
 sizeof(RDI_InlineSite),
-sizeof(RDI_Local),
-sizeof(RDI_LocationBlock),
+sizeof(RDI_Symbol),
+sizeof(RDI_VMapEntry),
+sizeof(RDI_Symbol),
+sizeof(RDI_Symbol),
+sizeof(RDI_Symbol),
+sizeof(RDI_Symbol),
 sizeof(RDI_U8),
 sizeof(RDI_U8),
-sizeof(RDI_U32),
+sizeof(RDI_LocationSetElement),
 sizeof(RDI_MD5),
 sizeof(RDI_SHA1),
 sizeof(RDI_SHA256),
@@ -58,15 +58,14 @@ sizeof(RDI_NameMapNode),
 sizeof(RDI_U8),
 };
 
-RDI_U16 rdi_eval_op_ctrlbits_table[53] =
+RDI_U16 rdi_eval_op_ctrlbits_table[54] =
 {
 RDI_EVAL_CTRLBITS(0, 0, 0),
 RDI_EVAL_CTRLBITS(0, 0, 0),
-RDI_EVAL_CTRLBITS(1, 1, 0),
+RDI_EVAL_CTRLBITS(2, 1, 0),
 RDI_EVAL_CTRLBITS(2, 0, 0),
 RDI_EVAL_CTRLBITS(1, 1, 1),
 RDI_EVAL_CTRLBITS(4, 0, 1),
-RDI_EVAL_CTRLBITS(0, 1, 1),
 RDI_EVAL_CTRLBITS(8, 0, 1),
 RDI_EVAL_CTRLBITS(4, 0, 1),
 RDI_EVAL_CTRLBITS(4, 0, 1),
@@ -77,20 +76,22 @@ RDI_EVAL_CTRLBITS(2, 0, 1),
 RDI_EVAL_CTRLBITS(4, 0, 1),
 RDI_EVAL_CTRLBITS(8, 0, 1),
 RDI_EVAL_CTRLBITS(16, 0, 1),
+RDI_EVAL_CTRLBITS(32, 0, 1),
+RDI_EVAL_CTRLBITS(64, 0, 1),
 RDI_EVAL_CTRLBITS(1, 0, 1),
-RDI_EVAL_CTRLBITS(1, 1, 1),
-RDI_EVAL_CTRLBITS(1, 1, 1),
-RDI_EVAL_CTRLBITS(1, 2, 1),
-RDI_EVAL_CTRLBITS(1, 2, 1),
-RDI_EVAL_CTRLBITS(1, 2, 1),
-RDI_EVAL_CTRLBITS(1, 2, 1),
-RDI_EVAL_CTRLBITS(1, 2, 1),
+RDI_EVAL_CTRLBITS(2, 1, 1),
+RDI_EVAL_CTRLBITS(2, 1, 1),
 RDI_EVAL_CTRLBITS(2, 2, 1),
 RDI_EVAL_CTRLBITS(2, 2, 1),
-RDI_EVAL_CTRLBITS(1, 2, 1),
-RDI_EVAL_CTRLBITS(1, 2, 1),
-RDI_EVAL_CTRLBITS(1, 2, 1),
-RDI_EVAL_CTRLBITS(1, 1, 1),
+RDI_EVAL_CTRLBITS(2, 2, 1),
+RDI_EVAL_CTRLBITS(2, 2, 1),
+RDI_EVAL_CTRLBITS(2, 2, 1),
+RDI_EVAL_CTRLBITS(2, 2, 1),
+RDI_EVAL_CTRLBITS(2, 2, 1),
+RDI_EVAL_CTRLBITS(2, 2, 1),
+RDI_EVAL_CTRLBITS(2, 2, 1),
+RDI_EVAL_CTRLBITS(2, 2, 1),
+RDI_EVAL_CTRLBITS(2, 1, 1),
 RDI_EVAL_CTRLBITS(1, 2, 1),
 RDI_EVAL_CTRLBITS(1, 2, 1),
 RDI_EVAL_CTRLBITS(1, 1, 1),
@@ -105,23 +106,25 @@ RDI_EVAL_CTRLBITS(1, 1, 1),
 RDI_EVAL_CTRLBITS(2, 1, 1),
 RDI_EVAL_CTRLBITS(1, 0, 1),
 RDI_EVAL_CTRLBITS(0, 1, 0),
-RDI_EVAL_CTRLBITS(1, 0, 0),
 RDI_EVAL_CTRLBITS(1, 2, 1),
 RDI_EVAL_CTRLBITS(1, 1, 1),
 RDI_EVAL_CTRLBITS(4, 0, 0),
 RDI_EVAL_CTRLBITS(4, 0, 0),
 RDI_EVAL_CTRLBITS(8, 0, 0),
 RDI_EVAL_CTRLBITS(0, 2, 2),
+RDI_EVAL_CTRLBITS(0, 0, 1),
 RDI_EVAL_CTRLBITS(0, 0, 0),
 };
 
-struct {RDI_EvalConversionKind dst_typegroups[RDI_EvalTypeGroup_COUNT];} rdi_eval_typegroup_conversion_kind_matrix[6] =
+struct {RDI_EvalConversionKind dst_typegroups[RDI_EvalTypeGroup_COUNT];} rdi_eval_typegroup_conversion_kind_matrix[8] =
 {
 {{RDI_EvalConversionKind_OtherToOther, RDI_EvalConversionKind_FromOther, RDI_EvalConversionKind_FromOther, RDI_EvalConversionKind_FromOther, RDI_EvalConversionKind_FromOther}},
 {{RDI_EvalConversionKind_ToOther, RDI_EvalConversionKind_Noop, RDI_EvalConversionKind_Noop, RDI_EvalConversionKind_Legal, RDI_EvalConversionKind_Legal}},
 {{RDI_EvalConversionKind_ToOther, RDI_EvalConversionKind_Noop, RDI_EvalConversionKind_Noop, RDI_EvalConversionKind_Legal, RDI_EvalConversionKind_Legal}},
 {{RDI_EvalConversionKind_ToOther, RDI_EvalConversionKind_Legal, RDI_EvalConversionKind_Legal, RDI_EvalConversionKind_Noop, RDI_EvalConversionKind_Legal}},
 {{RDI_EvalConversionKind_ToOther, RDI_EvalConversionKind_Legal, RDI_EvalConversionKind_Legal, RDI_EvalConversionKind_Legal, RDI_EvalConversionKind_Noop}},
+{{RDI_EvalConversionKind_ToOther, RDI_EvalConversionKind_Legal, RDI_EvalConversionKind_Legal, RDI_EvalConversionKind_Legal, RDI_EvalConversionKind_Legal}},
+{{RDI_EvalConversionKind_ToOther, RDI_EvalConversionKind_Legal, RDI_EvalConversionKind_Legal, RDI_EvalConversionKind_Legal, RDI_EvalConversionKind_Legal}},
 {{RDI_EvalConversionKind_Noop, RDI_EvalConversionKind_Noop, RDI_EvalConversionKind_Noop, RDI_EvalConversionKind_Noop, RDI_EvalConversionKind_Noop}},
 };
 
@@ -159,7 +162,6 @@ RDI_U8 *result = 0;
 switch (kind)
 {
 default:{}break;
-case RDI_TypeKind_NULL: {result = (RDI_U8*)"NULL"; *size_out = sizeof("NULL")-1;}break;
 case RDI_TypeKind_Void: {result = (RDI_U8*)"Void"; *size_out = sizeof("Void")-1;}break;
 case RDI_TypeKind_Handle: {result = (RDI_U8*)"Handle"; *size_out = sizeof("Handle")-1;}break;
 case RDI_TypeKind_HResult: {result = (RDI_U8*)"HResult"; *size_out = sizeof("HResult")-1;}break;
@@ -184,17 +186,23 @@ case RDI_TypeKind_S128: {result = (RDI_U8*)"S128"; *size_out = sizeof("S128")-1;
 case RDI_TypeKind_S256: {result = (RDI_U8*)"S256"; *size_out = sizeof("S256")-1;}break;
 case RDI_TypeKind_S512: {result = (RDI_U8*)"S512"; *size_out = sizeof("S512")-1;}break;
 case RDI_TypeKind_Bool: {result = (RDI_U8*)"Bool"; *size_out = sizeof("Bool")-1;}break;
+case RDI_TypeKind_BF16: {result = (RDI_U8*)"BF16"; *size_out = sizeof("BF16")-1;}break;
 case RDI_TypeKind_F16: {result = (RDI_U8*)"F16"; *size_out = sizeof("F16")-1;}break;
 case RDI_TypeKind_F32: {result = (RDI_U8*)"F32"; *size_out = sizeof("F32")-1;}break;
 case RDI_TypeKind_F32PP: {result = (RDI_U8*)"F32PP"; *size_out = sizeof("F32PP")-1;}break;
 case RDI_TypeKind_F48: {result = (RDI_U8*)"F48"; *size_out = sizeof("F48")-1;}break;
 case RDI_TypeKind_F64: {result = (RDI_U8*)"F64"; *size_out = sizeof("F64")-1;}break;
 case RDI_TypeKind_F80: {result = (RDI_U8*)"F80"; *size_out = sizeof("F80")-1;}break;
+case RDI_TypeKind_F96: {result = (RDI_U8*)"F96"; *size_out = sizeof("F96")-1;}break;
 case RDI_TypeKind_F128: {result = (RDI_U8*)"F128"; *size_out = sizeof("F128")-1;}break;
 case RDI_TypeKind_ComplexF32: {result = (RDI_U8*)"ComplexF32"; *size_out = sizeof("ComplexF32")-1;}break;
 case RDI_TypeKind_ComplexF64: {result = (RDI_U8*)"ComplexF64"; *size_out = sizeof("ComplexF64")-1;}break;
 case RDI_TypeKind_ComplexF80: {result = (RDI_U8*)"ComplexF80"; *size_out = sizeof("ComplexF80")-1;}break;
 case RDI_TypeKind_ComplexF128: {result = (RDI_U8*)"ComplexF128"; *size_out = sizeof("ComplexF128")-1;}break;
+case RDI_TypeKind_Decimal32: {result = (RDI_U8*)"Decimal32"; *size_out = sizeof("Decimal32")-1;}break;
+case RDI_TypeKind_Decimal64: {result = (RDI_U8*)"Decimal64"; *size_out = sizeof("Decimal64")-1;}break;
+case RDI_TypeKind_Decimal128: {result = (RDI_U8*)"Decimal128"; *size_out = sizeof("Decimal128")-1;}break;
+case RDI_TypeKind_Variadic: {result = (RDI_U8*)"Variadic"; *size_out = sizeof("Variadic")-1;}break;
 case RDI_TypeKind_Modifier: {result = (RDI_U8*)"Modifier"; *size_out = sizeof("Modifier")-1;}break;
 case RDI_TypeKind_Ptr: {result = (RDI_U8*)"Ptr"; *size_out = sizeof("Ptr")-1;}break;
 case RDI_TypeKind_LRef: {result = (RDI_U8*)"LRef"; *size_out = sizeof("LRef")-1;}break;
@@ -213,8 +221,6 @@ case RDI_TypeKind_IncompleteUnion: {result = (RDI_U8*)"IncompleteUnion"; *size_o
 case RDI_TypeKind_IncompleteClass: {result = (RDI_U8*)"IncompleteClass"; *size_out = sizeof("IncompleteClass")-1;}break;
 case RDI_TypeKind_IncompleteEnum: {result = (RDI_U8*)"IncompleteEnum"; *size_out = sizeof("IncompleteEnum")-1;}break;
 case RDI_TypeKind_Bitfield: {result = (RDI_U8*)"Bitfield"; *size_out = sizeof("Bitfield")-1;}break;
-case RDI_TypeKind_Variadic: {result = (RDI_U8*)"Variadic"; *size_out = sizeof("Variadic")-1;}break;
-case RDI_TypeKind_Count: {result = (RDI_U8*)"Count"; *size_out = sizeof("Count")-1;}break;
 }
 return result;
 }
@@ -249,17 +255,22 @@ case RDI_TypeKind_S128:{result = 16;}break;
 case RDI_TypeKind_S256:{result = 32;}break;
 case RDI_TypeKind_S512:{result = 64;}break;
 case RDI_TypeKind_Bool:{result = 1;}break;
+case RDI_TypeKind_BF16:{result = 2;}break;
 case RDI_TypeKind_F16:{result = 2;}break;
 case RDI_TypeKind_F32:{result = 4;}break;
 case RDI_TypeKind_F32PP:{result = 4;}break;
 case RDI_TypeKind_F48:{result = 6;}break;
 case RDI_TypeKind_F64:{result = 8;}break;
 case RDI_TypeKind_F80:{result = 10;}break;
+case RDI_TypeKind_F96:{result = 12;}break;
 case RDI_TypeKind_F128:{result = 16;}break;
 case RDI_TypeKind_ComplexF32:{result = 8;}break;
 case RDI_TypeKind_ComplexF64:{result = 16;}break;
 case RDI_TypeKind_ComplexF80:{result = 20;}break;
 case RDI_TypeKind_ComplexF128:{result = 32;}break;
+case RDI_TypeKind_Decimal32:{result = 4;}break;
+case RDI_TypeKind_Decimal64:{result = 8;}break;
+case RDI_TypeKind_Decimal128:{result = 16;}break;
 }
 return result;
 }
@@ -271,8 +282,8 @@ RDI_U32 result = 0;
 switch(arch)
 {
 default:{}break;
-case RDI_Arch_X86:{result = 4;}break;
 case RDI_Arch_X64:{result = 8;}break;
+case RDI_Arch_X86:{result = 4;}break;
 }
 return result;
 }

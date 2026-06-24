@@ -14,14 +14,14 @@ r_ogl_os_init(CmdLine *cmdln)
   //- rjf: require GLX 1.3+
   int glx_version_major = 0;
   int glx_version_minor = 0;
-  if(!glXQueryVersion(os_lnx_gfx_state->display, &glx_version_major, &glx_version_minor) ||
+  if(!glXQueryVersion(lnx_wm_state->display, &glx_version_major, &glx_version_minor) ||
      (glx_version_major == 1 && glx_version_minor < 3) ||
      glx_version_major < 1)
   {
     Temp scratch = scratch_begin(0, 0);
     String8 message = push_str8f(scratch.arena, "Unsupported GLX version (%i.%i, need at least 1.3)", glx_version_major, glx_version_minor);
-    os_graphical_message(1, str8_lit("Fatal Error"), message);
-    os_abort(1);
+    wm_graphical_message(1, str8_lit("Fatal Error"), message);
+    abort_self(1);
     scratch_end(scratch);
   }
   
@@ -42,20 +42,30 @@ r_ogl_os_init(CmdLine *cmdln)
     None
   };
   int framebuffer_configs_count = 0;
-  GLXFBConfig *framebuffer_configs = glXChooseFBConfig(os_lnx_gfx_state->display, DefaultScreen(os_lnx_gfx_state->display), framebuffer_config_options, &framebuffer_configs_count);
+  GLXFBConfig *framebuffer_configs = glXChooseFBConfig(lnx_wm_state->display, DefaultScreen(lnx_wm_state->display), framebuffer_config_options, &framebuffer_configs_count);
   if(framebuffer_configs == 0)
   {
-    os_graphical_message(1, str8_lit("Fatal Error"), str8_lit("Could not find a suitable framebuffer configuration."));
-    os_abort(1);
+    wm_graphical_message(1, str8_lit("Fatal Error"), str8_lit("Could not find a suitable framebuffer configuration."));
+    abort_self(1);
   }
   GLXFBConfig framebuffer_config = framebuffer_configs[0];
   XFree(framebuffer_configs);
-  
-  //- rjf: construct set-window-attributes
-  XSetWindowAttributes set_window_attributes = {0};
-  set_window_attributes.background_pixmap = None;
-  set_window_attributes.border_pixel      = 0;
-  set_window_attributes.event_mask        = StructureNotifyMask;
+
+  //- extract visual/colormap from chosen fbconfig, publish to os layer
+  {
+    XVisualInfo *vi = glXGetVisualFromFBConfig(lnx_wm_state->display, framebuffer_config);
+    if(vi == 0)
+    {
+      wm_graphical_message(1, str8_lit("Fatal Error"), str8_lit("Could not get visual from GLX framebuffer config."));
+      abort_self(1);
+    }
+    lnx_wm_state->window_visual = vi->visual;
+    lnx_wm_state->window_depth = vi->depth;
+    lnx_wm_state->window_colormap = XCreateColormap(lnx_wm_state->display,
+                                                        XRootWindow(lnx_wm_state->display, vi->screen),
+                                                        vi->visual, AllocNone);
+    XFree(vi);
+  }
   
   //- rjf: construct context
   {
@@ -72,35 +82,38 @@ r_ogl_os_init(CmdLine *cmdln)
       GLX_CONTEXT_FLAGS_ARB,         !!debug_mode*GLX_CONTEXT_DEBUG_BIT_ARB,
       None
     };
-    r_ogl_lnx_ctx = glXCreateContextAttribsARB(os_lnx_gfx_state->display, framebuffer_config, 0, 1, context_options);
+    r_ogl_lnx_ctx = glXCreateContextAttribsARB(lnx_wm_state->display, framebuffer_config, 0, 1, context_options);
   }
   
-  glXMakeCurrent(os_lnx_gfx_state->display, 0, r_ogl_lnx_ctx);
+  glXMakeCurrent(lnx_wm_state->display, 0, r_ogl_lnx_ctx);
 }
 
 internal R_Handle
-r_ogl_os_window_equip(OS_Handle window)
+r_ogl_os_window_equip(WM_Window window)
 {
   R_Handle result = {0};
   return result;
 }
 
 internal void
-r_ogl_os_window_unequip(OS_Handle os, R_Handle r)
+r_ogl_os_window_unequip(WM_Window os, R_Handle r)
 {
   
 }
 
 internal void
-r_ogl_os_select_window(OS_Handle os, R_Handle r)
+r_ogl_os_select_window(WM_Window os, R_Handle r)
 {
-  OS_LNX_Window *w = (OS_LNX_Window *)os.u64[0];
-  glXMakeCurrent(os_lnx_gfx_state->display, w->window, r_ogl_lnx_ctx);
+  LNX_WM_Window *w = (LNX_WM_Window *)os.u64[0];
+  glXMakeCurrent(lnx_wm_state->display, w->window, r_ogl_lnx_ctx);
+  // ensure default framebuffer writes target the back buffer; on some drivers
+  // GL_DRAW_BUFFER stays GL_NONE if a context was first made current without a drawable.
+  glDrawBuffer(GL_BACK);
 }
 
 internal void
-r_ogl_os_window_swap(OS_Handle os, R_Handle r)
+r_ogl_os_window_swap(WM_Window os, R_Handle r)
 {
-  OS_LNX_Window *w = (OS_LNX_Window *)os.u64[0];
-  glXSwapBuffers(os_lnx_gfx_state->display, w->window);
+  LNX_WM_Window *w = (LNX_WM_Window *)os.u64[0];
+  glXSwapBuffers(lnx_wm_state->display, w->window);
 }

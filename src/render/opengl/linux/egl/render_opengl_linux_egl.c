@@ -20,11 +20,11 @@ r_ogl_os_init(CmdLine *cmdln)
   
   //- rjf: get EGL display
   {
-    r_ogl_lnx_state->display = eglGetDisplay((EGLNativeDisplayType)os_lnx_gfx_state->display);
+    r_ogl_lnx_state->display = eglGetDisplay((EGLNativeDisplayType)lnx_wm_state->display);
     if(r_ogl_lnx_state->display == EGL_NO_DISPLAY)
     {
-      os_graphical_message(1, str8_lit("Fatal Error"), str8_lit("Failed to get EGL display."));
-      os_abort(1);
+      wm_graphical_message(1, str8_lit("Fatal Error"), str8_lit("Failed to get EGL display."));
+      abort_self(1);
     }
   }
   
@@ -33,23 +33,79 @@ r_ogl_os_init(CmdLine *cmdln)
   EGLint egl_version_minor = 0;
   if(!eglInitialize(r_ogl_lnx_state->display, &egl_version_major, &egl_version_minor))
   {
-    os_graphical_message(1, str8_lit("Fatal Error"), str8_lit("Couldn't initialize EGL display."));
-    os_abort(1);
+    wm_graphical_message(1, str8_lit("Fatal Error"), str8_lit("Couldn't initialize EGL display."));
+    abort_self(1);
   }
   if(egl_version_major < 1 || (egl_version_major == 1 && egl_version_minor < 5))
   {
     Temp scratch = scratch_begin(0, 0);
     String8 message = push_str8f(scratch.arena, "Unsupported EGL version (%i.%i, need at least 1.5)", egl_version_major, egl_version_minor);
-    os_graphical_message(1, str8_lit("Fatal Error"), message);
-    os_abort(1);
+    wm_graphical_message(1, str8_lit("Fatal Error"), message);
+    abort_self(1);
     scratch_end(scratch);
   }
   
   //- rjf: pick GL API
   if(!eglBindAPI(EGL_OPENGL_API))
   {
-    os_graphical_message(1, str8_lit("Fatal Error"), str8_lit("Couldn't initialize EGL API to OpenGL."));
-    os_abort(1);
+    wm_graphical_message(1, str8_lit("Fatal Error"), str8_lit("Couldn't initialize EGL API to OpenGL."));
+    abort_self(1);
+  }
+  
+  //- choose EGL config, extract matching X11 visual/colormap, publish to os layer
+  {
+    EGLint config_filter[] =
+    {
+      EGL_SURFACE_TYPE,      EGL_WINDOW_BIT|EGL_PBUFFER_BIT,
+      EGL_CONFORMANT,        EGL_OPENGL_BIT,
+      EGL_RENDERABLE_TYPE,   EGL_OPENGL_BIT,
+      EGL_COLOR_BUFFER_TYPE, EGL_RGB_BUFFER,
+      EGL_RED_SIZE,          8,
+      EGL_GREEN_SIZE,        8,
+      EGL_BLUE_SIZE,         8,
+      EGL_DEPTH_SIZE,        24,
+      EGL_STENCIL_SIZE,      8,
+      EGL_NONE,
+    };
+    EGLConfig configs[256] = {0};
+    EGLint configs_count = 0;
+    if(!eglChooseConfig(r_ogl_lnx_state->display, config_filter, configs, ArrayCount(configs), &configs_count) || configs_count == 0)
+    {
+      wm_graphical_message(1, str8_lit("Fatal Error"), str8_lit("Couldn't choose EGL configuration."));
+      abort_self(1);
+    }
+    int screen = DefaultScreen(lnx_wm_state->display);
+    XVisualInfo vi_template = {0};
+    XVisualInfo *vi = 0;
+    int vi_count = 0;
+    for(EGLint idx = 0; idx < configs_count && vi == 0; idx += 1)
+    {
+      EGLint native_visual_id = 0;
+      if(!eglGetConfigAttrib(r_ogl_lnx_state->display, configs[idx], EGL_NATIVE_VISUAL_ID, &native_visual_id) || native_visual_id == 0)
+      {
+        continue;
+      }
+      vi_template.visualid = native_visual_id;
+      vi_template.screen = screen;
+      vi = XGetVisualInfo(lnx_wm_state->display, VisualIDMask|VisualScreenMask, &vi_template, &vi_count);
+      if(vi != 0 && vi_count > 0)
+      {
+        r_ogl_lnx_state->config = configs[idx];
+        break;
+      }
+      if(vi != 0) { XFree(vi); vi = 0; }
+    }
+    if(vi == 0 || r_ogl_lnx_state->config == 0)
+    {
+      wm_graphical_message(1, str8_lit("Fatal Error"), str8_lit("Couldn't find an EGL config with a matching X11 visual."));
+      abort_self(1);
+    }
+    lnx_wm_state->window_visual = vi->visual;
+    lnx_wm_state->window_depth = vi->depth;
+    lnx_wm_state->window_colormap = XCreateColormap(lnx_wm_state->display,
+                                                    XRootWindow(lnx_wm_state->display, vi->screen),
+                                                    vi->visual, AllocNone);
+    XFree(vi);
   }
   
   //- rjf: construct context
@@ -66,22 +122,29 @@ r_ogl_os_init(CmdLine *cmdln)
       debug_mode ? EGL_CONTEXT_OPENGL_DEBUG : EGL_NONE, EGL_TRUE,
       EGL_NONE,
     };
-    r_ogl_lnx_state->context = eglCreateContext(r_ogl_lnx_state->display, 0, EGL_NO_CONTEXT, options);
+    r_ogl_lnx_state->context = eglCreateContext(r_ogl_lnx_state->display, r_ogl_lnx_state->config, EGL_NO_CONTEXT, options);
     if(r_ogl_lnx_state->context == EGL_NO_CONTEXT)
     {
-      os_graphical_message(1, str8_lit("Fatal Error"), str8_lit("Couldn't create OpenGL context with EGL."));
-      os_abort(1);
+      wm_graphical_message(1, str8_lit("Fatal Error"), str8_lit("Couldn't create OpenGL context with EGL."));
+      abort_self(1);
     }
   }
   
-  eglMakeCurrent(r_ogl_lnx_state->display, 0, 0, r_ogl_lnx_state->context);
-  glDrawBuffer(GL_BACK);
+  //- bind context to 1x1 pbuffer so GL calls work before any window exists
+  {
+    EGLint pbuffer_attribs[] = { EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE };
+    EGLSurface init_surface = eglCreatePbufferSurface(r_ogl_lnx_state->display, r_ogl_lnx_state->config, pbuffer_attribs);
+    if(init_surface == EGL_NO_SURFACE || !eglMakeCurrent(r_ogl_lnx_state->display, init_surface, init_surface, r_ogl_lnx_state->context))
+    {
+      eglMakeCurrent(r_ogl_lnx_state->display, EGL_NO_SURFACE, EGL_NO_SURFACE, r_ogl_lnx_state->context);
+    }
+  }
 }
 
 internal R_Handle
-r_ogl_os_window_equip(OS_Handle window)
+r_ogl_os_window_equip(WM_Window window)
 {
-  OS_LNX_Window *window_os = (OS_LNX_Window *)window.u64[0];
+  LNX_WM_Window *window_os = (LNX_WM_Window *)window.u64[0];
   R_OGL_LNX_Window *w = r_ogl_lnx_state->free_window;
   if(w != 0)
   {
@@ -97,65 +160,16 @@ r_ogl_os_window_equip(OS_Handle window)
       EGL_GL_COLORSPACE, EGL_GL_COLORSPACE_SRGB,
       EGL_NONE,
     };
-    if(r_ogl_lnx_state->config == 0)
+    w->surface = eglCreateWindowSurface(r_ogl_lnx_state->display, r_ogl_lnx_state->config, window_os->window, surface_options);
+    if(w->surface == EGL_NO_SURFACE)
     {
-      //- rjf: get all EGL configs
-      EGLConfig configs[256] = {0};
-      EGLint configs_count = 0;
-      {
-        EGLint options[] =
-        {
-          EGL_SURFACE_TYPE,      EGL_WINDOW_BIT,
-          EGL_CONFORMANT,        EGL_OPENGL_BIT,
-          EGL_RENDERABLE_TYPE,   EGL_OPENGL_BIT,
-          EGL_COLOR_BUFFER_TYPE, EGL_RGB_BUFFER,
-          
-          EGL_RED_SIZE,      8,
-          EGL_GREEN_SIZE,    8,
-          EGL_BLUE_SIZE,     8,
-          EGL_DEPTH_SIZE,   24,
-          EGL_STENCIL_SIZE,  8,
-          
-          EGL_NONE,
-        };
-        if(!eglChooseConfig(r_ogl_lnx_state->display, options, configs, ArrayCount(configs), &configs_count) || configs_count == 0)
-        {
-          os_graphical_message(1, str8_lit("Fatal Error"), str8_lit("Couldn't choose EGL configuration."));
-          os_abort(1);
-        }
-      }
-      
-      //- rjf: actually choose the egl config
-      {
-        EGLint config_options[] =
-        {
-          EGL_GL_COLORSPACE, EGL_GL_COLORSPACE_SRGB,
-          EGL_NONE,
-        };
-        for(U32 idx = 0; idx < configs_count; idx += 1)
-        {
-          w->surface = eglCreateWindowSurface(r_ogl_lnx_state->display, configs[idx], window_os->window, config_options);
-          if(w->surface != EGL_NO_SURFACE)
-          {
-            r_ogl_lnx_state->config = configs[idx];
-            break;
-          }
-        }
-        if(r_ogl_lnx_state->config == 0)
-        {
-          os_graphical_message(1, str8_lit("Fatal Error"), str8_lit("Couldn't find a suitable EGL configuration."));
-          os_abort(1);
-        }
-      }
-    }
-    else
-    {
-      w->surface = eglCreateWindowSurface(r_ogl_lnx_state->display, r_ogl_lnx_state->config, window_os->window, surface_options);
+      EGLint surface_options_linear[] = { EGL_NONE };
+      w->surface = eglCreateWindowSurface(r_ogl_lnx_state->display, r_ogl_lnx_state->config, window_os->window, surface_options_linear);
     }
     if(w->surface == EGL_NO_SURFACE)
     {
-      os_graphical_message(1, str8_lit("Fatal Error"), str8_lit("Couldn't create EGL surface."));
-      os_abort(1);
+      wm_graphical_message(1, str8_lit("Fatal Error"), str8_lit("Couldn't create EGL surface."));
+      abort_self(1);
     }
   }
   R_Handle result = {(U64)w};
@@ -163,27 +177,26 @@ r_ogl_os_window_equip(OS_Handle window)
 }
 
 internal void
-r_ogl_os_window_unequip(OS_Handle os, R_Handle r)
+r_ogl_os_window_unequip(WM_Window os, R_Handle r)
 {
   R_OGL_LNX_Window *w = (R_OGL_LNX_Window *)r.u64[0];
   {
-    
   }
   SLLStackPush(r_ogl_lnx_state->free_window, w);
 }
 
 internal void
-r_ogl_os_select_window(OS_Handle os, R_Handle r)
+r_ogl_os_select_window(WM_Window os, R_Handle r)
 {
-  OS_LNX_Window *w = (OS_LNX_Window *)os.u64[0];
-  R_OGL_LNX_Window *w_r = (R_OGL_LNX_Window *)r.u64[0];
+  R_OGL_Window *outer = (R_OGL_Window *)r.u64[0];
+  R_OGL_LNX_Window *w_r = (R_OGL_LNX_Window *)outer->os.u64[0];
   eglMakeCurrent(r_ogl_lnx_state->display, w_r->surface, w_r->surface, r_ogl_lnx_state->context);
 }
 
 internal void
-r_ogl_os_window_swap(OS_Handle os, R_Handle r)
+r_ogl_os_window_swap(WM_Window os, R_Handle r)
 {
-  OS_LNX_Window *w = (OS_LNX_Window *)os.u64[0];
-  R_OGL_LNX_Window *w_r = (R_OGL_LNX_Window *)r.u64[0];
+  R_OGL_Window *outer = (R_OGL_Window *)r.u64[0];
+  R_OGL_LNX_Window *w_r = (R_OGL_LNX_Window *)outer->os.u64[0];
   eglSwapBuffers(r_ogl_lnx_state->display, w_r->surface);
 }

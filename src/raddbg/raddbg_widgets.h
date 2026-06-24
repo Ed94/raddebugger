@@ -102,7 +102,7 @@ struct RD_CodeSliceParams
   Rng1U64 *line_ranges;
   TXT_TokenArray *line_tokens;
   CFG_NodePtrList *line_bps;
-  CTRL_EntityList *line_ips;
+  D_EntityList *line_ips;
   CFG_NodePtrList *line_pins;
   U64 *line_vaddrs;
   D_LineList *line_infos;
@@ -140,9 +140,9 @@ struct RD_CodeSliceSignal
 //~ rjf: UI Widgets: Fancy Title Strings
 
 internal DR_FStrList rd_title_fstrs_from_cfg(Arena *arena, CFG_Node *cfg, B32 include_extras);
-internal DR_FStrList rd_title_fstrs_from_ctrl_entity(Arena *arena, CTRL_Entity *entity, B32 include_extras);
+internal DR_FStrList rd_title_fstrs_from_ctrl_entity(Arena *arena, D_Entity *entity, B32 include_extras);
 internal DR_FStrList rd_title_fstrs_from_code_name(Arena *arena, String8 code_name);
-internal DR_FStrList rd_title_fstrs_from_file_path(Arena *arena, String8 file_path);
+internal DR_FStrList rd_title_fstrs_from_file_path(Arena *arena, String8 file_path, B32 include_folder);
 
 ////////////////////////////////
 //~ rjf: UI Widgets: Loading Overlay
@@ -152,7 +152,13 @@ internal void rd_loading_overlay(Rng2F32 rect, F32 loading_t, U64 progress_v, U6
 ////////////////////////////////
 //~ rjf: UI Widgets: Fancy Buttons
 
-internal void rd_cmd_binding_buttons(String8 name, String8 filter, B32 add_new);
+typedef U32 RD_CmdBindingButtonFlags;
+enum
+{
+  RD_CmdBindingButtonFlag_AddNew = (1<<0),
+  RD_CmdBindingButtonFlag_NoEdit = (1<<1),
+};
+internal void rd_cmd_binding_buttons(String8 name, String8 filter, U64 limit, RD_CmdBindingButtonFlags flags);
 internal UI_Signal rd_menu_bar_button(String8 string);
 internal UI_Signal rd_cmd_spec_button(String8 name);
 internal void rd_cmd_list_menu_buttons(U64 count, String8 *cmd_names, U32 *fastpath_codepoints);

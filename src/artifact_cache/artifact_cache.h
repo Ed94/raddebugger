@@ -59,6 +59,13 @@ struct AC_RequestNode
   AC_Request v;
 };
 
+typedef struct AC_NodePtr AC_NodePtr;
+struct AC_NodePtr
+{
+  AC_NodePtr *next;
+  struct AC_Node *node;
+};
+
 typedef struct AC_Node AC_Node;
 struct AC_Node
 {
@@ -76,8 +83,9 @@ struct AC_Node
   U64 working_count;
   U64 completion_count;
   U64 evict_threshold_us;
+  U64 last_touched_ac_request_gen;
   B32 cancelled;
-  U64 _unused_;
+  B32 other_nodes_depend_on_me;
 };
 
 typedef struct AC_Slot AC_Slot;
@@ -99,6 +107,7 @@ struct AC_Cache
   U64 slots_count;
   AC_Slot *slots;
   StripeArray stripes;
+  AC_NodePtr **stripe_free_node_ptrs;
 };
 
 typedef struct AC_RequestBatch AC_RequestBatch;
@@ -114,10 +123,17 @@ struct AC_RequestBatch
   U64 thin_count;
 };
 
+typedef struct AC_TCTX AC_TCTX;
+struct AC_TCTX
+{
+  U64 _unused_;
+};
+
 typedef struct AC_Shared AC_Shared;
 struct AC_Shared
 {
   Arena *arena;
+  U64 request_gen;
   
   // rjf: cache cache
   U64 cache_slots_count;
@@ -129,13 +145,14 @@ struct AC_Shared
   
   // rjf: cancel thread
   Thread cancel_thread;
-  Mutex cancel_thread_mutex;
+  Semaphore cancel_thread_semaphore;
 };
 
 ////////////////////////////////
 //~ rjf: Globals
 
 global AC_Shared *ac_shared = 0;
+thread_static AC_TCTX *ac_tctx = 0;
 
 ////////////////////////////////
 //~ rjf: Layer Initialization

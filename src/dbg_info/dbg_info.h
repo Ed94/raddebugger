@@ -69,8 +69,8 @@ struct DI_Node
   DI_Key key;
   
   // rjf: value
-  OS_Handle file;
-  OS_Handle file_map;
+  File file;
+  FileMap file_map;
   void *file_base;
   FileProperties file_props;
   Arena *arena;
@@ -139,13 +139,15 @@ struct DI_LoadTask
   
   B32 og_analyzed;
   B32 og_is_rdi;
+  B32 og_folder_analyzed;
+  B32 og_folder_is_writable;
   U64 og_size;
   
   B32 rdi_analyzed;
   B32 rdi_is_stale;
   
   U64 thread_count;
-  OS_Handle process;
+  Process process;
 };
 
 typedef struct DI_LoadCompletion DI_LoadCompletion;
@@ -202,6 +204,7 @@ struct DI_Match
   DI_Key key;
   RDI_SectionKind section_kind;
   U32 idx;
+  U32 count;
 };
 
 ////////////////////////////////
@@ -248,6 +251,9 @@ struct DI_Shared
   U64 load_gen;
   U64 load_count;
   
+  // rjf: settings
+  B32 auto_downloads;
+  
   // rjf: key -> path cache
   U64 key2path_slots_count;
   DI_KeySlot *key2path_slots;
@@ -280,7 +286,7 @@ struct DI_Shared
   String8 conversion_completion_shared_memory_name;
   Semaphore conversion_completion_lock_semaphore;
   Semaphore conversion_completion_signal_semaphore;
-  OS_Handle conversion_completion_shared_memory;
+  SharedMemory conversion_completion_shared_memory;
   U64 *conversion_completion_shared_memory_base;
   Thread conversion_completion_signal_receiver_thread;
   
@@ -313,6 +319,11 @@ internal DI_KeyArray di_key_array_from_list(Arena *arena, DI_KeyList *list);
 //~ rjf: Main Layer Initialization
 
 internal void di_init(CmdLine *cmdline);
+
+////////////////////////////////
+//~ rjf: Settings Submission
+
+internal void di_set_auto_downloads(B32 auto_downloads);
 
 ////////////////////////////////
 //~ rjf: Path * Timestamp Cache Submission & Lookup
@@ -360,6 +371,6 @@ internal DI_SearchItemArray di_search_item_array_from_target_query(Access *acces
 //~ rjf: Match Artifact Cache Hooks / Lookups
 
 internal AC_Artifact di_match_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *gen_out);
-internal DI_Match di_match_from_string(String8 string, U64 index, DI_Key preferred_dbgi_key, U64 endt_us);
+internal DI_Match di_match_from_string(String8 string, U32 match_index, U32 unit_idx, B32 allow_other_dbgis, DI_Key preferred_dbgi_key, U64 endt_us);
 
 #endif // DBG_INFO_H

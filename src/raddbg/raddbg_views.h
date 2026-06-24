@@ -64,12 +64,6 @@ struct RD_CodeViewState
   U64 wrap_total_vline_count;
 };
 
-typedef struct RD_CodeViewBuildResult RD_CodeViewBuildResult;
-struct RD_CodeViewBuildResult
-{
-  DI_KeyList dbgi_keys;
-};
-
 ////////////////////////////////
 //~ rjf: Watch View Types
 
@@ -120,14 +114,14 @@ struct RD_WatchCellList
 typedef struct RD_WatchRowInfo RD_WatchRowInfo;
 struct RD_WatchRowInfo
 {
-  CTRL_Entity *module;
+  D_Entity *module;
   B32 can_expand;
   B32 expr_is_editable;
   String8 group_cfg_name;
   CFG_Node *group_cfg_parent;
   CFG_Node *group_cfg_child;
-  CTRL_Entity *group_entity;
-  CTRL_Entity *callstack_thread;
+  D_Entity *group_entity;
+  D_Entity *callstack_thread;
   U64 callstack_unwind_index;
   U64 callstack_inline_depth;
   U64 callstack_vaddr;
@@ -141,7 +135,7 @@ struct RD_WatchRowCellInfo
 {
   RD_WatchCellFlags flags;
   CFG_Node *cfg;
-  CTRL_Entity *entity;
+  D_Entity *entity;
   String8 cmd_name;
   String8 file_path;
   DR_FStrList expr_fstrs;
@@ -200,7 +194,7 @@ struct RD_WatchViewState
 //~ rjf: Code View Functions
 
 internal void rd_code_view_init(RD_CodeViewState *cv);
-internal RD_CodeViewBuildResult rd_code_view_build(Arena *arena, RD_CodeViewState *cv, RD_CodeViewBuildFlags flags, Rng2F32 rect, String8 text_data, TXT_TextInfo *text_info, DASM_LineArray *dasm_lines, Rng1U64 dasm_vaddr_range, DI_Key dasm_dbgi_key);
+internal void rd_code_view_build(Arena *arena, RD_CodeViewState *cv, RD_CodeViewBuildFlags flags, Rng2F32 rect, U128 text_hash, String8 text_data, TXT_TextInfo *text_info, DASM_LineArray *dasm_lines, Rng1U64 dasm_vaddr_range, DI_Key dasm_dbgi_key);
 
 ////////////////////////////////
 //~ rjf: Watch View Functions
@@ -220,6 +214,9 @@ internal RD_WatchRowInfo rd_watch_row_info_from_row(Arena *arena, EV_Row *row);
 
 //- rjf: row * cell -> info
 internal RD_WatchRowCellInfo rd_info_from_watch_row_cell(Arena *arena, EV_Row *row, EV_StringFlags string_flags, RD_WatchRowInfo *row_info, RD_WatchCell *cell, FNT_Tag font, F32 font_size, F32 max_size_px);
+
+//- rjf: cell -> fill registers via context
+internal RD_RegSlot rd_regs_fill_slot_from_cell_ctx(String8 root_ctx_expr, EV_Row *row);
 
 //- rjf: table coordinates -> text edit state
 internal RD_WatchViewTextEditState *rd_watch_view_text_edit_state_from_pt(RD_WatchViewState *wv, RD_WatchPt pt);

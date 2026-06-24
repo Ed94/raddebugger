@@ -19,6 +19,17 @@ struct DMN_CtrlCtx
 };
 
 ////////////////////////////////
+//~ Dynamic Linker Types
+
+typedef U32 DMN_TlsModel;
+enum
+{
+  DMN_TlsModel_Null,
+  DMN_TlsModel_WinodwsNt,
+  DMN_TlsModel_Gnu
+};
+
+////////////////////////////////
 //~ rjf: Handle Types
 
 typedef union DMN_Handle DMN_Handle;
@@ -58,28 +69,74 @@ struct DMN_HandleArray
 ////////////////////////////////
 //~ rjf: Event Types
 
+typedef struct DMN_ModuleInfo DMN_ModuleInfo;
+struct DMN_ModuleInfo
+{
+  // rjf: image architecture
+  Arch arch;
+  
+  // rjf: image virtual size
+  U64 vsize;
+  
+  // rjf: entry point
+  U64 entry_point_voff;
+  
+  // rjf: module path
+  String8 module_path;
+  
+  // rjf: debug info key
+  String8 debug_info_path;
+  Guid debug_info_guid;
+  U64 debug_info_timestamp;
+  U64 debug_info_age;
+  
+  // rjf: thread-local storage info
+  U64 tls_index;
+  U64 tls_offset;
+  
+  // rjf: unwinding info
+  Rng1U64 pe_intel_pdatas_vaddr_range;
+  Rng1U64 eh_frame_header_vaddr_range;
+  
+  // rjf: special raddbg data
+  Rng1U64 raddbg_info_voff_range;
+  U64 raddbg_is_attached_marker_voff;
+};
+
 typedef struct DMN_Event DMN_Event;
 struct DMN_Event
 {
+  // rjf: categories
   DMN_EventKind kind;
   DMN_ErrorKind error_kind;
   DMN_MemoryEventKind memory_kind;
   DMN_ExceptionKind exception_kind;
+  
+  // rjf: entities
   DMN_Handle process;
   DMN_Handle thread;
   DMN_Handle module;
+  
+  // rjf: general event properties
   Arch arch;
   U64 address;
   U64 size;
   String8 string;
-  U32 code; // code gives pid & tid on CreateProcess and CreateThread (respectfully)
+  U32 code;  // code -> exception code (signo on Linux), pid/tid
   U32 flags; // DMN_TrapFlags, if `DMN_EventKind_SetBreakpoint`
-  S32 signo;
-  S32 sigcode;
   U64 instruction_pointer;
   U64 stack_pointer;
   U64 user_data;
   B32 exception_repeated;
+  
+  // rjf: process info
+  DMN_TlsModel tls_model;
+  
+  // rjf: module info
+  DMN_ModuleInfo *module_info;
+  
+  // rjf: thread info
+  U64 tls_root_vaddr;
 };
 
 typedef struct DMN_EventNode DMN_EventNode;
@@ -141,12 +198,12 @@ struct DMN_RunCtrls
 {
   DMN_Handle priority_thread;
   DMN_Handle single_step_thread;
-  B8 ignore_previous_exception;
-  B8 run_entities_are_unfrozen;
-  B8 run_entities_are_processes;
   DMN_Handle *run_entities;
   U64 run_entity_count;
   DMN_TrapChunkList traps;
+  B8 ignore_previous_exception;
+  B8 run_entities_are_unfrozen;
+  B8 run_entities_are_processes;
 };
 
 ////////////////////////////////
@@ -164,6 +221,11 @@ struct DMN_ProcessInfo
   String8 name;
   U32 pid;
 };
+
+////////////////////////////////
+//~ rjf: Globals
+
+read_only global DMN_ModuleInfo dmn_module_info_nil = {0};
 
 ////////////////////////////////
 //~ rjf: Basic Type Functions (Helpers, Implemented Once)
@@ -186,15 +248,9 @@ internal DMN_HandleArray dmn_handle_array_copy(Arena *arena, DMN_HandleArray *sr
 internal DMN_Event *dmn_event_list_push(Arena *arena, DMN_EventList *list);
 
 ////////////////////////////////
-//~ rjf: Thread Reading Helper Functions (Helpers, Implemented Once)
-
-internal U64 dmn_rip_from_thread(DMN_Handle thread);
-internal U64 dmn_rsp_from_thread(DMN_Handle thread);
-
-////////////////////////////////
 //~ rjf: Process Reading Helper Functions (Helpers, Implemented Once)
 
-internal String8 dmn_process_read_cstring(Arena *arena, DMN_Handle process, U64 addr);
+internal String8 dmn_data_from_process_vaddr_range(Arena *arena, DMN_Handle process, Rng1U64 vrange);
 
 ////////////////////////////////
 //~ rjf: @dmn_os_hooks Main Layer Initialization (Implemented Per-OS)
@@ -208,7 +264,7 @@ internal DMN_CtrlCtx *dmn_ctrl_begin(void);
 internal void dmn_ctrl_exclusive_access_begin(void);
 internal void dmn_ctrl_exclusive_access_end(void);
 #define DMN_CtrlExclusiveAccessScope DeferLoop(dmn_ctrl_exclusive_access_begin(), dmn_ctrl_exclusive_access_end())
-internal U32 dmn_ctrl_launch(DMN_CtrlCtx *ctx, OS_ProcessLaunchParams *params);
+internal U32 dmn_ctrl_launch(DMN_CtrlCtx *ctx, ProcessLaunchParams *params);
 internal B32 dmn_ctrl_attach(DMN_CtrlCtx *ctx, U32 pid);
 internal B32 dmn_ctrl_kill(DMN_CtrlCtx *ctx, DMN_Handle process, U32 exit_code);
 internal B32 dmn_ctrl_detach(DMN_CtrlCtx *ctx, DMN_Handle process);
@@ -232,18 +288,14 @@ internal U64 dmn_process_memory_reserve(DMN_Handle process, U64 vaddr, U64 size)
 internal void dmn_process_memory_commit(DMN_Handle process, U64 vaddr, U64 size);
 internal void dmn_process_memory_decommit(DMN_Handle process, U64 vaddr, U64 size);
 internal void dmn_process_memory_release(DMN_Handle process, U64 vaddr, U64 size);
-internal void dmn_process_memory_protect(DMN_Handle process, U64 vaddr, U64 size, OS_AccessFlags flags);
+internal void dmn_process_memory_protect(DMN_Handle process, U64 vaddr, U64 size, AccessFlags flags);
 internal U64 dmn_process_read(DMN_Handle process, Rng1U64 range, void *dst);
 internal B32 dmn_process_write(DMN_Handle process, Rng1U64 range, void *src);
-#define dmn_process_read_struct(process, vaddr, ptr) dmn_process_read((process), r1u64((vaddr), (vaddr)+(sizeof(*ptr))), ptr)
-#define dmn_process_write_struct(process, vaddr, ptr) dmn_process_write((process), r1u64((vaddr), (vaddr)+(sizeof(*ptr))), ptr)
 
 //- rjf: threads
-internal Arch dmn_arch_from_thread(DMN_Handle handle);
-internal U64 dmn_stack_base_vaddr_from_thread(DMN_Handle handle);
-internal U64 dmn_tls_root_vaddr_from_thread(DMN_Handle handle);
 internal B32 dmn_thread_read_reg_block(DMN_Handle handle, void *reg_block);
 internal B32 dmn_thread_write_reg_block(DMN_Handle handle, void *reg_block);
+internal B32 dmn_thread_get_module_tls_vaddr(DMN_Handle thread, DMN_Handle module, U64 *vaddr_out);
 
 //- rjf: system process listing
 internal void dmn_process_iter_begin(DMN_ProcessIter *iter);

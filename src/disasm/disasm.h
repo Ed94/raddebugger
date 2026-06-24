@@ -37,7 +37,11 @@ struct DASM_Inst
   DASM_InstFlags flags;
   U32 size;
   String8 string;
-  U64 jump_dest_vaddr;
+  U64 dst_vaddr;
+  ARCH_RegCode dst_reg_code;
+  S64 dst_reg_off;
+  ARCH_RegCode src_reg_code;
+  S64 src_reg_off;
 };
 
 ////////////////////////////////
@@ -179,7 +183,7 @@ internal DASM_Inst dasm_inst_from_code(Arena *arena, Arch arch, U64 vaddr, Strin
 ////////////////////////////////
 //~ rjf: Control Flow Analysis
 
-internal DASM_CtrlFlowInfo dasm_ctrl_flow_info_from_arch_vaddr_code(Arena *arena, DASM_InstFlags exit_points_mask, Arch arch, U64 vaddr, String8 code);
+internal DASM_CtrlFlowInfo dasm_ctrl_flow_info_from_arch_vaddr_code(Arena *arena, DASM_InstFlags exit_points_mask, B32 include_last_inst, Arch arch, U64 vaddr, String8 code);
 
 ////////////////////////////////
 //~ rjf: Parameter Type Functions

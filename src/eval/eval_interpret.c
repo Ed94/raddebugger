@@ -12,43 +12,22 @@ e_select_interpret_ctx(E_InterpretCtx *ctx, RDI_Parsed *primary_rdi, U64 ip_voff
   // compute and apply frame base
   if(primary_rdi != 0)
   {
-    E_Interpretation frame_base = { .code = ~0 };
-    
-    RDI_Procedure *proc = rdi_procedure_from_voff(primary_rdi, ip_voff);
-    for(U64 loc_block_idx = proc->frame_base_location_first; loc_block_idx < proc->frame_base_location_opl; loc_block_idx += 1)
+    Temp scratch = scratch_begin(0, 0);
+    RDI_Symbol *proc = rdi_procedure_from_voff(primary_rdi, ip_voff);
+    RDI_Location location = rdi_location_from_location_voff(primary_rdi, proc->location, ip_voff);
+    E_OpList oplist = e_oplist_from_location(scratch.arena, primary_rdi, location);
+    String8 bytecode = e_bytecode_from_oplist(scratch.arena, &oplist);
+    E_Interpretation frame_base_interpretation = e_interpret(bytecode);
+    U64 frame_base = frame_base_interpretation.value.u64;
+    if(frame_base_interpretation.code == E_InterpretationCode_Good)
     {
-      RDI_LocationBlock *block = rdi_element_from_name_idx(primary_rdi, LocationBlocks, loc_block_idx);
-      if (block->scope_off_first <= ip_voff && ip_voff < block->scope_off_opl) {
-        U64  all_location_data_size = 0;
-        U8  *all_location_data      = rdi_table_from_name(primary_rdi, LocationData, &all_location_data_size);
-        if(block->location_data_off + sizeof(RDI_LocationKind) <= all_location_data_size)
-        {
-          RDI_LocationKind loc_kind = *(RDI_LocationKind *)(all_location_data + block->location_data_off);
-          if(loc_kind == RDI_LocationKind_ValBytecodeStream || loc_kind == RDI_LocationKind_AddrBytecodeStream)
-          {
-            U8      *bytecode_ptr  = all_location_data + block->location_data_off + sizeof(RDI_LocationKind);
-            U8      *bytecode_opl  = all_location_data + all_location_data_size;
-            U64      bytecode_size = rdi_size_from_bytecode_stream(bytecode_ptr, bytecode_opl);
-            String8  bytecode      = str8(bytecode_ptr, bytecode_size);
-            frame_base = e_interpret(bytecode);
-          }
-          else if(loc_kind != RDI_LocationKind_NULL)
-          {
-            NotImplemented;
-          }
-        }
-        break;
-      }
-    }
-    
-    if(frame_base.code == E_InterpretationCode_Good)
-    {
-      *ctx->frame_base = frame_base.value.u64;
+      *ctx->frame_base = frame_base;
     }
     else
     {
       ctx->frame_base = 0;
     }
+    scratch_end(scratch);
   }
 }
 
@@ -67,7 +46,7 @@ e_space_gen(E_Space space)
 }
 
 internal B32
-e_space_read(E_Space space, void *out, Rng1U64 range)
+e_space_read(E_Space space, void *out, E_SpaceRangeInfo *out_range_info, Rng1U64 range)
 {
   ProfBeginFunction();
   B32 result = 0;
@@ -98,6 +77,9 @@ e_space_read(E_Space space, void *out, Rng1U64 range)
       //- rjf: file reads
       case E_SpaceKind_File:
       {
+        Temp scratch = scratch_begin(0, 0);
+        Access *access = access_open();
+        
         // rjf: unpack space/path
         U64 file_path_string_id = space.u64_0;
         String8 file_path = e_string_from_id(file_path_string_id);
@@ -109,30 +91,96 @@ e_space_read(E_Space space, void *out, Rng1U64 range)
         containing_range.max += chunk_size-1;
         containing_range.max -= containing_range.max%chunk_size;
         
-        // rjf: map to hash
+        // rjf: map to hashes
         C_Key key = fs_key_from_path_range(file_path, containing_range, 0);
-        U128 hash = c_hash_from_key(key, 0);
-        
-        // rjf: look up from hash store
-        Access *access = access_open();
+        U128 hash = {0};
+        U128 prev_hash = {0};
+        U64 desired_hash_count = 1;
+        if(out_range_info != 0 && out_range_info->byte_changed_flags != 0)
         {
-          String8 data = c_data_from_hash(access, hash);
-          Rng1U64 legal_range = r1u64(containing_range.min, containing_range.min + data.size);
-          Rng1U64 read_range = intersect_1u64(range, legal_range);
-          if(read_range.min < read_range.max)
+          desired_hash_count = 2;
+        }
+        {
+          U64 hashes_count = 0;
+          U128 hashes[2] = {0};
+          for(U64 rewind_idx = 0; rewind_idx < C_KEY_HASH_HISTORY_COUNT && hashes_count < ArrayCount(hashes) && hashes_count < desired_hash_count; rewind_idx += 1)
           {
-            result = 1;
-            MemoryCopy(out, data.str + read_range.min - containing_range.min, dim_1u64(read_range));
+            U128 h = c_hash_from_key(key, rewind_idx);
+            if(!u128_match(u128_zero(), h))
+            {
+              hashes[hashes_count] = h;
+              hashes_count += 1;
+            }
+          }
+          hash = hashes[0];
+          prev_hash = hashes[1];
+        }
+        
+        // rjf: unpack hashes
+        String8 data = c_data_from_hash(access, hash);
+        String8 prev_data = c_data_from_hash(access, prev_hash);
+        
+        // rjf: unpack read range
+        Rng1U64 legal_range = r1u64(containing_range.min, containing_range.min + data.size);
+        Rng1U64 read_range = intersect_1u64(range, legal_range);
+        
+        // rjf: fill out byte bad flags
+        if(out_range_info != 0 && out_range_info->byte_bad_flags != 0)
+        {
+          // TODO(rjf): need to know whole space range here
+        }
+        
+        // rjf: fill out byte changed flags
+        if(out_range_info != 0 && out_range_info->byte_changed_flags != 0)
+        {
+          U64 num_bytes_read = dim_1u64(read_range);
+          if(data.size >= num_bytes_read && data.size == prev_data.size)
+          {
+            U64 byte_base_idx = read_range.min - containing_range.min;
+            for(U64 byte_idx = 0; byte_idx < num_bytes_read; byte_idx += 1)
+            {
+              if(data.str[byte_base_idx + byte_idx] != prev_data.str[byte_base_idx + byte_idx])
+              {
+                out_range_info->byte_changed_flags[byte_idx/64] |= (1ull<<(byte_idx%64));
+                out_range_info->flags |= E_SpaceRangeFlag_AnyByteChanged;
+              }
+            }
           }
         }
+        
+        // rjf: fill output data from data
+        if(read_range.min < read_range.max)
+        {
+          result = 1;
+          MemoryCopy(out, data.str + read_range.min - containing_range.min, dim_1u64(read_range));
+        }
+        
         access_close(access);
+        scratch_end(scratch);
+      }break;
+      
+      //- rjf: debug info constant data
+      case E_SpaceKind_DebugConstantData:
+      {
+        U32 dbg_info_num = space.u64s[0];
+        if(1 <= dbg_info_num && dbg_info_num <= e_base_ctx->dbg_infos_count)
+        {
+          E_DbgInfo *dbg_info = &e_base_ctx->dbg_infos[dbg_info_num-1];
+          RDI_Parsed *rdi = dbg_info->rdi;
+          U64 all_constant_data_size = 0;
+          U8 *all_constant_data_ptr = rdi_table_from_name(rdi, LocationsConstantData, &all_constant_data_size);
+          String8 all_constant_data = str8(all_constant_data_ptr, all_constant_data_size);
+          String8 read_memory = str8_substr(all_constant_data, range);
+          result = (dim_1u64(range) == read_memory.size);
+          MemoryCopy(out, read_memory.str, read_memory.size);
+        }
       }break;
       
       //- rjf: default -> use hooks
       default:
       if(e_base_ctx->space_read != 0)
       {
-        result = e_base_ctx->space_read(space, out, range);
+        result = e_base_ctx->space_read(space, out, out_range_info, range);
       }break;
     }
   }
@@ -177,6 +225,11 @@ e_interpret(String8 bytecode)
   {
     selected_space = e_interpret_ctx->primary_space;
   }
+  U64 base_off = 0;
+  if(e_interpret_ctx->module_base != 0)
+  {
+    base_off = e_interpret_ctx->module_base[0];
+  }
   
   //- rjf: iterate bytecode & perform ops
   U8 *ptr = bytecode.str;
@@ -193,6 +246,7 @@ e_interpret(String8 bytecode)
     else switch(op)
     {
       case E_IRExtKind_SetSpace:{ctrlbits = RDI_EVAL_CTRLBITS(32, 0, 0);}break;
+      case E_IRExtKind_SetBaseOff:{ctrlbits = RDI_EVAL_CTRLBITS(8, 0, 0);}break;
       default:
       {
         result.code = E_InterpretationCode_BadOp;
@@ -245,6 +299,10 @@ e_interpret(String8 bytecode)
       {
         MemoryCopy(&selected_space, &imm, sizeof(selected_space));
       }break;
+      case E_IRExtKind_SetBaseOff:
+      {
+        base_off = imm.u64;
+      }break;
       
       case RDI_EvalOp_Stop:
       {
@@ -271,7 +329,7 @@ e_interpret(String8 bytecode)
       {
         U64 addr = svals[0].u64;
         U64 size = imm.u64;
-        B32 good_read = e_space_read(selected_space, &nval, r1u64(addr, addr+size));
+        B32 good_read = e_space_read(selected_space, &nval, 0, r1u64(addr, addr+size));
         if(!good_read)
         {
           result.code = E_InterpretationCode_BadMemRead;
@@ -281,26 +339,20 @@ e_interpret(String8 bytecode)
       
       case RDI_EvalOp_RegRead:
       {
-        U8 rdi_reg_code     = (imm.u64&0x0000FF)>>0;
-        U8 byte_size        = (imm.u64&0x00FF00)>>8;
-        U8 byte_off         = (imm.u64&0xFF0000)>>16;
-        REGS_RegCode base_reg_code = regs_reg_code_from_arch_rdi_code(e_interpret_ctx->reg_arch, rdi_reg_code);
-        REGS_Rng rng = regs_reg_code_rng_table_from_arch(e_interpret_ctx->reg_arch)[base_reg_code];
-        U64 off = (U64)rng.byte_off + byte_off;
-        U64 size = (U64)byte_size;
-        B32 good_read = e_space_read(e_interpret_ctx->reg_space, &nval, r1u64(off, off+size));
-        if(!good_read)
+        U8 rdi_reg_code = (imm.u64&0x0000FF)>>0;
+        U8 byte_size    = (imm.u64&0x00FF00)>>8;
+        U8 byte_off     = (imm.u64&0xFF0000)>>16;
+        Arch arch = e_interpret_ctx->reg_arch;
+        ARCH_Info *arch_info = arch_info_from_arch(arch);
+        ARCH_RegCode base_reg_code = arch_reg_code_from_rdi(arch, rdi_reg_code);
+        B32 good_read = 0;
+        if(0 <= base_reg_code && base_reg_code < arch_info->reg_code_count)
         {
-          result.code = E_InterpretationCode_BadRegRead;
-          goto done;
+          Rng1U16 rng = arch_info->reg_code_rng_table[base_reg_code];
+          U64 off = (U64)rng.min + byte_off;
+          U64 size = (U64)byte_size;
+          good_read = e_space_read(e_interpret_ctx->reg_space, &nval, 0, r1u64(off, off+size));
         }
-      }break;
-      
-      case RDI_EvalOp_RegReadDyn:
-      {
-        U64 off  = svals[0].u64;
-        U64 size = bit_size_from_arch(e_interpret_ctx->reg_arch)/8;
-        B32 good_read = e_space_read(e_interpret_ctx->reg_space, &nval, r1u64(off, off+size));
         if(!good_read)
         {
           result.code = E_InterpretationCode_BadRegRead;
@@ -323,15 +375,7 @@ e_interpret(String8 bytecode)
       
       case RDI_EvalOp_ModuleOff:
       {
-        if(e_interpret_ctx->module_base != 0)
-        {
-          nval.u64 = *e_interpret_ctx->module_base + imm.u64;
-        }
-        else
-        {
-          result.code = E_InterpretationCode_BadModuleBase;
-          goto done;
-        }
+        nval.u64 = base_off + imm.u64;
       }break;
       
       case RDI_EvalOp_TLSOff:
@@ -893,26 +937,6 @@ e_interpret(String8 bytecode)
         // do nothing - the pop is handled by the control bits
       }break;
       
-      case RDI_EvalOp_Insert:
-      {
-        if(stack_count > imm.u64)
-        {
-          if(imm.u64 > 0)
-          {
-            E_Value tval = stack[stack_count - 1];
-            E_Value *dst = stack + stack_count - 1 - imm.u64;
-            E_Value *shift = dst + 1;
-            MemoryCopy(shift, dst, imm.u64*sizeof(E_Value));
-            *dst = tval;
-          }
-        }
-        else
-        {
-          result.code = E_InterpretationCode_BadOp;
-          goto done;
-        }
-      }break;
-      
       case RDI_EvalOp_ValueRead:
       {
         U64 bytes_to_read = imm.u64;
@@ -942,23 +966,57 @@ e_interpret(String8 bytecode)
       
       case RDI_EvalOp_CallSiteValue:
       {
-        NotImplemented;
+        // DW_OP_entry_value: requires evaluating the embedded sub-bytecode
+        // in this frame's entry-time register state (i.e. caller's state
+        // at the call instruction). that state is not currently plumbed
+        // into the eval context. interpreting in the current ctx gives
+        // wrong values for spilled args, so report BadOp instead.
+        // skip past the embedded sub-bytecode in the outer stream so the
+        // bytes are not interpreted as outer ops on resume.
+        U32 sub_size = imm.u32;
+        if(ptr + sub_size <= opl)
+        {
+          ptr += sub_size;
+        }
+        result.code = E_InterpretationCode_BadOp;
+        goto done;
       }break;
       
       case RDI_EvalOp_PartialValue:
       {
-        NotImplemented;
+        // DW_OP_piece marker: top-of-stack is a piece of a composite value.
+        // we do not assemble composites; for single-piece expressions the
+        // value already on the stack is the result. for multi-piece, only
+        // the first piece is returned (stack[0] is the final result).
+        result.code = E_InterpretationCode_BadOp;
+        goto done;
       }break;
       
       case RDI_EvalOp_PartialValueBit:
       {
-        NotImplemented;
+        // DW_OP_bit_piece marker. same caveat as PartialValue.
+        result.code = E_InterpretationCode_BadOp;
+        goto done;
       }break;
       
       case RDI_EvalOp_Swap:
       {
-        // TODO: add support for pushing multiple values onto the stack
-        NotImplemented;
+        if(stack_count >= 2)
+        {
+          E_Value swap = stack[stack_count-2];
+          stack[stack_count-2] = stack[stack_count-1];
+          stack[stack_count-1] = swap;
+        }
+        else
+        {
+          result.code = E_InterpretationCode_InsufficientStackSpace;
+          goto done;
+        }
+      }break;
+      
+      case RDI_EvalOp_PushCfa:
+      {
+        nval.u64 = e_interpret_ctx->cfa;
       }break;
     }
     

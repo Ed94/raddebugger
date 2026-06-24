@@ -1,21 +1,126 @@
 @echo off
-setlocal
-cd /D "%~dp0"
+setlocal enabledelayedexpansion
 
-echo --- getting test data folder path ---------------------------------------------
-if not exist .\local\test_data_path.txt (
-  echo error: You must first store the full path of your test data folder inside of `local/test_data_path.txt`.
-  goto :EOF
-)
-set /p test_data_folder=<.\local\test_data_path.txt	
-echo test data path: %test_data_folder%
-echo:
+set TARGET_VALUES=radlink radbin mule_main mule_module torture
+set CC_VALUES=msvc clang
+set MODE_VALUES=debug release
+set RAW_ARGS=%*
+set TORTURE_ARGS=
+set RUN_TORTURE=1
 
-echo --- building all testing executables ------------------------------------------
-call build rdi_from_pdb rdi_dump raddbg radlink tester
-echo:
-
-echo --- running tests -------------------------------------------------------------
-pushd build
-call tester.exe --test_data:%test_data_folder%
+:: Make test data directories
+if not exist local mkdir local
+pushd local
+if not exist test_data mkdir test_data
 popd
+
+:: Check if we need new test data version
+pushd local
+set need_test_data=0
+curl -sfL -o test_data_version_latest.txt https://data.raddbg.com/public/raddbg_test_data_version.txt || exit /b 1
+if exist "test_data_version_current.txt" (
+  fc /b "test_data_version_latest.txt" "test_data_version_current.txt" > nul
+) else (
+  echo Test data not present.
+  set need_test_data=1
+)
+if errorlevel 1 (
+  echo Test data out-of-date.
+  set need_test_data=1
+)
+popd
+
+:: Download test data if stale
+if "%need_test_data%"=="1" (
+  echo Downloading test data...
+  pushd local
+  pushd test_data
+  curl -sfL -o test_data.zip https://data.raddbg.com/public/raddbg_test_data.zip || exit /b 1
+  tar -xf test_data.zip || exit /b 1
+  del test_data.zip
+  popd
+  copy /y test_data_version_latest.txt test_data_version_current.txt
+  popd
+)
+popd
+
+:parse_args
+if "%~1" == ""   goto parse_done
+if "%~1" == "--" goto parse_torture_args
+if /i "%~1" == "msvc"       set CC_VALUES=msvc      && shift /1 && goto parse_args
+if /i "%~1" == "clang"      set CC_VALUES=clang     && shift /1 && goto parse_args
+if /i "%~1" == "debug"      set MODE_VALUES=debug   && shift /1 && goto parse_args
+if /i "%~1" == "release"    set MODE_VALUES=release && shift /1 && goto parse_args
+if /i "%~1" == "no_torture" set RUN_TORTURE=0       && shift /1 && goto parse_args
+echo usage: %~nx0 [msvc^|clang] [debug^|release] [no_torture] [-- torture-args]
+exit /b 1
+
+:parse_torture_args
+shift /1
+if "%~1" == "" set "TORTURE_ARGS=" && goto parse_done
+set "TORTURE_ARGS=%RAW_ARGS%"
+if "%TORTURE_ARGS:~0,3%" == "-- " set "TORTURE_ARGS=%TORTURE_ARGS:~3%" && goto parse_done
+set "TORTURE_ARGS=%TORTURE_ARGS:* -- =%"
+
+:parse_done
+if not defined TORTURE_ARGS set "TORTURE_ARGS=*
+
+for %%m in (%MODE_VALUES%) do for %%c in (%CC_VALUES%) do (
+  setlocal
+
+  :: nuke artifacts from last run
+  if exist build/torture_artifacts rmdir /s /q build\torture_artifacts
+  if exist build\metagen.exe del /q build\metagen.exe
+  for %%t in (%TARGET_VALUES%) do (
+    if exist build\%%t.exe del /q build\%%t.exe
+    if exist build\%%t.pdb del /q build\%%t.pdb
+  )
+
+  if "%%c" == "clang" (
+    :: Prefer standalone LLVM clang over Visual Studio clang so ASAN runtime files match the compiler.
+    set "clang_path="
+    for /f "tokens=*" %%i in ('where clang') do (
+      set "candidate_clang_path=%%~dpi"
+      if "!candidate_clang_path:Microsoft Visual Studio=!"=="!candidate_clang_path!" (
+        if not defined clang_path set "clang_path=!candidate_clang_path!"
+      )
+    )
+    if not defined clang_path (
+      echo ERROR: standalone LLVM clang not found in PATH
+      exit /b 1
+    )
+    set PATH=!clang_path!;!PATH!
+    for /f "tokens=3 delims=. " %%v in ('clang -v 2^>^&1 ^| findstr version') do set clang_version=%%v
+    if not defined clang_version (
+      echo ERROR: failed to detect clang version
+      exit /b 1
+    )
+    set PATH=!clang_path!..\lib\clang\!clang_version!\lib\windows;!PATH!
+  )
+
+  :: TODO: unblock asan
+  call build.bat meta %%c %%m raddbg raddbg_non_graphical || (endlocal exit /b 1)
+
+  :: clang does not compile with asan in release mode because it runs out of memory
+  if "%%c" equ "clang" (
+    if /i "%%m" equ "release" (
+      call build.bat no_meta %%c %%m !TARGET_VALUES! || (endlocal exit /b 1)
+    ) else (
+      call build.bat asan no_meta %%c %%m !TARGET_VALUES! || (endlocal exit /b 1)
+    )
+  ) else (
+    call build.bat asan no_meta %%c %%m !TARGET_VALUES! || (endlocal exit /b 1)
+  )
+
+  if "%RUN_TORTURE%" equ "1" (
+    pushd build
+    torture %TORTURE_ARGS%
+    popd
+    if errorlevel 1 (
+      endlocal
+      exit /b 1
+    )
+  )
+
+  endlocal
+)

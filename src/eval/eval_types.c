@@ -288,18 +288,9 @@ e_type_key_ext(E_TypeKind kind, U32 type_idx, U32 rdi_num)
 }
 
 internal E_TypeKey
-e_type_key_reg(Arch arch, REGS_RegCode code)
+e_type_key_reg(Arch arch, ARCH_RegCode code)
 {
   E_TypeKey key = {E_TypeKeyKind_Reg};
-  key.u32[0] = (U32)arch;
-  key.u32[1] = (U32)code;
-  return key;
-}
-
-internal E_TypeKey
-e_type_key_reg_alias(Arch arch, REGS_AliasCode code)
-{
-  E_TypeKey key = {E_TypeKeyKind_RegAlias};
   key.u32[0] = (U32)arch;
   key.u32[1] = (U32)code;
   return key;
@@ -625,7 +616,6 @@ e_type_kind_from_key(E_TypeKey key)
     case E_TypeKeyKind_Ext:     {kind = (E_TypeKind)key.u32[0];}break;
     case E_TypeKeyKind_Cons:    {kind = (E_TypeKind)key.u32[0];}break;
     case E_TypeKeyKind_Reg:     {kind = E_TypeKind_Union;}break;
-    case E_TypeKeyKind_RegAlias:{kind = E_TypeKind_Union;}break;
   }
   return kind;
 }
@@ -714,7 +704,7 @@ e_push_type_from_key(Arena *arena, E_TypeKey key)
             type = push_array(arena, E_Type, 1);
             type->kind               = e_type_kind_from_key(node->key);
             type->flags              = node->params.flags;
-            type->name               = push_str8_copy(arena, node->params.name);
+            type->name               = str8_copy(arena, node->params.name);
             type->direct_type_key    = node->params.direct_key;
             type->count              = node->params.count;
             type->depth              = node->params.depth;
@@ -768,16 +758,17 @@ e_push_type_from_key(Arena *arena, E_TypeKey key)
           RDI_TopLevelInfo *tli = rdi_element_from_name_idx(rdi, TopLevelInfo, 0);
           Arch arch = arch_from_rdi_arch(tli->arch);
           RDI_TypeNode *rdi_type = rdi_element_from_name_idx(rdi, TypeNodes, type_node_idx);
-          if(rdi_type->kind != RDI_TypeKind_NULL)
+          if(rdi_type->kind != RDI_TypeKind_Null)
           {
             E_TypeKind kind = e_type_kind_from_rdi(rdi_type->kind);
             
             //- rjf: record types => unpack name * members & produce
             if(RDI_TypeKind_FirstRecord <= rdi_type->kind && rdi_type->kind <= RDI_TypeKind_LastRecord)
             {
+              Temp scratch = scratch_begin(&arena, 1);
+              
               // rjf: unpack name
-              String8 name = {0};
-              name.str = rdi_string_from_idx(rdi, rdi_type->user_defined.name_string_idx, &name.size);
+              String8 name = fully_qualified_str8_from_rdi_type(scratch.arena, rdi, rdi_type);
               
               // rjf: unpack UDT info
               RDI_UDT *udt = rdi_element_from_name_idx(rdi, UDTs, rdi_type->user_defined.udt_idx);
@@ -810,19 +801,22 @@ e_push_type_from_key(Arena *arena, E_TypeKey key)
               // rjf: produce
               type = push_array(arena, E_Type, 1);
               type->kind       = kind;
-              type->name       = push_str8_copy(arena, name);
+              type->name       = str8_copy(arena, name);
               type->byte_size  = (U64)rdi_type->byte_size;
               type->count      = members_count;
               type->arch       = arch;
               type->members    = members;
+              
+              scratch_end(scratch);
             }
             
             //- rjf: enum types => unpack name * values & produce
             else if(rdi_type->kind == RDI_TypeKind_Enum)
             {
+              Temp scratch = scratch_begin(&arena, 1);
+              
               // rjf: unpack name
-              String8 name = {0};
-              name.str = rdi_string_from_idx(rdi, rdi_type->user_defined.name_string_idx, &name.size);
+              String8 name = fully_qualified_str8_from_rdi_type(scratch.arena, rdi, rdi_type);
               
               // rjf: unpack direct type
               E_TypeKey direct_type_key = zero_struct;
@@ -861,6 +855,8 @@ e_push_type_from_key(Arena *arena, E_TypeKey key)
               type->arch            = arch;
               type->enum_vals       = enum_vals;
               type->direct_type_key = direct_type_key;
+              
+              scratch_end(scratch);
             }
             
             //- rjf: constructed types
@@ -1019,9 +1015,10 @@ e_push_type_from_key(Arena *arena, E_TypeKey key)
             //- rjf: alias types
             else if(rdi_type->kind == RDI_TypeKind_Alias)
             {
+              Temp scratch = scratch_begin(&arena, 1);
+              
               // rjf: unpack name
-              String8 name = {0};
-              name.str = rdi_string_from_idx(rdi, rdi_type->user_defined.name_string_idx, &name.size);
+              String8 name = fully_qualified_str8_from_rdi_type(scratch.arena, rdi, rdi_type);
               
               // rjf: unpack direct type
               E_TypeKey direct_type_key = zero_struct;
@@ -1041,6 +1038,8 @@ e_push_type_from_key(Arena *arena, E_TypeKey key)
               type->byte_size       = direct_type_byte_size;
               type->direct_type_key = direct_type_key;
               type->arch            = arch;
+              
+              scratch_end(scratch);
             }
             
             //- rjf: bitfields
@@ -1070,17 +1069,19 @@ e_push_type_from_key(Arena *arena, E_TypeKey key)
             //- rjf: incomplete types
             else if(RDI_TypeKind_FirstIncomplete <= rdi_type->kind && rdi_type->kind <= RDI_TypeKind_LastIncomplete)
             {
+              Temp scratch = scratch_begin(&arena, 1);
+              
               // rjf: unpack name
-              String8 name = {0};
-              name.str = rdi_string_from_idx(rdi, rdi_type->user_defined.name_string_idx, &name.size);
+              String8 name = fully_qualified_str8_from_rdi_type(scratch.arena, rdi, rdi_type);
               
               // rjf: produce
               type = push_array(arena, E_Type, 1);
               type->kind            = kind;
               type->name            = push_str8_copy(arena, name);
               type->arch            = arch;
+              
+              scratch_end(scratch);
             }
-            
           }
         }
       }break;
@@ -1089,16 +1090,10 @@ e_push_type_from_key(Arena *arena, E_TypeKey key)
       case E_TypeKeyKind_Reg:
       {
         Arch arch = (Arch)key.u32[0];
-        REGS_RegCode code = (REGS_RegCode)key.u32[1];
-        REGS_Rng rng = regs_reg_code_rng_table_from_arch(arch)[code];
-        reg_byte_count = (U64)rng.byte_size;
-      }goto build_reg_type;
-      case E_TypeKeyKind_RegAlias:
-      {
-        Arch arch = (Arch)key.u32[0];
-        REGS_AliasCode code = (REGS_AliasCode)key.u32[1];
-        REGS_Slice slice = regs_alias_code_slice_table_from_arch(arch)[code];
-        reg_byte_count = (U64)slice.byte_size;
+        ARCH_Info *arch_info = arch_info_from_arch(arch);
+        ARCH_RegCode code = (ARCH_RegCode)key.u32[1];
+        Rng1U16 rng = arch_info->reg_code_rng_table[code];
+        reg_byte_count = (U64)dim_1u16(rng);
       }goto build_reg_type;
       build_reg_type:
       {
@@ -1670,6 +1665,8 @@ e_type_lhs_string_from_key(Arena *arena, E_TypeKey key, String8List *out, U32 pr
       E_Type *type = e_type_from_key(key);
       str8_list_pushf(arena, out, "%S ", type->name);
     }break;
+    
+    case E_TypeKind_Null:{}break;
     
     case E_TypeKind_Bitfield:
     {
@@ -2588,11 +2585,11 @@ e_list_gather_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U
   
   //- rjf: unpack key
   // TODO(rjf): this needs to take any `E_Space`, once eval has been upgraded.
-  CTRL_Handle process = {0};
+  D_Handle process = {0};
   U64 base_off = 0;
   U64 member_element_off = 0;
   U64 member_size = 0;
-  E_SpaceRWFunction *space_read = 0;
+  E_SpaceReadFunction *space_read = 0;
   {
     U64 key_read_off = 0;
     key_read_off += str8_deserial_read_struct(key, key_read_off, &process);
@@ -2672,7 +2669,7 @@ e_list_gather_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U
       
       //- rjf: read next offset, advance
       B32 read_stale = 0;
-      B32 read_good = ctrl_process_memory_read(process, r1u64(off + member_element_off, off + member_element_off + member_size), &read_stale, &next_off, 0);
+      B32 read_good = d_process_memory_read(process, r1u64(off + member_element_off, off + member_element_off + member_size), &read_stale, &next_off, 0);
       if(read_stale)
       {
         retry = 1;
@@ -2813,11 +2810,11 @@ E_TYPE_IREXT_FUNCTION_DEF(list)
 #pragma pack(push, 1)
     struct
     {
-      CTRL_Handle process;
+      D_Handle process;
       U64 base_off;
       U64 member_element_off;
       U64 member_size;
-      E_SpaceRWFunction *space_read;
+      E_SpaceReadFunction *space_read;
     }
     key_data =
     {
@@ -3106,23 +3103,23 @@ E_TYPE_EXPAND_INFO_FUNCTION_DEF(folder)
     String8List folder_paths = {0};
     String8List file_paths = {0};
     {
-      OS_FileIter *iter = os_file_iter_begin(scratch.arena, folder_path, 0);
-      for(OS_FileInfo info = {0}; os_file_iter_next(scratch.arena, iter, &info);)
+      FileIter *iter = file_iter_begin(scratch.arena, folder_path, 0);
+      for(FileInfo info = {0}; file_iter_next(scratch.arena, iter, &info);)
       {
         FuzzyMatchRangeList matches = fuzzy_match_find(scratch.arena, local_filter, info.name);
         if(matches.count == matches.needle_part_count)
         {
           if(info.props.flags & FilePropertyFlag_IsFolder)
           {
-            str8_list_push(scratch.arena, &folder_paths, push_str8_copy(arena, info.name));
+            str8_list_push(scratch.arena, &folder_paths, str8_copy(arena, info.name));
           }
           else
           {
-            str8_list_push(scratch.arena, &file_paths, push_str8_copy(arena, info.name));
+            str8_list_push(scratch.arena, &file_paths, str8_copy(arena, info.name));
           }
         }
       }
-      os_file_iter_end(iter);
+      file_iter_end(iter);
     }
     
     //- rjf: build accelerator
@@ -3241,7 +3238,7 @@ E_TYPE_IREXT_FUNCTION_DEF(file)
     
     //- rjf: fill accel
     accel->file_path = push_str8_copy(arena, file_path);
-    accel->props = os_properties_from_file_path(file_path);
+    accel->props = properties_from_file_path(file_path);
     accel->fields = str8_array_from_list(arena, &fields);
     
     scratch_end(scratch);

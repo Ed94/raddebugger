@@ -71,7 +71,7 @@ di_init(CmdLine *cmdline)
   if(!try_u64_from_str8_c_rules(signal_pid_string, &signal_pid))
   {
     has_parent = 0;
-    signal_pid = os_get_process_info()->pid;
+    signal_pid = get_process_info()->pid;
   }
   U64 signal_code = 0;
   String8 signal_code_string = cmd_line_string(cmdline, str8_lit("signal_code"));
@@ -84,20 +84,29 @@ di_init(CmdLine *cmdline)
   {
     di_shared->conversion_completion_lock_semaphore = semaphore_open(di_shared->conversion_completion_lock_semaphore_name);
     di_shared->conversion_completion_signal_semaphore = semaphore_open(di_shared->conversion_completion_signal_semaphore_name);
-    di_shared->conversion_completion_shared_memory = os_shared_memory_open(di_shared->conversion_completion_shared_memory_name);
+    di_shared->conversion_completion_shared_memory = shared_memory_open(di_shared->conversion_completion_shared_memory_name);
   }
   else
   {
     di_shared->conversion_completion_lock_semaphore = semaphore_alloc(1, 1, di_shared->conversion_completion_lock_semaphore_name);
     di_shared->conversion_completion_signal_semaphore = semaphore_alloc(0, 65536, di_shared->conversion_completion_signal_semaphore_name);
-    di_shared->conversion_completion_shared_memory = os_shared_memory_alloc(KB(4), di_shared->conversion_completion_shared_memory_name);
+    di_shared->conversion_completion_shared_memory = shared_memory_alloc(KB(4), di_shared->conversion_completion_shared_memory_name);
     di_shared->conversion_completion_signal_receiver_thread = thread_launch(di_conversion_completion_signal_receiver_thread_entry_point, 0);
   }
-  di_shared->conversion_completion_shared_memory_base = (U64 *)os_shared_memory_view_open(di_shared->conversion_completion_shared_memory, r1u64(0, KB(4)));
+  di_shared->conversion_completion_shared_memory_base = (U64 *)shared_memory_view_open(di_shared->conversion_completion_shared_memory, r1u64(0, KB(4)));
   di_shared->completion_mutex = mutex_alloc();
   di_shared->completion_arena = arena_alloc();
   di_shared->event_mutex = mutex_alloc();
   di_shared->event_arena = arena_alloc();
+}
+
+////////////////////////////////
+//~ rjf: Settings Submission
+
+internal void
+di_set_auto_downloads(B32 auto_downloads)
+{
+  ins_atomic_u32_eval_assign(&di_shared->auto_downloads, auto_downloads);
 }
 
 ////////////////////////////////
@@ -164,8 +173,8 @@ di_key_from_path_timestamp(String8 path, U64 min_timestamp)
       //- rjf: try to make key from file's contents
       if(!made_key)
       {
-        OS_Handle file = os_file_open(OS_AccessFlag_Read|OS_AccessFlag_ShareRead, path);
-        FileProperties props = os_properties_from_file(file);
+        File file = file_open(AccessFlag_Read|AccessFlag_ShareRead, path);
+        FileProperties props = properties_from_file(file);
         if(min_timestamp <= props.modified)
         {
           //- rjf: PDB magic => use GUID for key
@@ -176,7 +185,7 @@ di_key_from_path_timestamp(String8 path, U64 min_timestamp)
             {
               read_only local_persist char msf_msf20_magic[] = "Microsoft C/C++ program database 2.00\r\n\x1aJG\0\0";
               U8 msf20_magic_maybe[sizeof(msf_msf20_magic)] = {0};
-              os_file_read(file, r1u64(0, sizeof(msf20_magic_maybe)), msf20_magic_maybe);
+              file_read(file, r1u64(0, sizeof(msf20_magic_maybe)), msf20_magic_maybe);
               if(MemoryMatch(msf20_magic_maybe, msf_msf20_magic, sizeof(msf20_magic_maybe)))
               {
                 is_pdb = 1;
@@ -186,7 +195,7 @@ di_key_from_path_timestamp(String8 path, U64 min_timestamp)
             {
               read_only local_persist char msf_msf70_magic[] = "Microsoft C/C++ MSF 7.00\r\n\032DS\0\0";
               U8 msf70_magic_maybe[sizeof(msf_msf70_magic)] = {0};
-              os_file_read(file, r1u64(0, sizeof(msf70_magic_maybe)), msf70_magic_maybe);
+              file_read(file, r1u64(0, sizeof(msf70_magic_maybe)), msf70_magic_maybe);
               if(MemoryMatch(msf70_magic_maybe, msf_msf70_magic, sizeof(msf70_magic_maybe)))
               {
                 is_pdb = 1;
@@ -198,15 +207,18 @@ di_key_from_path_timestamp(String8 path, U64 min_timestamp)
             }
           }
         }
-        os_file_close(file);
+        file_close(file);
       }
       
       //- rjf: fallback: hash from path/timestamp
       if(!made_key)
       {
         made_key = 1;
-        U128 hash = u128_hash_from_seed_str8(min_timestamp, path);
-        MemoryCopy(&key, &hash, Min(sizeof(hash), sizeof(key)));
+        if(path.size != 0)
+        {
+          U128 hash = u128_hash_from_seed_str8(min_timestamp, path);
+          MemoryCopy(&key, &hash, Min(sizeof(hash), sizeof(key)));
+        }
       }
       
       //- rjf: made key -> store in (key -> path/timestamp) table
@@ -323,8 +335,8 @@ di_close(DI_Key key, B32 force_closed)
   
   //- rjf: decrement this key's node's refcount; remove if needed
   B32 node_released = 0;
-  OS_Handle file = {0};
-  OS_Handle file_map = {0};
+  File file = {0};
+  FileMap file_map = {0};
   FileProperties file_props = {0};
   void *file_base = 0;
   Arena *arena = 0;
@@ -377,9 +389,9 @@ di_close(DI_Key key, B32 force_closed)
   {
     ins_atomic_u64_dec_eval(&di_shared->load_count);
     ins_atomic_u64_inc_eval(&di_shared->load_gen);
-    os_file_map_view_close(file_map, file_base, r1u64(0, file_props.size));
-    os_file_map_close(file_map);
-    os_file_close(file);
+    file_map_view_close(file_map, file_base, r1u64(0, file_props.size));
+    file_map_close(file_map);
+    file_close(file);
     if(arena != 0)
     {
       arena_release(arena);
@@ -492,7 +504,7 @@ di_rdi_from_key(Access *access, DI_Key key, B32 high_priority, U64 endt_us)
       }
       
       // rjf: found current results, or out-of-time? abort
-      if(grabbed || os_now_microseconds() >= endt_us)
+      if(grabbed || now_time_us() >= endt_us)
       {
         break;
       }
@@ -677,20 +689,50 @@ di_async_tick(void)
           }
         }
         
+        //- rjf: kick off symbol server download, or check to see if we are actively downloading O.G.
+        B32 og_is_downloading = 0;
+        if(og_path.size != 0)
+        {
+#if defined(SYMBOL_SERVER_H)
+          B32 file_is_present = (properties_from_file_path(og_path).modified != 0);
+          if(!file_is_present)
+          {
+            String8 symbol_cache_path = smsv_cache_path();
+            if(symbol_cache_path.size != 0 && str8_match(symbol_cache_path, og_path, StringMatchFlag_RightSideSloppy|StringMatchFlag_SlashInsensitive))
+            {
+              if(di_shared->auto_downloads)
+              {
+                og_is_downloading = 1;
+                smsv_fill_local_path(og_path);
+              }
+              SMSV_Status status = smsv_status_from_local_path(og_path);
+              if(status == SMSV_Status_Pending)
+              {
+                og_is_downloading = 1;
+              }
+              else if(status == SMSV_Status_Null)
+              {
+                og_is_downloading = 0;
+              }
+            }
+          }
+#endif
+        }
+        
         //- rjf: analyze O.G. debug info
-        if(!t->og_analyzed)
+        if(!t->og_analyzed && !og_is_downloading)
         {
           t->og_analyzed = 1;
-          OS_Handle file = os_file_open(OS_AccessFlag_ShareRead|OS_AccessFlag_Read, og_path);
-          FileProperties props = os_properties_from_file(file);
+          File file = file_open(AccessFlag_ShareRead|AccessFlag_Read, og_path);
+          FileProperties props = properties_from_file(file);
           t->og_size = props.size;
           U64 rdi_magic_maybe = 0;
-          if(os_file_read_struct(file, 0, &rdi_magic_maybe) == 8 &&
+          if(file_read_struct(file, 0, &rdi_magic_maybe) == 8 &&
              rdi_magic_maybe == RDI_MAGIC_CONSTANT)
           {
             t->og_is_rdi = 1;
           }
-          os_file_close(file);
+          file_close(file);
         }
         U64 og_size = t->og_size;
         B32 og_is_rdi = t->og_is_rdi;
@@ -698,6 +740,7 @@ di_async_tick(void)
         
         //- rjf: compute key's RDI path
         String8 rdi_path = {0};
+        if(og_path.size != 0)
         {
           if(og_is_rdi)
           {
@@ -709,12 +752,48 @@ di_async_tick(void)
           }
         }
         
+        //- rjf: determine if RDI folder is writable; if not, need to write into the writable cache path
+        if(!t->og_folder_analyzed)
+        {
+          t->og_folder_analyzed = 1;
+          String8 rdi_folder = str8_chop_last_slash(rdi_path);
+          for(U64 slash_pos = 0; slash_pos <= rdi_folder.size; slash_pos = str8_find_needle(rdi_folder, slash_pos+1, s("/"), StringMatchFlag_SlashInsensitive))
+          {
+            String8 ancestor_folder = str8_substr(rdi_folder, r1u64(0, slash_pos));
+            if(ancestor_folder.size != 0)
+            {
+              make_directory(ancestor_folder);
+            }
+            if(slash_pos == rdi_folder.size)
+            {
+              break;
+            }
+          }
+          String8 dummy_file_path = str8f(scratch.arena, "%S/writability_test", rdi_folder);
+          File file = file_open(AccessFlag_Write, dummy_file_path);
+          t->og_folder_is_writable = !file_match(file, file_zero());
+          file_close(file);
+          delete_file_at_path(dummy_file_path);
+        }
+        
+        //- rjf: if RDI path is not writable -> adjust into writable cache directory
+        if(!t->og_folder_is_writable)
+        {
+          String8 cache_folder = get_process_info()->user_program_cache_data_path;
+          String8 raddbg_folder = str8f(scratch.arena, "%S/raddbg", cache_folder);
+          String8 rdis_folder = str8f(scratch.arena, "%S/rdis", raddbg_folder);
+          make_directory(cache_folder);
+          make_directory(raddbg_folder);
+          make_directory(rdis_folder);
+          rdi_path = str8f(scratch.arena, "%S/%S.rdi", rdis_folder, str8_chop_last_dot(str8_skip_last_slash(og_path)));
+        }
+        
         //- rjf: determine if RDI is stale
-        if(!t->rdi_analyzed)
+        if(!t->rdi_analyzed && !og_is_downloading)
         {
           t->rdi_analyzed = 1;
-          OS_Handle file = os_file_open(OS_AccessFlag_ShareRead|OS_AccessFlag_Read, rdi_path);
-          FileProperties props = os_properties_from_file(file);
+          File file = file_open(AccessFlag_ShareRead|AccessFlag_Read, rdi_path);
+          FileProperties props = properties_from_file(file);
           if(props.modified < og_min_timestamp)
           {
             t->rdi_is_stale = 1;
@@ -723,20 +802,20 @@ di_async_tick(void)
           {
             t->rdi_is_stale = 1;
             RDI_Header header = {0};
-            if(os_file_read_struct(file, 0, &header) == sizeof(header))
+            if(file_read_struct(file, 0, &header) == sizeof(header))
             {
               t->rdi_is_stale = (header.encoding_version != RDI_ENCODING_VERSION);
             }
           }
-          os_file_close(file);
+          file_close(file);
         }
         B32 rdi_is_stale = t->rdi_is_stale;
         
         //- rjf: calculate thread counts for conversion processes
-        if(!og_is_rdi && rdi_is_stale && t->thread_count == 0)
+        if(!og_is_rdi && rdi_is_stale && t->thread_count == 0 && !og_is_downloading)
         {
           U64 thread_count = 1;
-          U64 max_thread_count = os_get_system_info()->logical_processor_count/2;
+          U64 max_thread_count = get_system_info()->logical_processor_count/2;
           if(priority_idx > 0)
           {
             max_thread_count = Max(1, max_thread_count/2);
@@ -756,7 +835,7 @@ di_async_tick(void)
         //- rjf: determine if there are threads available
         B32 threads_available = 0;
         {
-          U64 max_threads = os_get_system_info()->logical_processor_count/2;
+          U64 max_threads = get_system_info()->logical_processor_count/2;
           U64 current_threads = di_shared->conversion_thread_count;
           U64 needed_threads = (current_threads + t->thread_count);
           threads_available = (max_threads >= needed_threads);
@@ -764,7 +843,7 @@ di_async_tick(void)
         
         //- rjf: if this conversion will overwrite an RDI we already have in cache,
         // then we need to evict the old one from the cache.
-        B32 ready_to_launch_conversion = (threads_available && !og_is_rdi && rdi_is_stale && t->thread_count != 0 && t->status != DI_LoadTaskStatus_Active);
+        B32 ready_to_launch_conversion = (!og_is_downloading && threads_available && !og_is_rdi && rdi_is_stale && t->thread_count != 0 && t->status != DI_LoadTaskStatus_Active);
         if(ready_to_launch_conversion)
         {
           U64 path2key_hash = u64_hash_from_str8(og_path);
@@ -789,11 +868,11 @@ di_async_tick(void)
         if(og_is_good && ready_to_launch_conversion)
         {
           B32 should_compress = 0;
-          OS_ProcessLaunchParams params = {0};
-          params.path = os_get_process_info()->binary_path;
+          ProcessLaunchParams params = {0};
+          params.path = get_process_info()->binary_path;
           params.inherit_env = 1;
           params.consoleless = 1;
-          str8_list_pushf(scratch.arena, &params.cmd_line, "raddbg");
+          str8_list_push(scratch.arena, &params.cmd_line, get_process_info()->binary_file_path);
           str8_list_pushf(scratch.arena, &params.cmd_line, "--bin");
           str8_list_pushf(scratch.arena, &params.cmd_line, "--quiet");
           if(should_compress)
@@ -804,11 +883,11 @@ di_async_tick(void)
           str8_list_pushf(scratch.arena, &params.cmd_line, "--rdi");
           str8_list_pushf(scratch.arena, &params.cmd_line, "--out:%S", rdi_path);
           str8_list_pushf(scratch.arena, &params.cmd_line, "--thread_count:%I64u", t->thread_count);
-          str8_list_pushf(scratch.arena, &params.cmd_line, "--signal_pid:%I64u", (U64)os_get_process_info()->pid);
+          str8_list_pushf(scratch.arena, &params.cmd_line, "--signal_pid:%I64u", (U64)get_process_info()->pid);
           str8_list_pushf(scratch.arena, &params.cmd_line, "--signal_code:%I64u", (U64)t);
           str8_list_pushf(scratch.arena, &params.cmd_line, "%S", og_path);
           ProfMsg("launch creation for %.*s", str8_varg(rdi_path));
-          t->process = os_process_launch(&params);
+          t->process = process_launch(&params);
           t->status = DI_LoadTaskStatus_Active;
           di_shared->conversion_process_count += 1;
           di_shared->conversion_thread_count += t->thread_count;
@@ -840,7 +919,7 @@ di_async_tick(void)
             }
             if(!task_is_done)
             {
-              task_is_done = os_process_join(t->process, 0, 0);
+              task_is_done = process_join(t->process, 0, 0);
             }
             if(task_is_done)
             {
@@ -859,7 +938,7 @@ di_async_tick(void)
         
         //- rjf: if the RDI for this task is not stale, then we're already done - mark this
         // task as done & prepped for storing into the cache
-        if(!rdi_is_stale)
+        if(!rdi_is_stale && !og_is_downloading)
         {
           t->status = DI_LoadTaskStatus_Done;
         }
@@ -875,7 +954,7 @@ di_async_tick(void)
         //- rjf: if task is done, retire & recycle task; gather path to load
         if(t->status == DI_LoadTaskStatus_Done)
         {
-          if(!os_handle_match(t->process, os_handle_zero())) MutexScope(di_shared->event_mutex)
+          if(!process_match(t->process, process_zero())) MutexScope(di_shared->event_mutex)
           {
             DI_EventNode *n = push_array(di_shared->event_arena, DI_EventNode, 1);
             SLLQueuePush(di_shared->events.first, di_shared->events.last, n);
@@ -937,15 +1016,15 @@ di_async_tick(void)
       ProfBegin("parse %.*s", str8_varg(rdi_path));
       
       //- rjf: open file
-      OS_Handle file = {0};
-      OS_Handle file_map = {0};
+      File file = {0};
+      FileMap file_map = {0};
       FileProperties file_props = {0};
       void *file_base = 0;
       {
-        file = os_file_open(OS_AccessFlag_Read|OS_AccessFlag_ShareRead|OS_AccessFlag_ShareWrite, rdi_path);
-        file_map = os_file_map_open(OS_AccessFlag_Read, file);
-        file_props = os_properties_from_file(file);
-        file_base = os_file_map_view_open(file_map, OS_AccessFlag_Read, r1u64(0, file_props.size));
+        file = file_open(AccessFlag_Read|AccessFlag_ShareRead|AccessFlag_ShareWrite, rdi_path);
+        file_map = file_map_open(AccessFlag_Read, file);
+        file_props = properties_from_file(file);
+        file_base = file_map_view_open(file_map, AccessFlag_Read, r1u64(0, file_props.size));
       }
       
       //- rjf: do initial parse of rdi
@@ -1010,9 +1089,9 @@ di_async_tick(void)
             {
               arena_release(rdi_parsed_arena);
             }
-            os_file_map_view_close(file_map, file_base, r1u64(0, file_props.size));
-            os_file_map_close(file_map);
-            os_file_close(file);
+            file_map_view_close(file_map, file_base, r1u64(0, file_props.size));
+            file_map_close(file_map);
+            file_close(file);
           }
         }
         cond_var_broadcast(stripe->cv);
@@ -1152,33 +1231,7 @@ di_search_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *
           void *table_base = rdi_section_raw_table_from_kind(rdi, section_kind, &element_count);
           U64 element_size = rdi_section_element_size_table[section_kind];
           
-          // rjf: determine name string index offset, depending on table kind
-          U64 element_name_idx_off = 0;
-          switch(section_kind)
-          {
-            default:{}break;
-            case RDI_SectionKind_Procedures:
-            {
-              element_name_idx_off = OffsetOf(RDI_Procedure, name_string_idx);
-            }break;
-            case RDI_SectionKind_GlobalVariables:
-            {
-              element_name_idx_off = OffsetOf(RDI_GlobalVariable, name_string_idx);
-            }break;
-            case RDI_SectionKind_ThreadVariables:
-            {
-              element_name_idx_off = OffsetOf(RDI_ThreadVariable, name_string_idx);
-            }break;
-            case RDI_SectionKind_UDTs:
-            {
-              // NOTE(rjf): name must be determined from self_type_idx
-            }break;
-            case RDI_SectionKind_SourceFiles:
-            {
-              // NOTE(rjf): name must be determined from file path node chain
-            }break;
-          }
-          
+          // rjf: do search
           Rng1U64 range = lane_range(element_count);
           for EachInRange(idx, range)
           {
@@ -1197,8 +1250,7 @@ di_search_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *
               {
                 RDI_UDT *udt = (RDI_UDT *)element;
                 RDI_TypeNode *type_node = rdi_element_from_name_idx(rdi, TypeNodes, udt->self_type_idx);
-                name.str = rdi_string_from_idx(rdi, type_node->user_defined.name_string_idx, &name.size);
-                name = str8_copy(arena, name);
+                name = fully_qualified_from_rdi_string_and_container(arena, rdi, type_node->user_defined.name_string_idx, udt->container_idx, udt->container_flags);
               }break;
               case RDI_SectionKind_SourceFiles:
               {
@@ -1220,10 +1272,8 @@ di_search_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *
               }break;
               default:
               {
-                U32 name_idx = *(U32 *)((U8 *)element + element_name_idx_off);
-                U64 name_size = 0;
-                U8 *name_base = rdi_string_from_idx(rdi, name_idx, &name_size);
-                name = str8(name_base, name_size);
+                RDI_Symbol *symbol = (RDI_Symbol *)element;
+                name = fully_qualified_str8_from_rdi_symbol(arena, rdi, symbol);
               }break;
             }
             if(name.size == 0) { continue; }
@@ -1525,16 +1575,91 @@ di_match_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *g
   Temp scratch = scratch_begin(0, 0);
   
   //- rjf: unpack key
-  U64 index = 0;
+  U32 index = 0;
+  U32 unit_idx = 0;
+  B32 allow_other_dbgis = 0;
   String8 name = {0};
   DI_Key preferred_key = {0};
   {
     U64 key_read_off = 0;
     key_read_off += str8_deserial_read_struct(key, key_read_off, &index);
+    key_read_off += str8_deserial_read_struct(key, key_read_off, &unit_idx);
+    key_read_off += str8_deserial_read_struct(key, key_read_off, &allow_other_dbgis);
     key_read_off += str8_deserial_read_struct(key, key_read_off, &preferred_key);
     key_read_off += str8_deserial_read_struct(key, key_read_off, &name.size);
     name.str = push_array_no_zero(scratch.arena, U8, name.size);
     key_read_off += str8_deserial_read(key, key_read_off, name.str, name.size, 1);
+  }
+  
+  //- rjf: find split point between container part of name & "leaf"
+  U64 container_part_opl = 0;
+  U64 leaf_part_first = 0;
+  for(U64 off = 0; off+1 < name.size; off += 1)
+  {
+    if(name.str[off] == '.')
+    {
+      container_part_opl = off;
+      leaf_part_first = off+1;
+    }
+    else if(name.str[off] == ':' && name.str[off+1] == ':')
+    {
+      container_part_opl = off;
+      leaf_part_first = off+2;
+    }
+  }
+  
+  //- rjf: unpack container/leaf
+  String8 container_part_of_name = str8_prefix(name, container_part_opl);
+  String8 leaf_part_of_name = str8_skip(name, leaf_part_first);
+  
+  //- rjf: produce the fully qualified name, sanitize the container part (convert all `.`s to `::`s)
+  String8 fully_qualified_name = name;
+  if(container_part_of_name.size != 0)
+  {
+    // rjf: gather parts of container
+    String8List parts = {0};
+    for(U64 off = 0, next_off = 0; off < container_part_of_name.size; off = next_off)
+    {
+      // rjf: find the next separator
+      U64 next_separator_pos = container_part_of_name.size;
+      U64 next_separator_size = 0;
+      {
+        S64 template_nest_depth = 0;
+        for(U64 off2 = off; off2+1 < container_part_of_name.size; off2 += 1)
+        {
+          if(template_nest_depth == 0 && container_part_of_name.str[off2] == '.')
+          {
+            next_separator_pos = off2;
+            next_separator_size = 1;
+            break;
+          }
+          else if(template_nest_depth == 0 && container_part_of_name.str[off2] == ':' && container_part_of_name.str[off2+1] == ':')
+          {
+            next_separator_pos = off2;
+            next_separator_size = 2;
+            break;
+          }
+          else if(container_part_of_name.str[off2] == '<')
+          {
+            template_nest_depth += 1;
+          }
+          else if(container_part_of_name.str[off2] == '>')
+          {
+            template_nest_depth -= 1;
+            template_nest_depth = ClampBot(0, template_nest_depth);
+          }
+        }
+      }
+      
+      // rjf: gather portions of container
+      str8_list_push(scratch.arena, &parts, str8_substr(container_part_of_name, r1u64(off, next_separator_pos)));
+      next_off = next_separator_pos + next_separator_size;
+    }
+    
+    // rjf: add leaf & join
+    str8_list_push(scratch.arena, &parts, leaf_part_of_name);
+    StringJoin join = {.sep = str8_lit("::")};
+    fully_qualified_name = str8_list_join(scratch.arena, &parts, &join);
   }
   
   //- rjf: get all loaded keys
@@ -1577,23 +1702,119 @@ di_match_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *g
       Rng1U64 range = lane_range(dbgi_keys.count);
       for EachInRange(dbgi_idx, range)
       {
+        DI_Key dbgi_key = dbgi_keys.v[dbgi_idx];
+        if(!allow_other_dbgis && !di_key_match(preferred_key, dbgi_key))
+        {
+          continue;
+        }
         Access *access = access_open();
         {
-          DI_Key dbgi_key = dbgi_keys.v[dbgi_idx];
           RDI_Parsed *rdi = di_rdi_from_key(access, dbgi_key, 0, 0);
+          RDI_Unit *unit = rdi_element_from_name_idx(rdi, Units, unit_idx);
           for EachElement(name_map_kind_idx, name_map_kinds)
           {
+            // rjf: unpack name map
             RDI_NameMap *name_map = rdi_element_from_name_idx(rdi, NameMaps, name_map_kinds[name_map_kind_idx]);
             RDI_ParsedNameMap parsed_name_map = {0};
             rdi_parsed_from_name_map(rdi, name_map, &parsed_name_map);
-            RDI_NameMapNode *map_node = rdi_name_map_lookup(rdi, &parsed_name_map, name.str, name.size);
-            U32 num = 0;
-            U32 *run = rdi_matches_from_map_node(rdi, map_node, &num);
-            if(num != 0)
+            
+            // rjf: find matches for (possibly leaf) name
+            RDI_NameMapNode *map_node = rdi_name_map_lookup(rdi, &parsed_name_map, leaf_part_of_name.str, leaf_part_of_name.size);
+            U32 matches_count = 0;
+            U32 *matches = rdi_matches_from_map_node(rdi, map_node, &matches_count);
+            
+            // rjf: do we have a container? -> filter matches according to container string also
+            U32 *filtered_matches = matches;
+            U32 filtered_matches_count = matches_count;
+            if(container_part_of_name.size != 0)
             {
+              filtered_matches = push_array(scratch.arena, U32, matches_count);
+              filtered_matches_count = 0;
+              for EachIndex(match_idx, matches_count)
+              {
+                Temp scratch = scratch_begin(0, 0);
+                String8 match_fully_qualified_name = {0};
+                switch(name_map_section_kinds[name_map_kind_idx])
+                {
+                  default:{}break;
+                  case RDI_SectionKind_GlobalVariables:
+                  case RDI_SectionKind_ThreadVariables:
+                  case RDI_SectionKind_Constants:
+                  case RDI_SectionKind_Procedures:
+                  {
+                    RDI_Symbol *symbol = (RDI_Symbol *)rdi_section_raw_element_from_kind_idx(rdi, name_map_section_kinds[name_map_kind_idx], matches[match_idx]);
+                    String8 match_fully_qualified_name = fully_qualified_str8_from_rdi_symbol(scratch.arena, rdi, symbol);
+                    if(str8_match(match_fully_qualified_name, fully_qualified_name, 0))
+                    {
+                      filtered_matches[filtered_matches_count] = matches[match_idx];
+                      filtered_matches_count += 1;
+                    }
+                  }break;
+                  case RDI_SectionKind_TypeNodes:
+                  {
+                    RDI_TypeNode *type_node = rdi_element_from_name_idx(rdi, TypeNodes, match_idx);
+                    if(RDI_TypeKind_FirstUserDefined <= type_node->kind && type_node->kind <= RDI_TypeKind_LastUserDefined)
+                    {
+                      String8 match_fully_qualified_name = fully_qualified_str8_from_rdi_type(scratch.arena, rdi, type_node);
+                      if(str8_match(match_fully_qualified_name, fully_qualified_name, 0))
+                      {
+                        filtered_matches[filtered_matches_count] = matches[match_idx];
+                        filtered_matches_count += 1;
+                      }
+                    }
+                  }break;
+                }
+                scratch_end(scratch);
+              }
+            }
+            
+            // rjf: do we have a specific unit queried? -> filter matches according to containing unit
+            if(unit_idx != 0)
+            {
+              U32 *unit_filtered_matches = push_array(scratch.arena, U32, filtered_matches_count);
+              U32 unit_filtered_matches_count = 0;
+              for EachIndex(match_idx, filtered_matches_count)
+              {
+                U32 match = filtered_matches[match_idx];
+                B32 hits_filter = 1;
+                switch(name_map_section_kinds[name_map_kind_idx])
+                {
+                  default:{}break;
+                  case RDI_SectionKind_GlobalVariables:
+                  {
+                    hits_filter = (unit->global_variables_first_idx <= match && match < unit->global_variables_first_idx+unit->global_variables_count);
+                  }break;
+                  case RDI_SectionKind_ThreadVariables:
+                  {
+                    hits_filter = (unit->thread_variables_first_idx <= match && match < unit->thread_variables_first_idx+unit->thread_variables_count);
+                  }break;
+                  case RDI_SectionKind_Constants:
+                  {
+                    hits_filter = (unit->constants_first_idx <= match && match < unit->constants_first_idx+unit->constants_count);
+                  }break;
+                  case RDI_SectionKind_Procedures:
+                  {
+                    hits_filter = (unit->procedures_first_idx <= match && match < unit->procedures_first_idx+unit->procedures_count);
+                  }break;
+                }
+                if(hits_filter)
+                {
+                  unit_filtered_matches[unit_filtered_matches_count] = match;
+                  unit_filtered_matches_count += 1;
+                }
+              }
+              filtered_matches = unit_filtered_matches;
+              filtered_matches_count = unit_filtered_matches_count;
+            }
+            
+            // rjf: given matches, pick selected & return as result
+            if(filtered_matches_count != 0)
+            {
+              U64 selected_match_idx = (filtered_matches_count-1) - Min(index, filtered_matches_count-1);
               lane_matches[lane_idx()].key          = dbgi_key;
               lane_matches[lane_idx()].section_kind = name_map_section_kinds[name_map_kind_idx];
-              lane_matches[lane_idx()].idx          = run[num-1];
+              lane_matches[lane_idx()].idx          = filtered_matches[selected_match_idx];
+              lane_matches[lane_idx()].count        = filtered_matches_count;
             }
           }
         }
@@ -1627,7 +1848,7 @@ di_match_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *g
     artifact.u64[0] = match.key.u64[0];
     artifact.u64[1] = match.key.u64[1];
     artifact.u64[2] = match.section_kind;
-    artifact.u64[3] = match.idx;
+    artifact.u64[3] = ((U64)(match.idx & 0xffffffffull) << 32) | ((U64)(match.count & 0xffffffffull) << 0);
   }
   
   lane_sync();
@@ -1637,25 +1858,28 @@ di_match_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *g
 }
 
 internal DI_Match
-di_match_from_string(String8 string, U64 index, DI_Key preferred_dbgi_key, U64 endt_us)
+di_match_from_string(String8 string, U32 match_index, U32 unit_idx, B32 allow_other_dbgis, DI_Key preferred_dbgi_key, U64 endt_us)
 {
   DI_Match result = {0};
   Access *access = access_open();
   Temp scratch = scratch_begin(0, 0);
   {
     String8List key_parts = {0};
-    str8_list_push(scratch.arena, &key_parts, str8_struct(&index));
+    str8_list_push(scratch.arena, &key_parts, str8_struct(&match_index));
+    str8_list_push(scratch.arena, &key_parts, str8_struct(&unit_idx));
+    str8_list_push(scratch.arena, &key_parts, str8_struct(&allow_other_dbgis));
     str8_list_push(scratch.arena, &key_parts, str8_struct(&preferred_dbgi_key));
     str8_list_push(scratch.arena, &key_parts, str8_struct(&string.size));
     str8_list_push(scratch.arena, &key_parts, string);
     String8 key = str8_list_join(scratch.arena, &key_parts, 0);
     U64 dbgi_count = di_load_count();
-    B32 wide = (dbgi_count > 256);
+    B32 wide = (dbgi_count > 256 && allow_other_dbgis);
     AC_Artifact artifact = ac_artifact_from_key(access, key, di_match_artifact_create, 0, endt_us, .flags = wide ? AC_Flag_Wide : 0, .gen = di_load_gen(), .evict_threshold_us = wide ? 20000000 : 10000000);
     result.key.u64[0]   = artifact.u64[0];
     result.key.u64[1]   = artifact.u64[1];
     result.section_kind = artifact.u64[2];
-    result.idx          = artifact.u64[3];
+    result.idx          = (artifact.u64[3] & 0xffffffff00000000ull) >> 32;
+    result.count        = (artifact.u64[3] & 0x00000000ffffffffull) >> 0;
   }
   scratch_end(scratch);
   access_close(access);

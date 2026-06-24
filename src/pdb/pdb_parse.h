@@ -163,8 +163,6 @@ typedef struct PDB_TpiHashBlock
 typedef struct PDB_TpiHashParsed
 {
   String8 data;
-  String8 aux_data;
-  
   PDB_TpiHashBlock **buckets;
   U32 bucket_count;
   U32 bucket_mask;
@@ -198,11 +196,7 @@ internal PDB_Strtbl*          pdb_strtbl_from_data(Arena *arena, String8 strtbl_
 
 internal PDB_DbiParsed*       pdb_dbi_from_data(Arena *arena, String8 dbi_data);
 internal PDB_TpiParsed*       pdb_tpi_from_data(Arena *arena, String8 tpi_data);
-internal PDB_TpiHashParsed*   pdb_tpi_hash_from_data(Arena *arena,
-                                                     PDB_Strtbl *strtbl,
-                                                     PDB_TpiParsed *tpi,
-                                                     String8 tpi_hash_data,
-                                                     String8 tpi_hash_aux_data);
+internal PDB_TpiHashParsed*   pdb_tpi_hash_from_data(Arena *arena, PDB_Strtbl *strtbl, PDB_TpiParsed *tpi, String8 tpi_hash_data);
 internal PDB_GsiParsed*       pdb_gsi_from_data(Arena *arena, String8 gsi_data);
 internal U64                  pdb_gsi_symbol_from_string(PDB_GsiParsed *gsi, String8 symbol_data, String8 string);
 
@@ -212,6 +206,7 @@ internal PDB_CompUnitArray*   pdb_comp_unit_array_from_data(Arena *arena,
                                                             String8 module_info_data);
 
 internal PDB_CompUnitContributionArray pdb_comp_unit_contribution_array_from_data(Arena *arena, String8 seccontrib_data, COFF_SectionHeaderArray sections);
+internal PDB_CompUnitContribution *pdb_comp_unit_contribution_from_voff__binary_search(PDB_CompUnitContributionArray *array, U64 voff);
 
 ////////////////////////////////
 //~ PDB Dbi Functions

@@ -45,6 +45,16 @@ dr_hash_from_string(String8 string)
 //~ rjf: Fancy String Type Functions
 
 internal void
+dr_fstrs_push_front(Arena *arena, DR_FStrList *list, DR_FStr *str)
+{
+  DR_FStrNode *n = push_array_no_zero(arena, DR_FStrNode, 1);
+  MemoryCopyStruct(&n->v, str);
+  SLLQueuePushFront(list->first, list->last, n);
+  list->node_count += 1;
+  list->total_size += str->string.size;
+}
+
+internal void
 dr_fstrs_push(Arena *arena, DR_FStrList *list, DR_FStr *str)
 {
   DR_FStrNode *n = push_array_no_zero(arena, DR_FStrNode, 1);
@@ -216,7 +226,7 @@ dr_begin_frame(FNT_Tag icon_font)
 }
 
 internal void
-dr_submit_bucket(OS_Handle os_window, R_Handle r_window, DR_Bucket *bucket)
+dr_submit_bucket(WM_Window os_window, R_Handle r_window, DR_Bucket *bucket)
 {
   r_window_submit(os_window, r_window, &bucket->passes);
 }
@@ -318,6 +328,7 @@ dr_rect(Rng2F32 dst, Vec4F32 color, F32 corner_radius, F32 border_thickness, F32
   inst->border_thickness = border_thickness;
   inst->edge_softness = edge_softness;
   inst->white_texture_override = 1.f;
+  inst->shear = 0.f;
   bucket->last_cmd_stack_gen = bucket->stack_gen;
   return inst;
 }
@@ -363,6 +374,7 @@ dr_img(Rng2F32 dst, Rng2F32 src, R_Handle texture, Vec4F32 color, F32 corner_rad
   inst->border_thickness = border_thickness;
   inst->edge_softness = edge_softness;
   inst->white_texture_override = 0.f;
+  inst->shear = 0.f;
   bucket->last_cmd_stack_gen = bucket->stack_gen;
   return inst;
 }

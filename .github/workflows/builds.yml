@@ -8,7 +8,45 @@ on:
     paths-ignore:
       - '**.md'
 
+env:
+  TORTURE_FLAGS: "--gen_crash_dump" 
+
 jobs:
+  build-ubuntu-24-04:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - raddbg
+          - raddbg_non_graphical
+          - radlink
+          - radbin
+          - torture
+        compiler:
+          - clang-22
+          # TODO: - gcc
+        mode:
+          - debug
+          - release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          lfs: true
+      - name: Install Dependencies
+        shell: bash
+        run: |
+          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          sudo apt-add-repository -y "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-22 main"
+          sudo apt-get update
+          sudo apt-get install -y clang-22 lld-22 llvm-22 gcc-14 pkg-config libfreetype6-dev libx11-dev libxext-dev libgl1-mesa-dev libegl1-mesa-dev
+          sudo ln -s /usr/bin/llvm-symbolizer-22 /usr/bin/llvm-symbolizer
+      - name: build
+        shell: bash
+        run: |
+          CC="${{ matrix.compiler }}" ./build.sh "${{ matrix.target }}" "${{ matrix.mode }}"
+
   build-windows-2022:
     runs-on: windows-2022
     strategy:
@@ -18,6 +56,7 @@ jobs:
           - raddbg
           - radlink
           - radbin
+          - mule_main
         compiler:
           - msvc
           - clang
@@ -25,28 +64,88 @@ jobs:
           - debug
           - release
     steps:
-      - name: checkout
-        uses: actions/checkout@v2
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          lfs: true
       - name: build (vs 2022)
         shell: cmd
         run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-          call build "${{ matrix.target }}" "${{ matrix.compiler }}" "${{ matrix.mode }}" || exit /b 1
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VS_INSTALL=%%i"
+          call "%VS_INSTALL%\VC\Auxiliary\Build\vcvarsall.bat" x64
+          call build meta "${{ matrix.target }}" "${{ matrix.compiler }}" "${{ matrix.mode }}" || exit /b 1
 
-  run-torture:
-    runs-on: windows-2022
+  run-ubuntu-24-04:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - clang-22
+          # TODO: - gcc
+        mode:
+          - debug
+          # TODO: - release
     steps:
-      # - name: Install ASAN
-      #   shell: cmd
-      #   run: |
-      #     "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify --installPath "C:\Program Files\Microsoft Visual Studio\2022\Enterprise" --quiet --force --norestart --add Microsoft.VisualStudio.Component.VC.ASAN
-      - name: checkout
-        uses: actions/checkout@v2
-      - name: run-torture
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          lfs: true
+      - name: Install Dependencies
+        shell: bash
+        run: |
+          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          sudo apt-add-repository -y "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-22 main"
+          sudo apt-get update
+          sudo apt-get install -y clang-22 lld-22 llvm-22 gcc-14 pkg-config libfreetype6-dev libx11-dev libxext-dev libgl1-mesa-dev libegl1-mesa-dev
+          # crash callstack symbolizer depends on LLVM
+          sudo ln -s /usr/bin/llvm-symbolizer-22 /usr/bin/llvm-symbolizer
+      - name: Run
+        shell: bash
+        run: |
+          CC="${{ matrix.compiler }}" ./run_tests.sh clang "${{ matrix.mode }}" -- \* $TORTURE_FLAGS 
+      - name: Upload Artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: torture-crash-dumps-${{ matrix.compiler }}-${{ matrix.mode }}
+          path: |
+            build/*.core
+            build/*.exe
+            build/*.pdb
+            build/torture_artifacts/**
+          if-no-files-found: ignore
+
+  run-windows-2022:
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - msvc
+          - clang
+        mode:
+          - debug
+          - release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          lfs: true
+      - name: Run
         shell: cmd
         run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-          call build radlink asan debug no_meta || exit /b 1
-          call build torture debug no_meta || exit /b 1
-          cd build
-          torture -l:radlink || exit /b 1
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VS_INSTALL=%%i"
+          call "%VS_INSTALL%\VC\Auxiliary\Build\vcvarsall.bat" x64
+          call run_tests.bat ${{ matrix.compiler }} ${{ matrix.mode }} -- * %TORTURE_FLAGS% || exit /b 1
+      - name: Upload Artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: torture-crash-dumps-${{ matrix.compiler }}-${{ matrix.mode }}
+          path: |
+            build/*.dmp
+            build/*.exe
+            build/*.pdb
+            build/torture_artifacts/**
+          if-no-files-found: ignore

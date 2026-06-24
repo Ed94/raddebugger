@@ -10,11 +10,13 @@
 typedef U64 RD_EvalSpaceKind;
 enum
 {
-  RD_EvalSpaceKind_MetaQuery = CTRL_EvalSpaceKind_FirstUserDefined,
+  RD_EvalSpaceKind_MetaQuery = D_EvalSpaceKind_FirstUserDefined,
   RD_EvalSpaceKind_MetaCfg,
   RD_EvalSpaceKind_MetaCmd,
   RD_EvalSpaceKind_MetaTheme,
+  RD_EvalSpaceKind_MetaView,
   RD_EvalSpaceKind_MetaCtrlEntity,
+  RD_EvalSpaceKind_MetaCallStack,
   RD_EvalSpaceKind_MetaUnattachedProcess,
   RD_EvalSpaceKind_MetaCallStackTree,
 };
@@ -85,11 +87,8 @@ enum
 typedef U32 RD_CmdKindFlags;
 enum
 {
-  RD_CmdKindFlag_ListInUI      = (1<<0),
-  RD_CmdKindFlag_ListInIPCDocs = (1<<1),
-  RD_CmdKindFlag_ListInTab     = (1<<2),
-  RD_CmdKindFlag_ListInTextPt  = (1<<3),
-  RD_CmdKindFlag_ListInTextRng = (1<<4),
+  RD_CmdKindFlag_ListInUI            = (1<<0),
+  RD_CmdKindFlag_ListInIPCDocs       = (1<<1),
 };
 
 ////////////////////////////////
@@ -282,7 +281,7 @@ struct RD_WindowState
   
   // rjf: top-level info & handles
   Arena *arena;
-  OS_Handle os;
+  WM_Window os;
   R_Handle r;
   UI_State *ui;
   F32 last_dpi;
@@ -387,8 +386,17 @@ struct RD_State
   Arena *arena;
   B32 quit;
   B32 quit_after_success;
+  B32 override_focus_on_stop;
   S32 frame_depth;
   U64 frame_eval_memread_endt_us;
+  
+  // rjf: update checker
+  B32 sent_update_check;
+  B32 got_update_check;
+  B32 newer_update_available;
+  Arena *update_check_arena;
+  String8List update_check_response_body_pieces;
+  GuardedRing *update_check_http_ring;
   
   // rjf: config bucket paths
   Arena *user_path_arena;
@@ -403,6 +411,8 @@ struct RD_State
   B32 alt_menu_bar_enabled;
   B32 use_default_stl_type_views;
   B32 use_default_ue_type_views;
+  B32 auto_download_debug_info;
+  EV_StringFlags eval_viz_base_string_flags;
   
   // rjf: animation rates
   F32 catchall_animation_rate;
@@ -440,8 +450,9 @@ struct RD_State
   // rjf: frame parameters
   F32 frame_dt;
   Access *frame_access;
+  String8 last_window_title;
   
-  // rjf: evaluation cache
+  // rjf: evaluation caches
   E_Cache *eval_cache;
   
   // rjf: ambiguous path table (constructed from-scratch each frame)
@@ -492,6 +503,19 @@ struct RD_State
   RD_Regs *next_hover_regs;
   RD_RegSlot next_hover_regs_slot;
   
+  // rjf: autos-determining code range
+  //
+  // NOTE(rjf): this includes only instructions that we've observed the
+  // selected thread passed. autos are *also* computed from disassembling
+  // the line at which any thread sits, but we only want to collect autos
+  // from larger ranges of instructions when we directly observer this
+  // on a particular selected thread within a single function.
+  //
+  D_Handle last_stop_selected_thread;
+  U64 last_stop_selected_thread_ip;
+  U64 last_stop_selected_thread_sp;
+  Rng1U64 autos_determining_vaddr_range;
+  
   // rjf: icon texture
   R_Handle icon_texture;
   
@@ -540,7 +564,7 @@ struct RD_State
   String8 bind_change_cmd_name;
   
   // rjf: pre-stop focused window
-  OS_Handle prestop_focused_window;
+  WM_ExtWindow prestop_focused_window;
 };
 
 ////////////////////////////////
@@ -615,6 +639,7 @@ internal Vec4F32 rd_color_from_cfg(CFG_Node *cfg);
 
 internal B32 rd_disabled_from_cfg(CFG_Node *cfg);
 internal RD_Location rd_location_from_cfg(CFG_Node *cfg);
+internal String8 rd_name_from_cfg(CFG_Node *cfg);
 internal String8 rd_label_from_cfg(CFG_Node *cfg);
 internal String8 rd_expr_from_cfg(CFG_Node *cfg);
 internal String8 rd_path_from_cfg(CFG_Node *cfg);
@@ -636,8 +661,8 @@ internal String8List rd_possible_overrides_from_file_path(Arena *arena, String8 
 ////////////////////////////////
 //~ rjf: Control Entity Info Extraction
 
-internal Vec4F32 rd_color_from_ctrl_entity(CTRL_Entity *entity);
-internal String8 rd_name_from_ctrl_entity(Arena *arena, CTRL_Entity *entity);
+internal Vec4F32 rd_color_from_ctrl_entity(D_Entity *entity);
+internal String8 rd_name_from_ctrl_entity(Arena *arena, D_Entity *entity);
 
 ////////////////////////////////
 //~ rjf: Evaluation Spaces
@@ -647,15 +672,15 @@ internal CFG_Node *rd_cfg_from_eval_space(E_Space space);
 internal E_Space rd_eval_space_from_cfg(CFG_Node *cfg);
 
 //- rjf: ctrl entity <-> eval space
-internal CTRL_Entity *rd_ctrl_entity_from_eval_space(E_Space space);
-internal E_Space rd_eval_space_from_ctrl_entity(CTRL_Entity *entity, E_SpaceKind kind);
+internal D_Entity *rd_ctrl_entity_from_eval_space(E_Space space);
+internal E_Space rd_eval_space_from_ctrl_entity(D_Entity *entity, E_SpaceKind kind);
 
 //- rjf: command name <-> eval space
 internal String8 rd_cmd_name_from_eval(E_Eval eval);
 
 //- rjf: eval space reads/writes
 internal U64 rd_eval_space_gen(E_Space space);
-internal B32 rd_eval_space_read(E_Space space, void *out, Rng1U64 range);
+internal B32 rd_eval_space_read(E_Space space, void *out, E_SpaceRangeInfo *out_range_info, Rng1U64 range);
 internal B32 rd_eval_space_write(E_Space space, void *in, Rng1U64 range);
 
 //- rjf: asynchronous streamed reads -> hashes from spaces
@@ -699,6 +724,7 @@ internal E_Value rd_view_setting_value_from_name(String8 string);
 internal B32 rd_view_setting_b32_from_name(String8 string);
 internal U64 rd_view_setting_u64_from_name(String8 string);
 internal F32 rd_view_setting_f32_from_name(String8 string);
+internal U64 rd_view_setting_addr_from_name(String8 string);
 
 //- rjf: evaluation & tag (a view's 'call') parameter extraction
 internal Rng1U64 rd_space_range_from_eval(E_Eval eval);
@@ -726,7 +752,7 @@ internal void rd_store_view_paramf(String8 key, char *fmt, ...);
 internal String8 rd_push_window_title(Arena *arena);
 internal CFG_Node *rd_window_from_cfg(CFG_Node *cfg);
 internal RD_WindowState *rd_window_state_from_cfg(CFG_Node *cfg);
-internal RD_WindowState *rd_window_state_from_os_handle(OS_Handle os);
+internal RD_WindowState *rd_window_state_from_os_handle(WM_Window os);
 internal void rd_window_frame(void);
 
 ////////////////////////////////
@@ -752,7 +778,7 @@ internal void rd_set_autocomp_regs_(E_Eval dst_eval, RD_Regs *regs);
 internal MD_Node *rd_theme_tree_from_name(Arena *arena, Access *access, String8 theme_name);
 internal Vec4F32 rd_rgba_from_code_color_slot(RD_CodeColorSlot slot);
 internal RD_CodeColorSlot rd_code_color_slot_from_txt_token_kind(TXT_TokenKind kind);
-internal RD_CodeColorSlot rd_code_color_slot_from_txt_token_kind_lookup_string(TXT_TokenKind kind, String8 string);
+internal RD_CodeColorSlot rd_code_color_slot_from_txt_token_kind_lookup_string(TXT_TokenKind kind, String8 string, B32 allow_macros, B32 is_called);
 
 //- rjf: fonts
 internal F32 rd_font_size(void);
@@ -763,7 +789,18 @@ internal FNT_RasterFlags rd_raster_flags_from_slot(RD_FontSlot slot);
 //~ rjf: Process Control Info Stringification
 
 internal String8 rd_string_from_exception_code(U32 code);
-internal DR_FStrList rd_stop_explanation_fstrs_from_ctrl_event(Arena *arena, CTRL_Event *event);
+internal DR_FStrList rd_stop_explanation_fstrs_from_ctrl_event(Arena *arena, D_Event *event);
+
+////////////////////////////////
+//~ rjf: Source File Checksum Calculations
+
+internal AC_Artifact rd_md5_artifact_create(String8 key, B32 *cancel_out, B32 *retry_out, U64 *gen_out);
+internal AC_Artifact rd_sha1_artifact_create(String8 key, B32 *cancel_out, B32 *retry_out, U64 *gen_out);
+internal AC_Artifact rd_sha256_artifact_create(String8 key, B32 *cancel_out, B32 *retry_out, U64 *gen_out);
+internal MD5 rd_md5_from_hash(U128 hash);
+internal SHA1 rd_sha1_from_hash(U128 hash);
+internal SHA256 rd_sha256_from_hash(U128 hash);
+internal String8 rd_checksum_value_from_hash_kind(Arena *arena, U128 hash, RDI_ChecksumKind k);
 
 ////////////////////////////////
 //~ rjf: Vocab Info Lookups
@@ -775,6 +812,11 @@ internal RD_VocabInfo *rd_vocab_info_from_code_name_plural(String8 code_name_plu
 #define rd_display_plural_from_code_name(code_name) (rd_vocab_info_from_code_name(code_name)->display_name_plural)
 #define rd_icon_kind_from_code_name(code_name) (rd_vocab_info_from_code_name(code_name)->icon_kind)
 #define rd_singular_from_code_name_plural(code_name_plural) (rd_vocab_info_from_code_name_plural(code_name_plural)->code_name)
+
+////////////////////////////////
+//~ rjf: Auto Watch Computation
+
+internal String8Array rd_gather_auto_exprs(Arena *arena);
 
 ////////////////////////////////
 //~ rjf: Continuous Frame Requests
@@ -797,6 +839,7 @@ internal RD_Regs *rd_push_regs_(RD_Regs *regs);
 internal RD_Regs *rd_pop_regs(void);
 #define RD_RegsScope(...) DeferLoop(rd_push_regs(__VA_ARGS__), rd_pop_regs())
 internal void rd_regs_fill_slot_from_string(RD_RegSlot slot, String8 query_expr, String8 string);
+internal RD_RegSlot rd_regs_fill_slot_from_ctx_eval(E_Eval eval);
 
 ////////////////////////////////
 //~ rjf: Commands

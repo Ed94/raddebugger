@@ -163,24 +163,25 @@ enum
 #define COFF_SectionFlags_ExtractAlign(f) (COFF_SectionAlign)(((f) >> COFF_SectionFlag_AlignShift) & COFF_SectionFlag_AlignMask)
 #define COFF_SectionFlags_LnkFlags        ((COFF_SectionFlag_AlignMask << COFF_SectionFlag_AlignShift) | COFF_SectionFlag_LnkCOMDAT | COFF_SectionFlag_LnkInfo | COFF_SectionFlag_LnkOther | COFF_SectionFlag_LnkRemove | COFF_SectionFlag_LnkNRelocOvfl)
 
-typedef struct COFF_SectionHeader
+typedef struct COFF_SectionHeader COFF_SectionHeader;
+struct COFF_SectionHeader
 {
-  U8                name[8];
-  U32               vsize;
-  U32               voff;
-  U32               fsize;
-  U32               foff;
-  U32               relocs_foff;
-  U32               lines_foff;
-  U16               reloc_count;
-  U16               line_count;
+  U8 name[8];
+  U32 vsize;
+  U32 voff;
+  U32 fsize;
+  U32 foff;
+  U32 relocs_foff;
+  U32 lines_foff;
+  U16 reloc_count;
+  U16 line_count;
   COFF_SectionFlags flags;
-} COFF_SectionHeader;
+};
 
 ////////////////////////////////
 
 typedef U8 COFF_SymType;
-enum
+typedef enum COFF_SymTypeEnum
 {
   COFF_SymType_Null,
   COFF_SymType_Void,
@@ -198,10 +199,11 @@ enum
   COFF_SymType_Word,
   COFF_SymType_UInt,
   COFF_SymType_DWord
-};
+}
+COFF_SymTypeEnum;
 
 typedef U8 COFF_SymStorageClass;
-enum
+typedef enum COFF_SymStorageClassEnum
 {
   COFF_SymStorageClass_Null            = 0x00,
   COFF_SymStorageClass_Automatic       = 0x01,
@@ -230,7 +232,8 @@ enum
   COFF_SymStorageClass_WeakExternal    = 0x69,
   COFF_SymStorageClass_CLRToken        = 0x6b,
   COFF_SymStorageClass_EndOfFunction   = 0xff
-};
+}
+COFF_SymStorageClassEnum;
 
 typedef U8 COFF_SymDType;
 enum
@@ -628,8 +631,9 @@ internal U64 coff_word_size_from_machine       (COFF_MachineType machine);
 internal U64 coff_default_exe_base_from_machine(COFF_MachineType machine);
 internal U64 coff_default_dll_base_from_machine(COFF_MachineType machine);
 
-internal Arch arch_from_coff_machine(COFF_MachineType machine);
-internal U64  coff_foff_from_voff(COFF_SectionHeader *sections, U64 section_count, U64 voff);
+internal Arch             arch_from_coff_machine(COFF_MachineType machine);
+internal COFF_MachineType coff_machine_from_arch(Arch arch);
+internal U64              coff_foff_from_voff(COFF_SectionHeader *sections, U64 section_count, U64 voff);
 
 ////////////////////////////////
 //~ rjf: Enum <=> String

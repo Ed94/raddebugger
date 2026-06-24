@@ -12,7 +12,6 @@ typedef struct LNK_Lib
   U32                  symbol_count;
   U32                 *member_offsets;
   U16                 *symbol_indices;
-  LNK_Symbol         **member_links;
   String8Array         symbol_names;
   String8              long_names;
   U64                  input_idx;
@@ -67,7 +66,5 @@ internal LNK_Lib **       lnk_array_from_lib_list(Arena *arena, LNK_LibList list
 internal void             lnk_lib_list_push_node(LNK_LibList *list, LNK_LibNode *node);
 internal LNK_LibNodeArray lnk_lib_list_push_parallel(TP_Context *tp, TP_Arena *arena, LNK_LibList *list, U64 inputs_count, struct LNK_Input **inputs);
 
-internal B32 lnk_lib_set_link_symbol(LNK_Lib *lib, U32 member_idx, LNK_Symbol *link_symbol);
-
-internal B32 lnk_search_lib(LNK_Lib *lib, String8 symbol_name, U32 *member_idx_out);
+internal force_inline B32 lnk_search_lib(LNK_Lib *lib, String8 symbol_name, U32 *member_idx_out);
 

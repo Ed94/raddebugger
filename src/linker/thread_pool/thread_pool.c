@@ -4,6 +4,8 @@
 internal void
 tp_run_tasks(TP_Context *pool, TP_Worker *worker)
 {
+  barrier_wait(pool->barrier);
+
   for (;;) {
     S64 task_left = ins_atomic_u64_dec_eval(&pool->task_left);
 
@@ -15,17 +17,16 @@ tp_run_tasks(TP_Context *pool, TP_Worker *worker)
     // run task
     Arena *arena   = pool->task_arena ? pool->task_arena->v[worker->id] : 0;
     U64    task_id = pool->task_count - (task_left+1);
-    pool->task_func(arena, worker->id, task_id, pool->task_data);
+    pool->task_func(arena, worker->id, task_id, pool->task_data, pool);
 
     // cache task count so we dont touch pool memory after atomic inc
     U64 task_count = pool->task_count;
 
-    // on last task ping main thread
-    U64 task_done = ins_atomic_u64_inc_eval(&pool->task_done);
-    if (task_done == task_count) {
-      os_semaphore_drop(pool->main_semaphore);
-    }
+    // update task done count
+    ins_atomic_u64_inc_eval(&pool->task_done);
   }
+
+  barrier_wait(pool->barrier);
 }
 
 internal void
@@ -34,9 +35,7 @@ tp_worker_main(void *raw_worker)
   TP_Worker  *worker = raw_worker;
   TP_Context *pool   = worker->pool;
   for (; pool->is_live; ) {
-    if (os_semaphore_take(pool->task_semaphore, max_U64)) {
-      tp_run_tasks(pool, worker);
-    }
+    tp_run_tasks(pool, worker);
   }
 }
 
@@ -46,10 +45,8 @@ tp_worker_main_shared(void *raw_worker)
   TP_Worker  *worker = raw_worker;
   TP_Context *pool   = worker->pool;
   for (; pool->is_live; ) {
-    if (os_semaphore_take(pool->exec_semaphore, max_U64)) {
-      if (os_semaphore_take(pool->task_semaphore, max_U64)) {
-        tp_run_tasks(pool, worker);
-      }
+    if (semaphore_take(pool->exec_semaphore, max_U64)) {
+      tp_run_tasks(pool, worker);
     }
   }
 }
@@ -63,17 +60,11 @@ tp_alloc(Arena *arena, U32 worker_count, U32 max_worker_count, String8 name)
   B32 is_shared = (name.size > 0);
 
   // alloc semaphores
-  Semaphore main_semaphore = {0};
-  Semaphore task_semaphore = {0};
   Semaphore exec_semaphore = {0};
   if (worker_count > 1) {
-    main_semaphore = os_semaphore_alloc(0, 1, str8_zero());
     if (is_shared) {
       AssertAlways(worker_count <= max_worker_count);
-      task_semaphore = os_semaphore_alloc(0, max_worker_count, name);
-      exec_semaphore = os_semaphore_alloc(0, worker_count, str8_zero());
-    } else {
-      task_semaphore = os_semaphore_alloc(0, worker_count, str8_zero());
+      exec_semaphore = semaphore_alloc(0, worker_count, str8_zero());
     }
   }
 
@@ -81,13 +72,12 @@ tp_alloc(Arena *arena, U32 worker_count, U32 max_worker_count, String8 name)
   void *worker_entry = is_shared ? tp_worker_main_shared : tp_worker_main;
 
   // init pool
-  TP_Context *pool     = push_array(arena, TP_Context, 1);
-  pool->exec_semaphore = exec_semaphore;
-  pool->task_semaphore = task_semaphore;
-  pool->main_semaphore = main_semaphore;
-  pool->is_live        = 1;
-  pool->worker_count   = worker_count;
-  pool->worker_arr     = push_array(arena, TP_Worker, worker_count);
+  TP_Context *pool      = push_array(arena, TP_Context, 1);
+  pool->exec_semaphore  = exec_semaphore;
+  pool->barrier         = barrier_alloc(worker_count);
+  pool->is_live         = 1;
+  pool->worker_count    = worker_count;
+  pool->worker_arr      = push_array(arena, TP_Worker, worker_count);
   
   // init worker data
   for (U64 i = 0; i < worker_count; i += 1) {
@@ -113,12 +103,9 @@ tp_release(TP_Context *pool)
 
   B32 is_shared = pool->exec_semaphore.u64[0] != 0;
   if (is_shared) {
-    for (U64 i = 0; i < pool->worker_count; ++i) {
+    for EachIndex(i, pool->worker_count) {
       semaphore_drop(pool->exec_semaphore);
     }
-  }
-  for (U64 i = 0; i < pool->worker_count; ++i) {
-    semaphore_drop(pool->task_semaphore);
   }
   for (U64 i = 1; i < pool->worker_count; i += 1) {
     thread_detach(pool->worker_arr[i].handle);
@@ -126,8 +113,7 @@ tp_release(TP_Context *pool)
   if (is_shared) {
     semaphore_release(pool->exec_semaphore);
   }
-  semaphore_release(pool->task_semaphore);
-  semaphore_release(pool->main_semaphore);
+  barrier_release(pool->barrier);
 
   MemoryZeroStruct(pool);
 }
@@ -139,7 +125,7 @@ tp_arena_alloc(TP_Context *pool)
   Temp scratch = scratch_begin(0,0);
   Arena **arr = push_array(scratch.arena, Arena *, pool->worker_count);
   for (U64 i = 0; i < pool->worker_count; ++i) {
-    arr[i] = arena_alloc();
+    arr[i] = arena_alloc("THREAD_POOL");
   }
   Arena **dst = push_array(arr[0], Arena *, pool->worker_count);
   MemoryCopy(dst, arr, sizeof(Arena*) * pool->worker_count);
@@ -197,34 +183,24 @@ tp_temp_end(TP_Temp temp)
 internal void
 tp_for_parallel(TP_Context *pool, TP_Arena *task_arena, U64 task_count, TP_TaskFunc *task_func, void *task_data)
 {
-  if (task_count > 0) {
+  if (task_count) {
     // init run
     pool->task_arena = task_arena;
     pool->task_func  = task_func;
     pool->task_data  = task_data;
     pool->task_count = task_count;
     pool->task_done  = 0;
-    ins_atomic_u64_eval_assign(&pool->task_left, task_count);
+    pool->task_left  = task_count;
 
-    U64 drop_count = Min(task_count, pool->worker_count);
+    // if we are in shared mode -> ping
+    if (*pool->exec_semaphore.u64) {
+      U64 drop_count64 = Min(task_count, pool->worker_count);
+      U32 drop_count   = safe_cast_u32(drop_count64);
+      semaphore_drop_count(pool->exec_semaphore, drop_count);
+    }
 
-    // if we are in shared mode ping local semaphore
-    if (pool->exec_semaphore.u64[0] != 0) {
-      for (U64 worker_idx = 0; worker_idx < drop_count; worker_idx +=1) {
-        os_semaphore_drop(pool->exec_semaphore);
-      }
-    }
-    
-    // ping shared semaphore
-    for (U64 worker_idx = 0; worker_idx < drop_count; worker_idx += 1) {
-      os_semaphore_drop(pool->task_semaphore);
-    }
-    
     // run tasks on main worker
-    tp_run_tasks(pool, &pool->worker_arr[0]);
-    
-    // wait for workers to finish tasks
-    os_semaphore_take(pool->main_semaphore, max_U64);
+    tp_run_tasks(pool, pool->worker_arr);
   }
 }
 
@@ -243,3 +219,35 @@ tp_divide_work(Arena *arena, U64 item_count, U32 worker_count)
 
   return range_arr;
 }
+
+internal void
+tp_broadcast_(TP_Context *tp, U64 task_id, void *ptr, U64 ptr_size)
+{
+  if (task_id == 0) {
+    tp->broadcast      = ptr;
+    tp->broadcast_size = ptr_size;
+  }
+  barrier_wait(tp->barrier);
+
+  if (task_id != 0) {
+    MemoryCopy(ptr, tp->broadcast, tp->broadcast_size);
+  }
+  barrier_wait(tp->barrier);
+}
+
+internal U64
+tp_sum_u64(TP_Context *tp, U64 task_id, U64 v)
+{
+  if (task_id == 0) {
+    tp->sum = 0;
+  }
+  barrier_wait(tp->barrier);
+
+  ins_atomic_u64_add_eval(&tp->sum, v);
+  barrier_wait(tp->barrier);
+
+  U64 result = tp->sum;
+  barrier_wait(tp->barrier);
+  return result;
+}
+

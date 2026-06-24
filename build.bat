@@ -24,6 +24,7 @@ cd /D "%~dp0"
 :: Below is a list of all possible non-target command line options:
 ::
 :: - `asan`: enable address sanitizer
+:: - `ubsan`: enable undefined-behavior sanitizer
 :: - `telemetry`: enable RAD telemetry profiling support
 :: - `spall`: enable spall profiling support
 
@@ -35,14 +36,15 @@ if "%debug%"=="1"   set release=0 && echo [debug mode]
 if "%release%"=="1" set debug=0 && echo [release mode]
 if "%msvc%"=="1"    set clang=0 && echo [msvc compile]
 if "%clang%"=="1"   set msvc=0 && echo [clang compile]
-if "%~1"==""                     echo [default mode, assuming `raddbg` build] && set raddbg=1
-if "%~1"=="release" if "%~2"=="" echo [default mode, assuming `raddbg` build] && set raddbg=1
+if "%~1"==""                     echo [default mode, assuming `raddbg` build] && set raddbg=1&& set com_shim=1&& set raddbg_com_shim=1
+if "%~1"=="release" if "%~2"=="" echo [default mode, assuming `raddbg` build] && set raddbg=1&& set com_shim=1&& set raddbg_com_shim=1
 
 :: --- Unpack Command Line Build Arguments ------------------------------------
 set auto_compile_flags=
 if "%telemetry%"=="1"               set auto_compile_flags=%auto_compile_flags% -DPROFILE_TELEMETRY=1 && echo [telemetry profiling enabled]
 if "%spall%"=="1"                   set auto_compile_flags=%auto_compile_flags% -DPROFILE_SPALL=1 && echo [spall profiling enabled]
 if "%asan%"=="1"                    set auto_compile_flags=%auto_compile_flags% -fsanitize=address && echo [asan enabled]
+if "%ubsan%"=="1"                   set auto_compile_flags=%auto_compile_flags% -fsanitize=undefined && echo [ubsan enabled]
 if "%opengl%"=="1"                  set auto_compile_flags=%auto_compile_flags% -DR_BACKEND=R_BACKEND_OPENGL && echo [opengl render backend]
 if "%dwarf%"=="1" if "%clang%"=="1" set auto_compile_flags=%auto_compile_flags% -gdwarf && echo [dwarf debug info]
 if "%dwarf%"==""  if "%clang%"=="1" set auto_compile_flags=%auto_compile_flags% -gcodeview
@@ -66,21 +68,22 @@ if "%pgo%"=="1" (
 )
 
 :: --- Compile/Link Line Definitions ------------------------------------------
-set cl_common=     /I..\src\ /I..\local\ /nologo /FC /Z7
-set cl_debug=      call cl /Od /Ob1 /DBUILD_DEBUG=1 %cl_common% %auto_compile_flags%
+set cl_common=     /I..\src\ /I..\local\ /nologo /FC /Z7 /Zc:preprocessor
+set cl_debug=      call cl /Od /Ob1 /DBUILD_DEBUG=1 %cl_common% %auto_compile_flags% 
 set cl_release=    call cl /O2 /DBUILD_DEBUG=0 %cl_common% %auto_compile_flags%
 set cl_link=       /link /MANIFEST:EMBED /INCREMENTAL:NO /pdbaltpath:%%%%_PDB%%%% /NATVIS:"%~dp0\src\natvis\base.natvis" /noexp /nocoffgrpinfo /opt:ref /opt:icf
 set cl_out=        /out:
+set cl_obj_out=    /Fo:
 set cl_linker=     
-set clang_common=  -I..\src\ -I..\local\ -fdiagnostics-absolute-paths -Wall -Wno-unknown-warning-option -Wno-missing-braces -Wno-unused-function -Wno-unused-parameter -Wno-writable-strings -Wno-missing-field-initializers -Wno-unused-value -Wno-unused-variable -Wno-unused-local-typedef -Wno-deprecated-register -Wno-deprecated-declarations -Wno-unused-but-set-variable -Wno-single-bit-bitfield-constant-conversion -Wno-compare-distinct-pointer-types -Wno-initializer-overrides -Wno-incompatible-pointer-types-discards-qualifiers -Xclang -flto-visibility-public-std -D_USE_MATH_DEFINES -Dstrdup=_strdup -Dgnu_printf=printf -ferror-limit=10000 -mcx16 -msha
-set clang_debug=   call clang -g -O0 -DBUILD_DEBUG=1 %clang_common% %auto_compile_flags%
-set clang_release= call clang -g -O2 -DBUILD_DEBUG=0 %clang_common% %auto_compile_flags%
-set clang_link=    -fuse-ld=lld -Xlinker /MANIFEST:EMBED -Xlinker /pdbaltpath:%%%%_PDB%%%% -Xlinker /NATVIS:"%~dp0\src\natvis\base.natvis" -Xlinker /opt:ref -Xlinker /opt:icf
+set clang_common=  -mcx16 -I..\src\ -I..\local\ -fdiagnostics-absolute-paths -Wall -Wno-unknown-warning-option -Wno-missing-braces -Wno-unused-function -Wno-unused-parameter -Wno-writable-strings -Wno-missing-field-initializers -Wno-unused-value -Wno-unused-variable -Wno-unused-local-typedef -Wno-deprecated-register -Wno-deprecated-declarations -Wno-unused-but-set-variable -Wno-single-bit-bitfield-constant-conversion -Wno-compare-distinct-pointer-types -Wno-initializer-overrides -Wno-incompatible-pointer-types-discards-qualifiers -Xclang -flto-visibility-public-std -D_USE_MATH_DEFINES -Dstrdup=_strdup -Dgnu_printf=printf -ferror-limit=10000
+set clang_debug=   call clang -g -O0 -DBUILD_DEBUG=1 -D_DEBUG %clang_common% %auto_compile_flags%
+set clang_release= call clang -g -O2 -DBUILD_DEBUG=0 -DNDEBUG %clang_common% %auto_compile_flags%
+set clang_link=    -fuse-ld=lld -Xlinker /MANIFEST:EMBED -Xlinker /pdbaltpath:%%%%_PDB%%%% -Xlinker /NATVIS:"%~dp0\src\natvis\base.natvis" -Xlinker /opt:ref -Xlinker /opt:noicf
 set clang_out=     -o
+set clang_obj_out= -o
 set clang_linker=  -Xlinker
 
 :: --- Per-Build Settings -----------------------------------------------------
-set link_dll=-DLL
 set link_icon=logo.res
 if "%msvc%"=="1"    set linker=%cl_linker%
 if "%clang%"=="1"   set linker=%clang_linker%
@@ -92,16 +95,20 @@ if "%msvc%"=="1"    set no_aslr=/DYNAMICBASE:NO
 if "%clang%"=="1"   set no_aslr=-Wl,/DYNAMICBASE:NO
 if "%msvc%"=="1"    set rc=call rc
 if "%clang%"=="1"   set rc=call llvm-rc
+if "%msvc%"=="1"    set link_dll=/link /DLL
+if "%clang%"=="1"   set link_dll=-Xlinker -DLL
 
 :: --- Choose Compile/Link Lines ----------------------------------------------
 if "%msvc%"=="1"      set compile_debug=%cl_debug%
 if "%msvc%"=="1"      set compile_release=%cl_release%
 if "%msvc%"=="1"      set compile_link=%cl_link%
 if "%msvc%"=="1"      set out=%cl_out%
+if "%msvc%"=="1"      set obj_out=%cl_obj_out%
 if "%clang%"=="1"     set compile_debug=%clang_debug%
 if "%clang%"=="1"     set compile_release=%clang_release%
 if "%clang%"=="1"     set compile_link=%clang_link%
 if "%clang%"=="1"     set out=%clang_out%
+if "%clang%"=="1"     set obj_out=%clang_obj_out%
 if "%debug%"=="1"     set compile=%compile_debug%
 if "%release%"=="1"   set compile=%compile_release%
 
@@ -119,32 +126,37 @@ for /f %%i in ('call git describe --always --dirty')   do set compile=%compile% 
 for /f %%i in ('call git rev-parse HEAD')              do set compile=%compile% -DBUILD_GIT_HASH_FULL=\"%%i\"
 
 :: --- Build & Run Metaprogram ------------------------------------------------
+pushd build
 if "%meta%"=="1" (
-  echo [doing metagen]
-  pushd build
+  echo [building metagen]
   %compile_debug% ..\src\metagen\metagen_main.c %compile_link% %out%metagen.exe || exit /b 1
-  metagen.exe || exit /b 1
-  popd
 )
+if "%no_meta%"=="" if exist metagen.exe (
+  echo [running metagen]
+  metagen.exe || exit /b 1
+)
+popd
 
 :: --- Build Everything (@build_targets) --------------------------------------
 pushd build
 if "%raddbg%"=="1"                     set didbuild=1 && %compile% ..\src\raddbg\raddbg_main.c                               %compile_link% %link_icon% %out%raddbg.exe || exit /b 1
+if "%raddbg_non_graphical%"=="1"       set didbuild=1 && %compile% -DWM_STUB=1 -DR_BACKEND=R_BACKEND_STUB ..\src\raddbg\raddbg_main.c %compile_link% %link_icon% %out%raddbg_non_graphical.exe || exit /b 1
+if "%com_shim%"=="1"                   set didbuild=1 && %compile% ..\src\com_shim\com_shim_main.c                           %compile_link% %out%com_shim.exe || exit /b 1
 if "%radlink%"=="1"                    set didbuild=1 && %compile% ..\src\linker\lnk.c                                       %compile_link% %linker% /NOIMPLIB %linker% /NATVIS:"%~dp0\src\linker\linker.natvis" %out%radlink.exe || exit /b 1
 if "%radbin%"=="1"                     set didbuild=1 && %compile% ..\src\radbin\radbin_main.c                               %compile_link% %out%radbin.exe || exit /b 1
 if "%raddump%"=="1"                    set didbuild=1 && %compile% ..\src\raddump\raddump_main.c                             %compile_link% %out%raddump.exe || exit /b 1
-if "%tester%"=="1"                     set didbuild=1 && %compile% ..\src\tester\tester_main.c                               %compile_link% %out%tester.exe || exit /b 1
 if "%ryan_scratch%"=="1"               set didbuild=1 && %compile% ..\src\scratch\ryan_scratch.c                             %compile_link% %out%ryan_scratch.exe || exit /b 1
-if "%eval_scratch%"=="1"               set didbuild=1 && %compile% ..\src\scratch\eval_scratch.c                             %compile_link% %out%eval_scratch.exe || exit /b 1
 if "%textperf%"=="1"                   set didbuild=1 && %compile% ..\src\scratch\textperf.c                                 %compile_link% %out%textperf.exe || exit /b 1
 if "%convertperf%"=="1"                set didbuild=1 && %compile% ..\src\scratch\convertperf.c                              %compile_link% %out%convertperf.exe || exit /b 1
 if "%debugstringperf%"=="1"            set didbuild=1 && %compile% ..\src\scratch\debugstringperf.c                          %compile_link% %out%debugstringperf.exe || exit /b 1
 if "%parse_inline_sites%"=="1"         set didbuild=1 && %compile% ..\src\scratch\parse_inline_sites.c                       %compile_link% %out%parse_inline_sites.exe || exit /b 1
 if "%strip_lib_debug%"=="1"            set didbuild=1 && %compile% ..\src\strip_lib_debug\strip_lib_debug.c                  %compile_link% %out%strip_lib_debug.exe || exit /b 1
-if "%mule_main%"=="1"                  set didbuild=1 && del vc*.pdb mule*.pdb && %compile_release% %only_compile% ..\src\mule\mule_inline.cpp && %compile_release% %only_compile% ..\src\mule\mule_o2.cpp && %compile_debug% %EHsc% ..\src\mule\mule_main.cpp ..\src\mule\mule_c.c mule_inline.obj mule_o2.obj %compile_link% %no_aslr% %out%mule_main.exe || exit /b 1
-if "%mule_module%"=="1"                set didbuild=1 && %compile% ..\src\mule\mule_module.cpp                               %compile_link% %link_dll% %out%mule_module.dll || exit /b 1
+if "%mule_main%"=="1"                  set didbuild=1 && del vc*.pdb mule*.pdb && %compile_release% %only_compile% ..\src\mule\mule_inline.cpp %obj_out%mule_inline.obj && %compile_release% %only_compile% ..\src\mule\mule_o2.cpp %obj_out%mule_o2.obj && %compile_debug% %EHsc% ..\src\mule\mule_main.cpp ..\src\mule\mule_c.c mule_inline.obj mule_o2.obj %compile_link% %no_aslr% %out%mule_main.exe || exit /b 1
+if "%mule_module%"=="1"                set didbuild=1 && %compile% ..\src\mule\mule_module.cpp                               %link_dll% %out%mule_module.dll || exit /b 1
 if "%mule_hotload%"=="1"               set didbuild=1 && %compile% ..\src\mule\mule_hotload_main.c %compile_link% %out%mule_hotload.exe & %compile% ..\src\mule\mule_hotload_module_main.c %compile_link% %link_dll% %out%mule_hotload_module.dll || exit /b 1
-if "%torture%"=="1"                    set didbuild=1 && %compile% ..\src\torture\torture.c                                  %compile_link% %out%torture.exe || exit /b1
+if "%torture%"=="1"                    set didbuild=1 && %compile% ..\src\torture\torture_main.c                             %compile_link% %out%torture.exe || exit /b1
+if "%dwarf_expr_test%"=="1"            set didbuild=1 && %compile% ..\src\torture\dwarf_expr_test.c                          %compile_link% %out%dwarf_expr_test.exe || exit /b1
+if "%unit_sizes_from_pdb%"=="1"        set didbuild=1 && %compile% ..\src\scratch\unit_sizes_from_pdb.c                      %compile_link% %out%unit_sizes_from_pdb.exe || exit /b1
 if "%mule_peb_trample%"=="1" (
   set didbuild=1
   if exist mule_peb_trample.exe move mule_peb_trample.exe mule_peb_trample_old_%random%.exe
@@ -153,6 +165,11 @@ if "%mule_peb_trample%"=="1" (
   %compile% ..\src\mule\mule_peb_trample.c %compile_link% %out%mule_peb_trample_new.exe || exit /b 1
   move mule_peb_trample_new.exe mule_peb_trample.exe
 )
+popd
+
+:: --- Set Up Debugger Com Shim -----------------------------------------------
+pushd build
+if "%raddbg_com_shim%"=="1" copy /y com_shim.exe raddbg.com
 popd
 
 :: --- Warn On No Builds ------------------------------------------------------
@@ -165,7 +182,7 @@ if "%didbuild%"=="" (
 if "%pgo_run%"=="1" (
   if "%radlink%"=="1" (
     pushd local\lyra_pgo
-    call %~dp0build\radlink @lyra.rsp /rad_alt_pch_dir:%~dp0local\lyra_pgo || exit /b 1
+    call %~dp0build\radlink @lyra.rsp || exit /b 1
     popd
   )
   goto restart

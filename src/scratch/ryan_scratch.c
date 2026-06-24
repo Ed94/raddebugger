@@ -12,21 +12,21 @@
 
 //- rjf: [h]
 #include "base/base_inc.h"
-#include "os/os_inc.h"
-#include "content/content.h"
+#include "x64/x64.h"
 #include "artifact_cache/artifact_cache.h"
-#include "file_stream/file_stream.h"
 #include "rdi/rdi_local.h"
 #include "dbg_info/dbg_info.h"
+#include "arch/arch_inc.h"
+#include "eval2/eval2.h"
 
 //- rjf: [c]
 #include "base/base_inc.c"
-#include "os/os_inc.c"
-#include "content/content.c"
+#include "x64/x64.c"
 #include "artifact_cache/artifact_cache.c"
-#include "file_stream/file_stream.c"
 #include "rdi/rdi_local.c"
 #include "dbg_info/dbg_info.c"
+#include "arch/arch_inc.c"
+#include "eval2/eval2.c"
 
 ////////////////////////////////
 //~ rjf: Entry Point
@@ -34,53 +34,104 @@
 internal void
 entry_point(CmdLine *cmdline)
 {
-  local_persist char *pdb_paths[] =
+  String8 strings[] =
   {
-    "C:/devel/raddebugger/build/raddbg.pdb",
-    // #include "fn_debug_infos.inc"
+    s("[123]"),
+    s("foo"),
+    s("foo.bar"),
+    s("123[456]"),
+    s("123"),
+    s("123 + 456"),
+    s("!1"),
+    s("!0"),
+    s("1 + 1 + 1"),
+    s("40 / 0"),
+    s("3 * 4"),
+    s("3 * 4 + 2"),
+    s("(3 * 4) + 2"),
+    s("2 + (3 * 4)"),
+    s("123 | 456"),
+    s("123 + "),
+    s("-123"),
+    s("sizeof 123"),
+    s("1 ? 123 : 456"),
+    s("123(1, 2, 3)"),
   };
-  
-  DI_Key keys[ArrayCount(pdb_paths)] = {0};
-  for EachElement(idx, pdb_paths)
+  for EachElement(idx, strings)
   {
-    String8 path = str8_cstring(pdb_paths[idx]);
-    keys[idx] = di_key_from_path_timestamp(path, 0);
-    di_open(keys[idx]);
-  }
-  
-  for(;;)
-  {
-    Access *access = access_open();
-    B32 got_all_rdis = 1;
-    U64 num_rdis_loaded = 0;
-    for EachElement(idx, pdb_paths)
+    Temp scratch = scratch_begin(0, 0);
+    String8List msgs = {0};
+    
+    // rjf: string -> expr
+    E2_Expr *expr = &e2_expr_nil;
     {
-      RDI_Parsed *rdi = di_rdi_from_key(access, keys[idx], 1, 0);
-      if(rdi == &rdi_parsed_nil)
+      E2_ParseState state = {0};
+      E2_ExprMap expr_map = {0};
+      E2_Expr *access_expr = &e2_expr_nil;
+      for(;;)
       {
-        got_all_rdis = 0;
-      }
-      else
-      {
-        num_rdis_loaded += 1;
+        E2_Parse parse = e2_parse_from_string(scratch.arena, &state, &expr_map, access_expr, strings[idx]);
+        expr = parse.expr;
+        access_expr = &e2_expr_nil;
+        for EachNode(n, E2_Msg, parse.msgs.first)
+        {
+          str8_list_push(scratch.arena, &msgs, n->string);
+        }
+        if(parse.status == E2_ParseStatus_MissedIdentifierResolution)
+        {
+          e2_expr_map_push(scratch.arena, &expr_map, parse.missed_identifier, e2_expr_const_u64_or_smaller(scratch.arena, 123));
+        }
+        if(parse.status == E2_ParseStatus_IndexAccess)
+        {
+          access_expr = e2_expr_const_u64_or_smaller(scratch.arena, 111);
+        }
+        if(parse.status == E2_ParseStatus_MemberAccess)
+        {
+          access_expr = e2_expr_const_u64_or_smaller(scratch.arena, 456);
+        }
+        if(e2_parse_status_is_terminal(parse.status))
+        {
+          break;
+        }
       }
     }
-    printf("\rloaded [%I64u/%I64u], %I64u active threads, %I64u active processes", num_rdis_loaded, ArrayCount(pdb_paths), di_shared->conversion_thread_count, di_shared->conversion_process_count);
-    access_close(access);
-    if(got_all_rdis)
+    
+    // rjf: expr -> bytecode
+    String8 bytecode = e2_bytecode_from_expr(scratch.arena, expr);
+    
+    // rjf: bytecode -> value
+    E2_Val val = {0};
     {
-      Access *access = access_open();
-      String8 search_query = str8_lit("rd_");
-      DI_SearchItemArray items = di_search_item_array_from_target_query(access, RDI_SectionKind_Procedures, search_query, max_U64);
-      printf("\n");
-      printf("fuzzy searched for %.*s, found %I64u items\n", str8_varg(search_query), items.count);
-      access_close(access);
-      
-      String8 match_query = str8_lit("rd_frame");
-      DI_Match match = di_match_from_string(match_query, 0, max_U64);
-      printf("searched for %.*s, found at %i in [%I64x:%I64x]\n", str8_varg(match_query), match.idx, match.key.u64[0], match.key.u64[1]);
-      
-      break;
+      E2_InterpState state = {0};
+      E2_SpaceMap space_map = {0};
+      for(;;)
+      {
+        E2_Interp interp = e2_interp_from_bytecode(scratch.arena, &state, &space_map, bytecode);
+        val = interp.val;
+        if(e2_interp_status_is_terminal(interp.status))
+        {
+          if(interp.status != E2_InterpStatus_Good)
+          {
+            str8_list_pushf(scratch.arena, &msgs, "Interpretation error (%i).", interp.status);
+          }
+          break;
+        }
+      }
     }
+    
+    // rjf: message string list -> string
+    StringJoin join = {.sep = s(" ")};
+    String8 msgs_string = str8_list_join(scratch.arena, &msgs, &join);
+    
+    // rjf: log
+    printf("%.*s -> %I64d *%s* %s%.*s\n", str8_varg(strings[idx]),
+           val.s64,
+           expr->mode == E2_Mode_Type ? "type" :
+           expr->mode == E2_Mode_Value ? "value" :
+           "address",
+           msgs_string.size != 0 ? " // " : "", str8_varg(msgs_string));
+    fflush(stdout);
+    
+    scratch_end(scratch);
   }
 }

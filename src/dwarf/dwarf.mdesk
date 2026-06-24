@@ -1,0 +1,1411 @@
+// Copyright (c) Epic Games Tools
+// Licensed under the MIT license (https://opensource.org/license/mit/)
+
+////////////////////////////////
+//~ rjf: Version
+
+@table(name)
+DW_VersionTable:
+{
+  {Null}
+  {1}
+  {2}
+  {3}
+  {4}
+  {5}
+}
+
+@enum(U16) DW_Version:
+{
+  @expand(DW_VersionTable a) `$(a.name)`;
+  `Last = DW_Version_5`;
+}
+
+@table(name code)
+DW_ExtTable:
+{
+  {GNU}
+  {LLVM}
+  {Apple}
+  {MIPS}
+}
+
+@enum DW_Ext:
+{
+  `Null`,
+  @expand(DW_ExtTable a) `$(a.name)`
+}
+
+@enum(U32) DW_ExtFlags:
+{
+  @expand(DW_ExtTable a) `$(a.name) = (1<<DW_Ext_$(a.name))`;
+  `All = 0xffffffffu`;
+}
+
+////////////////////////////////
+//~ rjf: Bit Width Setting
+
+@table(name display_name byte_size) DW_FormatTable:
+{
+  {Null   ""          0}
+  {32Bit  "DWARF32"   4}
+  {64Bit  "DWARF64"   8}
+}
+
+@enum DW_Format:
+{
+  @expand(DW_FormatTable a) `$(a.name)`
+}
+
+@xlist DW_Format_XList:
+{
+  @expand(DW_FormatTable a) `$(a.name), "$(a.display_name)", $(a.byte_size)`
+}
+
+////////////////////////////////
+//~ rjf: Sections
+
+@table(name, regular_string, macho_string, dwo_string)
+DW_SectionTable:
+{
+  {Null       ""                   ""                    ""                      }
+  {Abbrev     ".debug_abbrev"      "__debug_abbrev"      ".debug_abbrev.dwo"     }
+  {ARanges    ".debug_aranges"     "__debug_aranges"     ".debug_aranges.dwo"    }
+  {Frame      ".debug_frame"       "__debug_frame"       ".debug_frame.dwo"      }
+  {Info       ".debug_info"        "__debug_info"        ".debug_info.dwo"       }
+  {Line       ".debug_line"        "__debug_line"        ".debug_line.dwo"       }
+  {Loc        ".debug_loc"         "__debug_loc"         ".debug_loc.dwo"        }
+  {MacInfo    ".debug_macinfo"     "__debug_macinfo"     ".debug_macinfo.dwo"    }
+  {PubNames   ".debug_pubnames"    "__debug_pubnames"    ".debug_pubnames.dwo"   }
+  {PubTypes   ".debug_pubtypes"    "__debug_pubtypes"    ".debug_pubtypes.dwo"   }
+  {Ranges     ".debug_ranges"      "__debug_ranges"      ".debug_ranges.dwo"     }
+  {Str        ".debug_str"         "__debug_str"         ".debug_str.dwo"        }
+  {Addr       ".debug_addr"        "__debug_addr"        ".debug_addr.dwo"       }
+  {LocLists   ".debug_loclists"    "__debug_loclists"    ".debug_loclists.dwo"   }
+  {RngLists   ".debug_rnglists"    "__debug_rnglists"    ".debug_rnglists.dwo"   }
+  {StrOffsets ".debug_str_offsets" "__debug_str_offsets" ".debug_str_offsets.dwo"}
+  {LineStr    ".debug_line_str"    "__debug_line_str"    ".debug_line_str.dwo"   }
+  {Names      ".debug_names"       "__debug_names"       ".debug_names.dwo"      }
+}
+
+@enum DW_SectionKind:
+{
+  @expand(DW_SectionTable a) `$(a.name)`,
+  COUNT
+}
+
+@xlist DW_SectionKind_XList:
+{
+  @expand(DW_SectionTable a) `$(a.name), "$(a.regular_string)", "$(a.macho_string)", "$(a.dwo_string)"`
+}
+
+@data(String8) dw_regular_name_from_section_kind_table:
+{
+  @expand(DW_SectionTable a) `str8_lit_comp("$(a.regular_string)")`
+}
+
+@data(String8) dw_macho_name_from_section_kind_table:
+{
+  @expand(DW_SectionTable a) `str8_lit_comp("$(a.macho_string)")`
+}
+
+@data(String8) dw_dwo_name_from_section_kind_table:
+{
+  @expand(DW_SectionTable a) `str8_lit_comp("$(a.dwo_string)")`
+}
+
+@enum(U32) DW_SectionFlags:
+{
+  @expand(DW_SectionTable a) `$(a.name) = (1 << DW_SectionKind_$(a.name))`,
+  `All = 0xffffffffu`;
+}
+
+////////////////////////////////
+//~ rjf: Languages
+
+@table(name  code  default_array_lower_bound)
+DW_LanguageTable:
+{
+  {Null                0x00     0}
+  {C89                 0x01     0}
+  {C                   0x02     0}
+  {Ada83               0x03     0}
+  {CPlusPlus           0x04     0}
+  {Cobol74             0x05     1}
+  {Cobol85             0x06     1}
+  {Fortran77           0x07     1}
+  {Fortran90           0x08     1}
+  {Pascal83            0x09     1}
+  {Modula2             0x0A     1}
+  {Java                0x0B     0}
+  {C99                 0x0C     0}
+  {Ada95               0x0D     1}
+  {Fortran95           0x0E     1}
+  {PLI                 0x0F     1}
+  {ObjC                0x10     0}
+  {ObjCPlusPlus        0x11     0}
+  {UPC                 0x12     0}
+  {D                   0x13     0}
+  {Python              0x14     0}
+  {OpenCL              0x15     0}
+  {Go                  0x16     0}
+  {Modula3             0x17     1}
+  {Haskell             0x18     0}
+  {CPlusPlus03         0x19     0}
+  {CPlusPlus11         0x1a     0}
+  {OCaml               0x1b     0}
+  {Rust                0x1c     0}
+  {C11                 0x1d     0}
+  {Swift               0x1e     0}
+  {Julia               0x1f     1}
+  {Dylan               0x20     0}
+  {CPlusPlus14         0x21     0}
+  {Fortran03           0x22     1}
+  {Fortran08           0x23     1}
+  {RenderScript        0x24     0}
+  {BLISS               0x25     0}
+  {MipsAssembler       0x8001   0}
+  {GoogleRenderScript  0x8E57   0}
+  {SunAssembler        0x9001   0}
+  {BorlandDelphi       0xB000   0}
+}
+
+@enum(U32) DW_Language:
+{
+  @expand(DW_LanguageTable a) `$(a.name) = $(a.code)`,
+}
+
+@xlist DW_Language_XList:
+{
+  @expand(DW_LanguageTable a) `$(a.name), $(a.code), $(a.default_array_lower_bound)`
+}
+
+////////////////////////////////
+//~ rjf: Inline Info
+
+@table(name code) DW_InlKindTable:
+{
+  {NotInlined         0x00}
+  {Inlined            0x01}
+  {DeclaredNotInlined 0x02}
+  {DeclaredInlined    0x03}
+}
+
+@enum(U32) DW_InlKind:
+{
+  @expand(DW_InlKindTable a) `$(a.name) = $(a.code)`,
+}
+
+@xlist DW_InlKind_XList:
+{
+  @expand(DW_InlKindTable a) `$(a.name), $(a.code)`
+}
+
+////////////////////////////////
+//~ rjf: Line Info Opcodes
+
+@table(name code params_length) DW_StdOpcodeTable:
+{
+  {ExtendedOpcode   0x00  0}
+  {Copy             0x01  0}
+  {AdvancePc        0x02  1}
+  {AdvanceLine      0x03  1}
+  {SetFile          0x04  1}
+  {SetColumn        0x05  1}
+  {NegateStmt       0x06  0}
+  {SetBasicBlock    0x07  0}
+  {ConstAddPc       0x08  0}
+  {FixedAdvancePc   0x09  1}
+  {SetPrologueEnd   0x0A  0}
+  {SetEpilogueBegin 0x0B  0}
+  {SetIsa           0x0C  1}
+}
+
+@enum(U8) DW_StdOpcode:
+{
+  @expand(DW_StdOpcodeTable a) `$(a.name) = $(a.code)`,
+  COUNT
+}
+
+@xlist DW_StdOpcode_XList:
+{
+  @expand(DW_StdOpcodeTable a) `$(a.name), $(a.code), $(a.params_length)`
+}
+
+@table(name code) DW_ExtOpcodeTable:
+{
+  {Undefined        0x00}
+  {EndSequence      0x01}
+  {SetAddress       0x02}
+  {DefineFile       0x03}
+  {SetDiscriminator 0x04}
+  {UserLo           0x80}
+  {UserHi           0xff}
+}
+
+@enum(U8) DW_ExtOpcode:
+{
+  @expand(DW_ExtOpcodeTable a) `$(a.name) = $(a.code)`,
+}
+
+@xlist DW_ExtOpcode_XList:
+{
+  @expand(DW_ExtOpcodeTable a) `$(a.name), $(a.code)`
+}
+
+////////////////////////////////
+//~ rjf: Tags
+
+@table(name code version) DW_TagKindTable:
+{
+  {Null 0 Null}
+  
+  //- rjf: version 3 tags
+  {ArrayType              0x01     3}
+  {ClassType              0x02     3}
+  {EntryPoint             0x03     3}
+  {EnumerationType        0x04     3}
+  {FormalParameter        0x05     3}
+  {ImportedDeclaration    0x08     3}
+  {Label                  0x0a     3}
+  {LexicalBlock           0x0b     3}
+  {Member                 0x0d     3}
+  {PointerType            0x0f     3}
+  {ReferenceType          0x10     3}
+  {CompileUnit            0x11     3}
+  {StringType             0x12     3}
+  {StructureType          0x13     3}
+  {SubroutineType         0x15     3}
+  {Typedef                0x16     3}
+  {UnionType              0x17     3}
+  {UnspecifiedParameters  0x18     3}
+  {Variant                0x19     3}
+  {CommonBlock            0x1a     3}
+  {CommonInclusion        0x1b     3}
+  {Inheritance            0x1c     3}
+  {InlinedSubroutine      0x1d     3}
+  {Module                 0x1e     3}
+  {PtrToMemberType        0x1f     3}
+  {SetType                0x20     3}
+  {SubrangeType           0x21     3}
+  {WithStmt               0x22     3}
+  {AccessDeclaration      0x23     3}
+  {BaseType               0x24     3}
+  {CatchBlock             0x25     3}
+  {ConstType              0x26     3}
+  {Constant               0x27     3}
+  {Enumerator             0x28     3}
+  {FileType               0x29     3}
+  {Friend                 0x2a     3}
+  {NameList               0x2b     3}
+  {NameListItem           0x2c     3}
+  {PackedType             0x2d     3}
+  {SubProgram             0x2e     3}
+  {TemplateTypeParameter  0x2f     3}
+  {TemplateValueParameter 0x30     3}
+  {ThrownType             0x31     3}
+  {TryBlock               0x32     3}
+  {VariantPart            0x33     3}
+  {Variable               0x34     3}
+  {VolatileType           0x35     3}
+  {DwarfProcedure         0x36     3}
+  {RestrictType           0x37     3}
+  {InterfaceType          0x38     3}
+  {Namespace              0x39     3}
+  {ImportedModule         0x3a     3}
+  {UnspecifiedType        0x3b     3}
+  {PartialUnit            0x3c     3}
+  {ImportedUnit           0x3d     3}
+  {Condition              0x3f     3}
+  {SharedType             0x40     3}
+  
+  //- rjf: version 5 tags
+  {TypeUnit               0x41     5}
+  {RValueReferenceType    0x42     5}
+  {TemplateAlias          0x43     5}
+  {CoarrayType            0x44     5}
+  {GenericSubrange        0x45     5}
+  {DynamicType            0x46     5}
+  {AtomicType             0x47     5}
+  {CallSite               0x48     5}
+  {CallSiteParameter      0x49     5}
+  {SkeletonUnit           0x4A     5}
+  {ImmutableType          0x4B     5}
+}
+
+@enum(U64) DW_TagKind:
+{
+  @expand(DW_TagKindTable a) `$(a.name) = $(a.code)`;
+  `UserLo = 0x4080`,
+  `UserHi = 0xffff`,
+}
+
+@xlist DW_TagKind_XList:
+{
+  @expand(DW_TagKindTable a) `$(a.name), $(a.code), DW_Version_$(a.version)`;
+}
+
+//- rjf: GNU extensions
+
+@table(name code) DW_GNU_TagKindTable:
+{
+  {CallSite           0x4109}
+  {CallSiteParameter  0x410a}
+}
+
+@xlist DW_GNU_TagKind_XList:
+{
+  @expand(DW_GNU_TagKindTable a) `$(a.name), $(a.code)`;
+}
+
+@enum(U64) DW_GNU_TagKind:
+{
+  @expand(DW_GNU_TagKindTable a) `$(a.name) = $(a.code)`;
+}
+
+////////////////////////////////
+//~ rjf: Attribute Classes
+
+@table(name code version) DW_AttribClassTable:
+{
+  //- rjf: version 3 classes
+  {Undefined     1      3}
+  {Address       2      3}
+  {Block         3      3}
+  {Const         4      3}
+  {ExprLoc       5      3}
+  {Flag          6      3}
+  {LinePtr       7      3}
+  {LocListPtr    8      3}
+  {MacPtr        9      3}
+  {RngListPtr    10     3}
+  {Reference     11     3}
+  {String        12     3}
+  
+  //- rjf: version 4 classes
+  {LocList       13     4}
+  {RngList       14     4}
+  
+  //- rjf: version 5 classes
+  {StrOffsetsPtr 15     5}
+  {AddrPtr       16     5}
+}
+
+@enum(U32) DW_AttribClassKind:
+{
+  `Null`
+    @expand(DW_AttribClassTable a) `$(a.name) = $(a.code)`
+}
+
+@enum(U32) DW_AttribClass:
+{
+  `Null = 0`,
+  @expand(DW_AttribClassTable a) `$(a.name) = (1 << $(a.code - 1))`,
+  `AllPtrs = DW_AttribClass_AddrPtr|DW_AttribClass_LinePtr|DW_AttribClass_LocList|DW_AttribClass_LocListPtr|DW_AttribClass_MacPtr|DW_AttribClass_RngList|DW_AttribClass_RngListPtr|DW_AttribClass_StrOffsetsPtr`
+}
+
+////////////////////////////////
+//~ rjf: Forms
+
+@table(name code version class) DW_FormKindTable:
+{
+  {Null 0 0 Null}
+  
+  //- rjf: version 2 forms
+  {Addr     0x1       2      Address}
+  {Block2   0x3       2      Block}
+  {Block4   0x4       2      Block}
+  {Data2    0x5       2      Const}
+  {Data4    0x6       2      Const}
+  {Data8    0x7       2      Const}
+  {String   0x8       2      String}
+  {Block    0x9       2      Block}
+  {Block1   0xa       2      Block}
+  {Data1    0xb       2      Const}
+  {Flag     0xc       2      Flag}
+  {SData    0xd       2      Const}
+  {Strp     0xe       2      String}
+  {UData    0xf       2      Const}
+  {RefAddr  0x10      2      Reference}
+  {Ref1     0x11      2      Reference}
+  {Ref2     0x12      2      Reference}
+  {Ref4     0x13      2      Reference}
+  {Ref8     0x14      2      Reference}
+  {RefUData 0x15      2      Reference}
+  {Indirect 0x16      2      Null}
+  
+  //- rjf: version 4 forms
+  {SecOffset   0x17  4      AllPtrs}
+  {ExprLoc     0x18  4      ExprLoc}
+  {FlagPresent 0x19  4      Flag}
+  {RefSig8     0x20  4      Reference}
+  
+  //- rjf: version 5 forms
+  {Strx          0x1a  5      String}
+  {Addrx         0x1b  5      String}
+  {RefSup4       0x1c  5      Reference}
+  {StrpSup       0x1d  5      String}
+  {Data16        0x1e  5      Const}
+  {LineStrp      0x1f  5      String}
+  {ImplicitConst 0x21  5      Const}
+  {LocListx      0x22  5      LocListPtr}
+  {RngListx      0x23  5      RngListPtr}
+  {RefSup8       0x24  5      Reference}
+  {Strx1         0x25  5      String}
+  {Strx2         0x26  5      String}
+  {Strx3         0x27  5      String}
+  {Strx4         0x28  5      String}
+  {Addrx1        0x29  5      Address}
+  {Addrx2        0x2a  5      Address}
+  {Addrx3        0x2b  5      Address}
+  {Addrx4        0x2c  5      Address}
+}
+
+@enum(U64) DW_FormKind:
+{
+  @expand(DW_FormKindTable a) `$(a.name) = $(a.code)`;
+}
+
+@xlist DW_FormKind_XList:
+{
+  @expand(DW_FormKindTable a) `$(a.name), $(a.code), DW_Version_$(a.version), DW_AttribClass_$(a.class)`
+}
+
+//- rjf: GNU extensions
+
+@table(name code class) DW_GNU_FormKindTable:
+{
+  {AddrIndex 0x1f01  Undefined}
+  {StrIndex  0x1f02  Undefined}
+  {RefAlt    0x1f20  Undefined}
+  {StrpAlt   0x1f21  String}
+}
+
+@enum(U64) DW_GNU_FormKind:
+{
+  @expand(DW_GNU_FormKindTable a) `$(a.name) = $(a.code)`;
+}
+
+@xlist DW_GNU_FormKind_XList:
+{
+  @expand(DW_GNU_FormKindTable a) `$(a.name), $(a.code), DW_AttribClass_$(a.class)`
+}
+
+////////////////////////////////
+//~ rjf: Attributes
+
+@table(name code version classes)
+DW_AttribKindTable:
+{
+  {Null 0 Null 0}
+  
+  //- rjf: version 2 attribs
+  {Sibling            0x1   2                              `DW_AttribClass_Reference`}
+  {Location           0x2   2                              `DW_AttribClass_Block|DW_AttribClass_ExprLoc|DW_AttribClass_LocListPtr`}
+  {Name               0x3   2                              `DW_AttribClass_String`}
+  {Ordering           0x9   2                              `DW_AttribClass_Const`}
+  {ByteSize           0xB   2                              `DW_AttribClass_Const`}
+  {BitOffset          0xC   2                              `DW_AttribClass_Const`}
+  {BitSize            0xD   2                              `DW_AttribClass_Const`}
+  {StmtList           0x10  2                              `DW_AttribClass_Const`}
+  {LowPc              0x11  2                              `DW_AttribClass_Address`}
+  {HighPc             0x12  2                              `DW_AttribClass_Address`}
+  {Language           0x13  2                              `DW_AttribClass_Const`}
+  {Discr              0x15  2                              `DW_AttribClass_Reference`}
+  {DiscrValue         0x16  2                              `DW_AttribClass_Const`}
+  {Visibility         0x17  2                              `DW_AttribClass_Const`}
+  {Import             0x18  2                              `DW_AttribClass_Reference`}
+  {StringLength       0x19  2                              `DW_AttribClass_Block|DW_AttribClass_Const`}
+  {CommonReference    0x1a  2                              `DW_AttribClass_Reference`}
+  {CompDir            0x1b  2                              `DW_AttribClass_String`}
+  {ConstValue         0x1c  2                              `DW_AttribClass_String|DW_AttribClass_Const|DW_AttribClass_Block`}
+  {ContainingType     0x1d  2                              `DW_AttribClass_Reference`}
+  {DefaultValue       0x1e  2                              `DW_AttribClass_Reference`}
+  {Inline             0x20  2                              `DW_AttribClass_Const`}
+  {IsOptional         0x21  2                              `DW_AttribClass_Flag`}
+  {LowerBound         0x22  2                              `DW_AttribClass_Const|DW_AttribClass_Reference`}
+  {Producer           0x25  2                              `DW_AttribClass_String`}
+  {Prototyped         0x27  2                              `DW_AttribClass_Flag`}
+  {ReturnAddr         0x2a  2                              `DW_AttribClass_Block|DW_AttribClass_Const`}
+  {StartScope         0x2c  2                              `DW_AttribClass_Const`}
+  {BitStride          0x2e  2                              `DW_AttribClass_Const`}
+  {UpperBound         0x2f  2                              `DW_AttribClass_Const|DW_AttribClass_Reference`}
+  {AbstractOrigin     0x31  2                              `DW_AttribClass_Reference`}
+  {Accessibility      0x32  2                              `DW_AttribClass_Const`}
+  {AddressClass       0x33  2                              `DW_AttribClass_Const`}
+  {Artificial         0x34  2                              `DW_AttribClass_Flag`}
+  {BaseTypes          0x35  2                              `DW_AttribClass_Reference`}
+  {CallingConvention  0x36  2                              `DW_AttribClass_Const`}
+  {Count              0x37  2                              `DW_AttribClass_Const|DW_AttribClass_Reference`}
+  {DataMemberLocation 0x38  2                              `DW_AttribClass_Block|DW_AttribClass_Reference`}
+  {DeclColumn         0x39  2                              `DW_AttribClass_Const`}
+  {DeclFile           0x3a  2                              `DW_AttribClass_Const`}
+  {DeclLine           0x3b  2                              `DW_AttribClass_Const`}
+  {Declaration        0x3c  2                              `DW_AttribClass_Flag`}
+  {DiscrList          0x3d  2                              `DW_AttribClass_Block`}
+  {Encoding           0x3e  2                              `DW_AttribClass_Const`}
+  {External           0x3f  2                              `DW_AttribClass_Flag`}
+  {FrameBase          0x40  2                              `DW_AttribClass_Block|DW_AttribClass_Const`}
+  {Friend             0x41  2                              `DW_AttribClass_Reference`}
+  {IdentifierCase     0x42  2                              `DW_AttribClass_Const`}
+  {MacroInfo          0x43  2                              `DW_AttribClass_Const`}
+  {NameListItem       0x44  2                              `DW_AttribClass_Block`}
+  {Priority           0x45  2                              `DW_AttribClass_Reference`}
+  {Segment            0x46  2                              `DW_AttribClass_Block|DW_AttribClass_Const`}
+  {Specification      0x47  2                              `DW_AttribClass_Reference`}
+  {StaticLink         0x48  2                              `DW_AttribClass_Block|DW_AttribClass_Const`}
+  {Type               0x49  2                              `DW_AttribClass_Reference`}
+  {UseLocation        0x4a  2                              `DW_AttribClass_Block|DW_AttribClass_Const`}
+  {VariableParameter  0x4b  2                              `DW_AttribClass_Flag`}
+  {Virtuality         0x4c  2                              `DW_AttribClass_Const`}
+  {VTableElemLocation 0x4d  2                              `DW_AttribClass_Block|DW_AttribClass_Reference`}
+  
+  //- rjf: version 3 attribs
+  {Allocated          0x4e  3                         `DW_AttribClass_Const|DW_AttribClass_ExprLoc|DW_AttribClass_Reference`}
+  {Associated         0x4f  3                         `DW_AttribClass_Const|DW_AttribClass_ExprLoc|DW_AttribClass_Reference`}
+  {DataLocation       0x50  3                         `DW_AttribClass_ExprLoc`}
+  {ByteStride         0x51  3                         `DW_AttribClass_Const|DW_AttribClass_ExprLoc|DW_AttribClass_Reference`}
+  {EntryPc            0x52  3                         `DW_AttribClass_Address|DW_AttribClass_Const`}
+  {UseUtf8            0x53  3                         `DW_AttribClass_Flag`}
+  {Extension          0x54  3                         `DW_AttribClass_Reference`}
+  {Ranges             0x55  3                         `DW_AttribClass_RngList`}
+  {Trampoline         0x56  3                         `DW_AttribClass_Address|DW_AttribClass_Flag|DW_AttribClass_Reference|DW_AttribClass_String`}
+  {CallColumn         0x57  3                         `DW_AttribClass_Const`}
+  {CallFile           0x58  3                         `DW_AttribClass_Const`}
+  {CallLine           0x59  3                         `DW_AttribClass_Const`}
+  {Description        0x5a  3                         `DW_AttribClass_String`}
+  {BinaryScale        0x5b  3                         `DW_AttribClass_Const`}
+  {DecimalScale       0x5c  3                         `DW_AttribClass_Const`}
+  {Small              0x5d  3                         `DW_AttribClass_Reference`}
+  {DecimalSign        0x5e  3                         `DW_AttribClass_Const`}
+  {DigitCount         0x5f  3                         `DW_AttribClass_Const`}
+  {PictureString      0x60  3                         `DW_AttribClass_String`}
+  {Mutable            0x61  3                         `DW_AttribClass_Flag`}
+  {ThreadsScaled      0x62  3                         `DW_AttribClass_Flag`}
+  {Explicit           0x63  3                         `DW_AttribClass_Flag`}
+  {ObjectPointer      0x64  3                         `DW_AttribClass_Reference`}
+  {Endianity          0x65  3                         `DW_AttribClass_Const`}
+  {Elemental          0x66  3                         `DW_AttribClass_Flag`}
+  {Pure               0x67  3                         `DW_AttribClass_Flag`}
+  {Recursive          0x68  3                         `DW_AttribClass_Flag`}
+  
+  //- rjf: version 4 attribs
+  {Signature      0x69  4                        `DW_AttribClass_Reference`}
+  {MainSubProgram 0x6a  4                        `DW_AttribClass_Flag`}
+  {DataBitOffset  0x6b  4                        `DW_AttribClass_Const`}
+  {ConstExpr      0x6c  4                        `DW_AttribClass_Flag`}
+  {EnumClass      0x6d  4                        `DW_AttribClass_Flag`}
+  {LinkageName    0x6e  4                        `DW_AttribClass_String`}
+  
+  //- rjf: version 5 attribs
+  {StringLengthBitSize  0x6f  5                         `DW_AttribClass_Const`}
+  {StringLengthByteSize 0x70  5                         `DW_AttribClass_Const`}
+  {Rank                 0x71  5                         `DW_AttribClass_Const|DW_AttribClass_ExprLoc`}
+  {StrOffsetsBase       0x72  5                         `DW_AttribClass_StrOffsetsPtr`}
+  {AddrBase             0x73  5                         `DW_AttribClass_AddrPtr`}
+  {RngListsBase         0x74  5                         `DW_AttribClass_RngListPtr`}
+  {DwoName              0x76  5                         `DW_AttribClass_String`}
+  {Reference            0x77  5                         `DW_AttribClass_Flag`}
+  {RValueReference      0x78  5                         `DW_AttribClass_Flag`}
+  {Macros               0x79  5                         `DW_AttribClass_MacPtr`}
+  {CallAllCalls         0x7a  5                         `DW_AttribClass_Flag`}
+  {CallAllSourceCalls   0x7b  5                         `DW_AttribClass_Flag`}
+  {CallAllTailCalls     0x7c  5                         `DW_AttribClass_Flag`}
+  {CallReturnPc         0x7d  5                         `DW_AttribClass_Address`}
+  {CallValue            0x7e  5                         `DW_AttribClass_ExprLoc`}
+  {CallOrigin           0x7f  5                         `DW_AttribClass_ExprLoc`}
+  {CallParameter        0x80  5                         `DW_AttribClass_Reference`}
+  {CallPc               0x81  5                         `DW_AttribClass_Address`}
+  {CallTailCall         0x82  5                         `DW_AttribClass_Flag`}
+  {CallTarget           0x83  5                         `DW_AttribClass_ExprLoc`}
+  {CallTargetClobbered  0x84  5                         `DW_AttribClass_ExprLoc`}
+  {CallDataLocation     0x85  5                         `DW_AttribClass_ExprLoc`}
+  {CallDataValue        0x86  5                         `DW_AttribClass_ExprLoc`}
+  {NoReturn             0x87  5                         `DW_AttribClass_Flag`}
+  {Alignment            0x88  5                         `DW_AttribClass_Const`}
+  {ExportSymbols        0x89  5                         `DW_AttribClass_Flag`}
+  {Deleted              0x8a  5                         `DW_AttribClass_Flag`}
+  {Defaulted            0x8b  5                         `DW_AttribClass_Const`}
+  {LocListsBase         0x8c  5                         `DW_AttribClass_LocListPtr`}
+}
+
+@table(name code classes)
+DW_GNU_AttribKindTable:
+{
+  {Vector                  0x2107     `DW_AttribClass_Flag`}
+  {GuardedBy               0x2108     `DW_AttribClass_Undefined`}
+  {PtGuardedBy             0x2109     `DW_AttribClass_Undefined`}
+  {Guarded                 0x210a     `DW_AttribClass_Undefined`}
+  {PtGuarded               0x210b     `DW_AttribClass_Undefined`}
+  {LocksExcluded           0x210c     `DW_AttribClass_Undefined`}
+  {ExclusiveLocksRequired  0x210d     `DW_AttribClass_Undefined`}
+  {SharedLocksRequired     0x210e     `DW_AttribClass_Undefined`}
+  {OdrSignature            0x210f     `DW_AttribClass_Undefined`}
+  {TemplateName            0x2110     `DW_AttribClass_Undefined`}
+  {CallSiteValue           0x2111     `DW_AttribClass_ExprLoc`}
+  {CallSiteDataValue       0x2112     `DW_AttribClass_ExprLoc`}
+  {CallSiteTarget          0x2113     `DW_AttribClass_ExprLoc`}
+  {CallSiteTargetClobbered 0x2114     `DW_AttribClass_ExprLoc`}
+  {TailCall                0x2115     `DW_AttribClass_Flag`}
+  {AllTailCallsSites       0x2116     `DW_AttribClass_Flag`}
+  {AllCallSites            0x2117     `DW_AttribClass_Flag`}
+  {AllSourceCallSites      0x2118     `DW_AttribClass_Flag`}
+  {Macros                  0x2119     `DW_AttribClass_Flag`}
+  {Deleted                 0x211a     `DW_AttribClass_Undefined`}
+  {DwoName                 0x2130     `DW_AttribClass_String`}
+  {DwoId                   0x2131     `DW_AttribClass_Const`}
+  {RangesBase              0x2132     `DW_AttribClass_Undefined`}
+  {AddrBase                0x2133     `DW_AttribClass_AddrPtr`}
+  {PubNames                0x2134     `DW_AttribClass_Flag`}
+  {PubTypes                0x2135     `DW_AttribClass_Undefined`}
+  {Discriminator           0x2136     `DW_AttribClass_Const`}
+  {LocViews                0x2137     `DW_AttribClass_LocListPtr`}
+  {EntryView               0x2138     `DW_AttribClass_Undefined`}
+  {DescriptiveType         0x2302     `DW_AttribClass_Undefined`}
+  {Numerator               0x2303     `DW_AttribClass_Undefined`}
+  {Denominator             0x2304     `DW_AttribClass_Undefined`}
+  {Bias                    0x2305     `DW_AttribClass_Undefined`}
+}
+
+@table(name code classes)
+DW_LLVM_AttribKindTable:
+{
+  {IncludePath  0x3e00  `DW_AttribClass_String`}
+  {ConfigMacros 0x3e01  `DW_AttribClass_String`}
+  {SysRoot      0x3e02  `DW_AttribClass_String`}
+  {TagOffset    0x3e03  `DW_AttribClass_Undefined`}
+  {ApiNotes     0x3e07  `DW_AttribClass_String`}
+}
+
+@table(name code classes)
+DW_Apple_AttribKindTable:
+{
+  {Optimized         0x3fe1  `DW_AttribClass_Flag`}
+  {Flags             0x3fe2  `DW_AttribClass_Flag`}
+  {Isa               0x3fe3  `DW_AttribClass_Flag`}
+  {Block             0x3fe4  `DW_AttribClass_Undefined`}
+  {MajorRuntimeVers  0x3fe5  `DW_AttribClass_Undefined`}
+  {RuntimeClass      0x3fe6  `DW_AttribClass_Undefined`}
+  {OmitFramePtr      0x3fe7  `DW_AttribClass_Flag`}
+  {PropertyName      0x3fe8  `DW_AttribClass_Undefined`}
+  {PropertyGetter    0x3fe9  `DW_AttribClass_Undefined`}
+  {PropertySetter    0x3fea  `DW_AttribClass_Undefined`}
+  {PropertyAttribute 0x3feb  `DW_AttribClass_Undefined`}
+  {ObjcCompleteType  0x3fec  `DW_AttribClass_Undefined`}
+  {Property          0x3fed  `DW_AttribClass_Undefined`}
+  {ObjDirect         0x3fee  `DW_AttribClass_Undefined`}
+  {Sdk               0x3fef  `DW_AttribClass_String`}
+}
+
+@table(name code classes)
+DW_MIPS_AttribKindTable:
+{
+  {Fde                   0x2001  `DW_AttribClass_Block`}
+  {LoopBegin             0x2002  `DW_AttribClass_Block`}
+  {TailLoopBegin         0x2003  `DW_AttribClass_Block`}
+  {EpilogBegin           0x2004  `DW_AttribClass_Block`}
+  {LoopUnrollFactor      0x2005  `DW_AttribClass_Block`}
+  {SoftwarePipelineDepth 0x2006  `DW_AttribClass_Block`}
+  {LinkageName           0x2007  `DW_AttribClass_String`}
+  {Stride                0x2008  `DW_AttribClass_Block`}
+  {AbstractName          0x2009  `DW_AttribClass_String`}
+  {CloneOrigin           0x200a  `DW_AttribClass_String`}
+  {HasInlines            0x200b  `DW_AttribClass_Reference`}
+  {StrideByte            0x200c  `DW_AttribClass_Reference`}
+  {StrideElem            0x200d  `DW_AttribClass_Reference`}
+  {PtrDopeType           0x200e  `DW_AttribClass_Reference`}
+  {AllocatableDopeType   0x200f  `DW_AttribClass_Reference`}
+  {AssumedShapeDopeType  0x2010  `DW_AttribClass_Reference`}
+  {AssumedSize           0x2011  `DW_AttribClass_Reference`}
+}
+
+@enum(U32) DW_AttribKind:
+{
+  @expand(DW_AttribKindTable a) `$(a.name) = $(a.code)`;
+  `UserLo = 0x2000`;
+  `UserHi = 0x3fff`;
+}
+
+@xlist DW_AttribKind_XList:
+{
+  @expand(DW_AttribKindTable a) `$(a.name), $(a.code), DW_Version_$(a.version), $(a.classes)`;
+}
+
+//- rjf: GNU extensions
+
+@enum(U32) DW_GNU_AttribKind:
+{
+  @expand(DW_GNU_AttribKindTable a) `$(a.name) = $(a.code)`;
+}
+
+@xlist DW_GNU_AttribKind_XList:
+{
+  @expand(DW_GNU_AttribKindTable a) `$(a.name), $(a.code), $(a.classes)`;
+}
+
+//- rjf: LLVM extensions
+
+@enum(U32) DW_LLVM_AttribKind:
+{
+  @expand(DW_LLVM_AttribKindTable a) `$(a.name) = $(a.code)`;
+}
+
+@xlist DW_LLVM_AttribKind_XList:
+{
+  @expand(DW_LLVM_AttribKindTable a) `$(a.name), $(a.code), $(a.classes)`;
+}
+
+//- rjf: apple extensions
+
+@enum(U32) DW_Apple_AttribKind:
+{
+  @expand(DW_Apple_AttribKindTable a) `$(a.name) = $(a.code)`;
+}
+
+@xlist DW_Apple_AttribKind_XList:
+{
+  @expand(DW_Apple_AttribKindTable a) `$(a.name), $(a.code), $(a.classes)`;
+}
+
+//- rjf: MIPS extensions
+
+@enum(U32) DW_MIPS_AttribKind:
+{
+  @expand(DW_MIPS_AttribKindTable a) `$(a.name) = $(a.code)`;
+}
+
+@xlist DW_MIPS_AttribKind_XList:
+{
+  @expand(DW_MIPS_AttribKindTable a) `$(a.name), $(a.code), $(a.classes)`;
+}
+
+////////////////////////////////
+//~ rjf: Attribute Type Encoding
+
+@table(name code) DW_ATETable:
+{
+  {Null           0x00}
+  {Address        0x01}
+  {Boolean        0x02}
+  {ComplexFloat   0x03}
+  {Float          0x04}
+  {Signed         0x05}
+  {SignedChar     0x06}
+  {Unsigned       0x07}
+  {UnsignedChar   0x08}
+  {ImaginaryFloat 0x09}
+  {PackedDecimal  0x0A}
+  {NumericString  0x0B}
+  {Edited         0x0C}
+  {SignedFixed    0x0D}
+  {UnsignedFixed  0x0E}
+  {DecimalFloat   0x0F}
+  {Utf            0x10}
+  {Ucs            0x11}
+  {Ascii          0x12}
+}
+@enum(U64) DW_ATE:
+{
+  @expand(DW_ATETable a) `$(a.name) = $(a.code)`
+}
+@xlist DW_ATE_XList:
+{
+  @expand(DW_ATETable a) `$(a.name), $(a.code)`
+}
+
+////////////////////////////////
+//~ rjf: Calling Conventions
+
+@table(name code) DW_CallingConventionKindTable:
+{
+  {Normal           0x0}
+  {Program          0x1}
+  {NoCall           0x3}
+  {PassByValue      0x4}
+  {PassByReference  0x5}
+}
+@enum(U64) DW_CallingConventionKind:
+{
+  @expand(DW_CallingConventionKindTable a) `$(a.name) = $(a.code)`
+}
+@xlist DW_CallingConventionKind_XList:
+{
+  @expand(DW_CallingConventionKindTable a) `$(a.name), $(a.code)`
+}
+
+////////////////////////////////
+//~ rjf: Access Protections
+
+@table(name code) DW_AccessKindTable:
+{
+  {Public           0x0}
+  {Private          0x1}
+  {Protected        0x2}
+}
+@enum(U64) DW_AccessKind:
+{
+  @expand(DW_AccessKindTable a) `$(a.name) = $(a.code)`
+}
+@xlist DW_AccessKind_XList:
+{
+  @expand(DW_AccessKindTable a) `$(a.name), $(a.code)`
+}
+
+////////////////////////////////
+//~ rjf: Virtuality
+
+@table(name code) DW_VirtualityKindTable:
+{
+  {None           0x0}
+  {Virtual        0x1}
+  {PureVirtual    0x2}
+}
+@enum(U64) DW_VirtualityKind:
+{
+  @expand(DW_VirtualityKindTable a) `$(a.name) = $(a.code)`
+}
+@xlist DW_VirtualityKind_XList:
+{
+  @expand(DW_VirtualityKindTable a) `$(a.name), $(a.code)`
+}
+
+////////////////////////////////
+//~ rjf: Identifier Case
+
+@table(name code) DW_IdentifierCaseKindTable:
+{
+  {CaseSensitive   0x00}
+  {UpCase          0x01}
+  {DownCase        0x02}
+  {CaseInsensitive 0x03}
+}
+@enum(U64) DW_IdentifierCaseKind:
+{
+  @expand(DW_IdentifierCaseKindTable a) `$(a.name) = $(a.code)`
+}
+@xlist DW_IdentifierCaseKind_XList:
+{
+  @expand(DW_IdentifierCaseKindTable a) `$(a.name), $(a.code)`
+}
+
+////////////////////////////////
+//~ rjf: Symbol Visibility
+
+@table(name code) DW_VisibilityKindTable:
+{
+  {Null       0x00}
+  {Local      0x01}
+  {Exported   0x02}
+  {Qualified  0x03}
+}
+@enum(U64) DW_VisibilityKind:
+{
+  @expand(DW_VisibilityKindTable a) `$(a.name) = $(a.code)`
+}
+@xlist DW_VisibilityKind_XList:
+{
+  @expand(DW_VisibilityKindTable a) `$(a.name), $(a.code)`
+}
+
+////////////////////////////////
+//~ rjf: Range List Entries
+
+@table(name code) DW_RLETable:
+{
+  {EndOfList    0x00}
+  {BaseAddressx 0x01}
+  {StartxEndx   0x02}
+  {StartxLength 0x03}
+  {OffsetPair   0x04}
+  {BaseAddress  0x05}
+  {StartEnd     0x06}
+  {StartLength  0x07}
+}
+@enum(U8) DW_RLE:
+{
+  @expand(DW_RLETable a) `$(a.name) = $(a.code)`
+}
+@xlist DW_RLE_XList:
+{
+  @expand(DW_RLETable a) `$(a.name), $(a.code)`
+}
+
+////////////////////////////////
+//~ rjf: Location List Entries
+
+@table(name code) DW_LLETable:
+{
+  {EndOfList       0x00}
+  {BaseAddressx    0x01}
+  {StartxEndx      0x02}
+  {StartxLength    0x03}
+  {OffsetPair      0x04}
+  {DefaultLocation 0x05}
+  {BaseAddress     0x06}
+  {StartEnd        0x07}
+  {StartLength     0x08}
+}
+@enum(U8) DW_LLE:
+{
+  @expand(DW_LLETable a) `$(a.name) = $(a.code)`
+}
+@xlist DW_LLE_XList:
+{
+  @expand(DW_LLETable a) `$(a.name), $(a.code)`
+}
+
+////////////////////////////////
+//~ rjf: Address Classes
+
+@table(name code) DW_AddrClassTable:
+{
+  {None    0}
+  {Near16  1}
+  {Far16   2}
+  {Huge16  3}
+  {Near32  4}
+  {Far32   5}
+}
+@enum(U64) DW_AddrClass:
+{
+  @expand(DW_AddrClassTable a) `$(a.name) = $(a.code)`
+}
+
+////////////////////////////////
+//~ rjf: Compilation Unit Kinds
+
+@table(name code) DW_CompUnitKindTable:
+{
+  {Reserved     0}
+  {Compile      1}
+  {Type         2}
+  {Partial      3}
+  {Skeleton     4}
+  {SplitCompile 5}
+  {SplitType    6}
+}
+@enum(U64) DW_CompUnitKind:
+{
+  @expand(DW_CompUnitKindTable a) `$(a.name) = $(a.code)`;
+  `UserLo = 0x80`;
+  `UserHi = 0xff`;
+}
+@xlist DW_CompUnitKind_XList:
+{
+  @expand(DW_CompUnitKindTable a) `$(a.name), $(a.code)`
+}
+
+////////////////////////////////
+//~ rjf: Line Info File Directories
+
+@table(name code) DW_LNCTTable:
+{
+  {Path           0x1}
+  {DirectoryIndex 0x2}
+  {TimeStamp      0x3}
+  {Size           0x4}
+  {MD5            0x5}
+  {LLVM_Source    0x2001}
+}
+@enum(U64) DW_LNCT:
+{
+  @expand(DW_LNCTTable a) `$(a.name) = $(a.code)`;
+  `UserLo = 0x2000`;
+  `UserHi = 0x3fff`;
+}
+
+////////////////////////////////
+//~ rjf: Call Frame Address Opcodes
+
+@enum DW_CFAOperandKind:
+{
+  Null,
+  Value,
+  Register,
+  Expression,
+}
+
+@table(name code operand_kind_0 operand_kind_1 new_row) DW_CFAOpCodeTable:
+{
+  {Nop            0x0  Null             Null               0  }
+  {SetLoc         0x1  Value            Null               1  }
+  {AdvanceLoc1    0x2  Value            Null               1  }
+  {AdvanceLoc2    0x3  Value            Null               1  }
+  {AdvanceLoc4    0x4  Value            Null               1  }
+  {OffsetExt      0x5  Register         Value              0  }
+  {RestoreExt     0x6  Null             Null               0  }
+  {Undefined      0x7  Register         Null               0  }
+  {SameValue      0x8  Register         Null               0  }
+  {Register       0x9  Register         Null               0  }
+  {RememberState  0xa  Null             Null               0  }
+  {RestoreState   0xb  Null             Null               0  }
+  {DefCfa         0xc  Register         Value              0  }
+  {DefCfaRegister 0xd  Register         Null               0  }
+  {DefCfaOffset   0xe  Value            Null               0  }
+  {DefCfaExpr     0xf  Expression       Null               0  }
+  {Expr           0x10 Expression       Null               0  }
+  {OffsetExtSf    0x11 Register         Value              0  }
+  {DefCfaSf       0x12 Register         Value              0  }
+  {DefCfaOffsetSf 0x13 Value            Null               0  }
+  {ValOffset      0x14 Register         Value              0  }
+  {ValOffsetSf    0x15 Register         Value              0  }
+  {ValExpr        0x16 Register         Expression         0  }
+  {AdvanceLoc     0x40 Value            Null               1  }
+  {Offset         0x80 Register         Value              0  }
+  {Restore        0xc0 Register         Null               0  }
+}
+
+@enum(U8) DW_CFAOpCode:
+{
+  @expand(DW_CFAOpCodeTable a) `$(a.name) = $(a.code)`
+}
+
+@xlist DW_CFAOpCode_XList:
+{
+  @expand(DW_CFAOpCodeTable a) `$(a.name), $(a.code), $(a.operand_kind_0), $(a.operand_kind_1), $(a.new_row)`
+}
+
+@gen(catchall)
+{
+  `#define DW_CFAOperandMax 2`
+  `#define DW_CFAOpCodeMask_OpcodeHi 0xc0`
+  `#define DW_CFAOpCodeMask_Operand  0x3f`
+}
+
+////////////////////////////////
+//~ rjf: Expressions / Evaluation
+
+@table(name)
+DW_ExprOperandKindTable:
+{
+  {Null}
+  {U8}
+  {U16}
+  {U32}
+  {U64}
+  {S8}
+  {S16}
+  {S32}
+  {S64}
+  {ULEB128}
+  {SLEB128}
+  {Addr}
+  {Block}
+  {DwarfUInt}
+}
+
+@enum DW_ExprOperandKind:
+{
+  @expand(DW_ExprOperandKindTable a) `$(a.name)`
+}
+
+@table(name  code  version  operand_count  pop_count  push_count  operand_type_0  operand_type_1  valid_for_cfa_exprs)
+DW_ExprOpTable:
+{
+  {Null              0x00    Null  0 0 0 Null      Null  1}
+  
+  //- rjf: version 3 opcodes
+  {Addr              0x03    3     1 0 1 Addr      Null  1}
+  {Deref             0x06    3     0 1 1 Null      Null  1}
+  {Const1U           0x08    3     1 0 1 U8        Null  1}
+  {Const1S           0x09    3     1 0 1 S8        Null  1}
+  {Const2U           0x0a    3     1 0 1 U16       Null  1}
+  {Const2S           0x0b    3     1 0 1 S16       Null  1}
+  {Const4U           0x0c    3     1 0 1 U32       Null  1}
+  {Const4S           0x0d    3     1 0 1 S32       Null  1}
+  {Const8U           0x0e    3     1 0 1 U64       Null  1}
+  {Const8S           0x0f    3     1 0 1 S64       Null  1}
+  {ConstU            0x10    3     1 0 1 ULEB128   Null  1}
+  {ConstS            0x11    3     1 0 1 SLEB128   Null  1}
+  {Dup               0x12    3     0 0 1 Null      Null  1}
+  {Drop              0x13    3     0 1 0 Null      Null  1}
+  {Over              0x14    3     0 0 1 Null      Null  1}
+  {Pick              0x15    3     1 0 1 U8        Null  1}
+  {Swap              0x16    3     0 2 2 Null      Null  1}
+  {Rot               0x17    3     0 3 3 Null      Null  1}
+  {XDeref            0x18    3     0 2 1 Null      Null  1}
+  {Abs               0x19    3     0 1 1 Null      Null  1}
+  {And               0x1a    3     0 2 1 Null      Null  1}
+  {Div               0x1b    3     0 2 1 Null      Null  1}
+  {Minus             0x1c    3     0 2 1 Null      Null  1}
+  {Mod               0x1d    3     0 2 1 Null      Null  1}
+  {Mul               0x1e    3     0 2 1 Null      Null  1}
+  {Neg               0x1f    3     0 1 1 Null      Null  1}
+  {Not               0x20    3     0 1 1 Null      Null  1}
+  {Or                0x21    3     0 2 1 Null      Null  1}
+  {Plus              0x22    3     0 2 1 Null      Null  1}
+  {PlusUConst        0x23    3     1 1 1 ULEB128   Null  1}
+  {Shl               0x24    3     0 2 1 Null      Null  1}
+  {Shr               0x25    3     0 2 1 Null      Null  1}
+  {Shra              0x26    3     0 2 1 Null      Null  1}
+  {Xor               0x27    3     0 2 1 Null      Null  1}
+  {Bra               0x28    3     1 1 0 S16       Null  1}
+  {Eq                0x29    3     0 2 1 Null      Null  1}
+  {Ge                0x2a    3     0 2 1 Null      Null  1}
+  {Gt                0x2b    3     0 2 1 Null      Null  1}
+  {Le                0x2c    3     0 2 1 Null      Null  1}
+  {Lt                0x2d    3     0 2 1 Null      Null  1}
+  {Ne                0x2e    3     0 2 1 Null      Null  1}
+  {Skip              0x2f    3     1 0 0 S16       Null  1}
+  {Lit0              0x30    3     0 0 0 Null      Null  1}
+  {Lit1              0x31    3     0 0 0 Null      Null  1}
+  {Lit2              0x32    3     0 0 0 Null      Null  1}
+  {Lit3              0x33    3     0 0 0 Null      Null  1}
+  {Lit4              0x34    3     0 0 0 Null      Null  1}
+  {Lit5              0x35    3     0 0 0 Null      Null  1}
+  {Lit6              0x36    3     0 0 0 Null      Null  1}
+  {Lit7              0x37    3     0 0 0 Null      Null  1}
+  {Lit8              0x38    3     0 0 0 Null      Null  1}
+  {Lit9              0x39    3     0 0 0 Null      Null  1}
+  {Lit10             0x3a    3     0 0 0 Null      Null  1}
+  {Lit11             0x3b    3     0 0 0 Null      Null  1}
+  {Lit12             0x3c    3     0 0 0 Null      Null  1}
+  {Lit13             0x3d    3     0 0 0 Null      Null  1}
+  {Lit14             0x3e    3     0 0 0 Null      Null  1}
+  {Lit15             0x3f    3     0 0 0 Null      Null  1}
+  {Lit16             0x40    3     0 0 0 Null      Null  1}
+  {Lit17             0x41    3     0 0 0 Null      Null  1}
+  {Lit18             0x42    3     0 0 0 Null      Null  1}
+  {Lit19             0x43    3     0 0 0 Null      Null  1}
+  {Lit20             0x44    3     0 0 0 Null      Null  1}
+  {Lit21             0x45    3     0 0 0 Null      Null  1}
+  {Lit22             0x46    3     0 0 0 Null      Null  1}
+  {Lit23             0x47    3     0 0 0 Null      Null  1}
+  {Lit24             0x48    3     0 0 0 Null      Null  1}
+  {Lit25             0x49    3     0 0 0 Null      Null  1}
+  {Lit26             0x4a    3     0 0 0 Null      Null  1}
+  {Lit27             0x4b    3     0 0 0 Null      Null  1}
+  {Lit28             0x4c    3     0 0 0 Null      Null  1}
+  {Lit29             0x4d    3     0 0 0 Null      Null  1}
+  {Lit30             0x4e    3     0 0 0 Null      Null  1}
+  {Lit31             0x4f    3     0 0 0 Null      Null  1}
+  {Reg0              0x50    3     0 0 1 Null      Null  1}
+  {Reg1              0x51    3     0 0 1 Null      Null  1}
+  {Reg2              0x52    3     0 0 1 Null      Null  1}
+  {Reg3              0x53    3     0 0 1 Null      Null  1}
+  {Reg4              0x54    3     0 0 1 Null      Null  1}
+  {Reg5              0x55    3     0 0 1 Null      Null  1}
+  {Reg6              0x56    3     0 0 1 Null      Null  1}
+  {Reg7              0x57    3     0 0 1 Null      Null  1}
+  {Reg8              0x58    3     0 0 1 Null      Null  1}
+  {Reg9              0x59    3     0 0 1 Null      Null  1}
+  {Reg10             0x5a    3     0 0 1 Null      Null  1}
+  {Reg11             0x5b    3     0 0 1 Null      Null  1}
+  {Reg12             0x5c    3     0 0 1 Null      Null  1}
+  {Reg13             0x5d    3     0 0 1 Null      Null  1}
+  {Reg14             0x5e    3     0 0 1 Null      Null  1}
+  {Reg15             0x5f    3     0 0 1 Null      Null  1}
+  {Reg16             0x60    3     0 0 1 Null      Null  1}
+  {Reg17             0x61    3     0 0 1 Null      Null  1}
+  {Reg18             0x62    3     0 0 1 Null      Null  1}
+  {Reg19             0x63    3     0 0 1 Null      Null  1}
+  {Reg20             0x64    3     0 0 1 Null      Null  1}
+  {Reg21             0x65    3     0 0 1 Null      Null  1}
+  {Reg22             0x66    3     0 0 1 Null      Null  1}
+  {Reg23             0x67    3     0 0 1 Null      Null  1}
+  {Reg24             0x68    3     0 0 1 Null      Null  1}
+  {Reg25             0x69    3     0 0 1 Null      Null  1}
+  {Reg26             0x6a    3     0 0 1 Null      Null  1}
+  {Reg27             0x6b    3     0 0 1 Null      Null  1}
+  {Reg28             0x6c    3     0 0 1 Null      Null  1}
+  {Reg29             0x6d    3     0 0 1 Null      Null  1}
+  {Reg30             0x6e    3     0 0 1 Null      Null  1}
+  {Reg31             0x6f    3     0 0 1 Null      Null  1}
+  {BReg0             0x70    3     1 0 1 SLEB128   Null  1}
+  {BReg1             0x71    3     1 0 1 SLEB128   Null  1}
+  {BReg2             0x72    3     1 0 1 SLEB128   Null  1}
+  {BReg3             0x73    3     1 0 1 SLEB128   Null  1}
+  {BReg4             0x74    3     1 0 1 SLEB128   Null  1}
+  {BReg5             0x75    3     1 0 1 SLEB128   Null  1}
+  {BReg6             0x76    3     1 0 1 SLEB128   Null  1}
+  {BReg7             0x77    3     1 0 1 SLEB128   Null  1}
+  {BReg8             0x78    3     1 0 1 SLEB128   Null  1}
+  {BReg9             0x79    3     1 0 1 SLEB128   Null  1}
+  {BReg10            0x7a    3     1 0 1 SLEB128   Null  1}
+  {BReg11            0x7b    3     1 0 1 SLEB128   Null  1}
+  {BReg12            0x7c    3     1 0 1 SLEB128   Null  1}
+  {BReg13            0x7d    3     1 0 1 SLEB128   Null  1}
+  {BReg14            0x7e    3     1 0 1 SLEB128   Null  1}
+  {BReg15            0x7f    3     1 0 1 SLEB128   Null  1}
+  {BReg16            0x80    3     1 0 1 SLEB128   Null  1}
+  {BReg17            0x81    3     1 0 1 SLEB128   Null  1}
+  {BReg18            0x82    3     1 0 1 SLEB128   Null  1}
+  {BReg19            0x83    3     1 0 1 SLEB128   Null  1}
+  {BReg20            0x84    3     1 0 1 SLEB128   Null  1}
+  {BReg21            0x85    3     1 0 1 SLEB128   Null  1}
+  {BReg22            0x86    3     1 0 1 SLEB128   Null  1}
+  {BReg23            0x87    3     1 0 1 SLEB128   Null  1}
+  {BReg24            0x88    3     1 0 1 SLEB128   Null  1}
+  {BReg25            0x89    3     1 0 1 SLEB128   Null  1}
+  {BReg26            0x8a    3     1 0 1 SLEB128   Null  1}
+  {BReg27            0x8b    3     1 0 1 SLEB128   Null  1}
+  {BReg28            0x8c    3     1 0 1 SLEB128   Null  1}
+  {BReg29            0x8d    3     1 0 1 SLEB128   Null  1}
+  {BReg30            0x8e    3     1 0 1 SLEB128   Null  1}
+  {BReg31            0x8f    3     1 0 1 SLEB128   Null  1}
+  {RegX              0x90    3     1 0 1 ULEB128   Null  1}
+  {FBReg             0x91    3     1 0 1 SLEB128   Null  1}
+  {BRegX             0x92    3     2 0 1 ULEB128   SLEB128  1}
+  {Piece             0x93    3     1 0 0 ULEB128   Null  1}
+  {DerefSize         0x94    3     1 1 1 U8        Null  1}
+  {XDerefSize        0x95    3     1 2 1 U8        Null  1}
+  {Nop               0x96    3     0 0 0 Null      Null  1}
+  {PushObjectAddress 0x97    3     0 0 1 Null      Null  0}
+  {Call2             0x98    3     1 0 0 U16       Null  0}
+  {Call4             0x99    3     1 0 0 U32       Null  0}
+  {CallRef           0x9a    3     1 0 0 DwarfUInt Null  0}
+  {FormTlsAddress    0x9b    3     0 0 1 Null      Null  1}
+  {CallFrameCfa      0x9c    3     0 0 1 Null      Null  0}
+  {BitPiece          0x9d    3     2 0 0 ULEB128   ULEB128  1}
+  
+  //- rjf: version 4 opcodes
+  {ImplicitValue 0x9e   4   2 0 1 Block Null  1}
+  {StackValue    0x9f   4   0 0 0 Null  Null  1}
+  
+  //- rjf: version 5 opcodes
+  {ImplicitPointer 0xa0  5    2 0 1 DwarfUInt SLEB128  1}
+  {Addrx           0xa1  5    1 0 1 ULEB128   Null  0}
+  {Constx          0xa2  5    1 0 1 ULEB128   Null  0}
+  {EntryValue      0xa3  5    1 0 0 Block     Null  1}
+  {ConstType       0xa4  5    2 0 1 ULEB128   Block  0}
+  {RegvalType      0xa5  5    2 0 1 ULEB128   ULEB128  0}
+  {DerefType       0xa6  5    2 1 1 U8        ULEB128  0}
+  {XDerefType      0xa7  5    2 2 1 U8        ULEB128  1}
+  {Convert         0xa8  5    1 1 1 ULEB128   Null  0}
+  {Reinterpret     0xa9  5    1 1 1 ULEB128   Null  0}
+}
+
+@enum(U8) DW_ExprOp:
+{
+  @expand(DW_ExprOpTable a) `$(a.name) = $(a.code)`
+}
+
+@xlist DW_ExprOp_XList:
+{
+  @expand(DW_ExprOpTable a) `$(a.name), $(a.code), $(a.version), $(a.operand_count), $(a.pop_count), $(a.push_count), $(a.operand_type_0), $(a.operand_type_1), $(a.valid_for_cfa_exprs)`
+}
+
+@table(name  code  operand_count  pop_count  push_count  operand_type_0  operand_type_1  valid_for_cfa_exprs)
+DW_GNU_ExprOpTable:
+{
+  {PushTlsAddress  0xe0   0 0 1 Null      Null  1}
+  {UnInit          0xf0   0 0 0 Null      Null  1}
+  {ImplicitPointer 0xf2   2 0 1 DwarfUInt SLEB128  1}
+  {EntryValue      0xf3   1 0 0 Block     Null  1}
+  {ConstType       0xf4   2 0 1 ULEB128   Block  1}
+  {RegvalType      0xf5   2 0 1 ULEB128   ULEB128  1}
+  {DerefType       0xf6   2 1 1 U8        ULEB128  1}
+  {Convert         0xf7   1 1 1 ULEB128   Null  1}
+  {ParameterRef    0xfa   1 0 0 U32       Null  1}
+  {AddrIndex       0xfb   0 0 1 Null      Null  1}
+  {ConstIndex      0xfc   1 0 1 ULEB128   Null  1}
+}
+
+@enum(U8) DW_GNU_ExprOp:
+{
+  @expand(DW_GNU_ExprOpTable a) `$(a.name) = $(a.code)`
+}
+
+@xlist DW_GNU_ExprOp_XList:
+{
+  @expand(DW_GNU_ExprOpTable a) `$(a.name), $(a.code), $(a.operand_count), $(a.pop_count), $(a.push_count), $(a.operand_type_0), $(a.operand_type_1), $(a.valid_for_cfa_exprs)`
+}
+
+////////////////////////////////
+//~ rjf: Registers (General)
+
+@gen(types)
+{
+  `typedef U8 DW_RegCode;`
+}
+
+////////////////////////////////
+//~ rjf: Registers (x64)
+
+@table(name code byte_size)
+DW_RegCodeTableX64:
+{
+  {rax        0         8}
+  {rdx        1         8}
+  {rcx        2         8}
+  {rbx        3         8}
+  {rsi        4         8}
+  {rdi        5         8}
+  {rbp        6         8}
+  {rsp        7         8}
+  {r8         8         8}
+  {r9         9         8}
+  {r10        10        8}
+  {r11        11        8}
+  {r12        12        8}
+  {r13        13        8}
+  {r14        14        8}
+  {r15        15        8}
+  {rip        16        8}
+  {zmm0       17        16}
+  {zmm1       18        16}
+  {zmm2       19        16}
+  {zmm3       20        16}
+  {zmm4       21        16}
+  {zmm5       22        16}
+  {zmm6       23        16}
+  {zmm7       24        16}
+  {zmm8       25        16}
+  {zmm9       26        16}
+  {zmm10      27        16}
+  {zmm11      28        16}
+  {zmm12      29        16}
+  {zmm13      30        16}
+  {zmm14      31        16}
+  {zmm15      32        16}
+  {st0        33        10}
+  {st1        34        10}
+  {st2        35        10}
+  {st3        36        10}
+  {st4        37        10}
+  {st5        38        10}
+  {st6        39        10}
+  {st7        40        10}
+  {mm0        41        8}
+  {mm1        42        8}
+  {mm2        43        8}
+  {mm3        44        8}
+  {mm4        45        8}
+  {mm5        46        8}
+  {mm6        47        8}
+  {mm7        48        8}
+  {rflags     49        4}
+  {es         50        2}
+  {cs         51        2}
+  {ss         52        2}
+  {ds         53        2}
+  {fs         54        2}
+  {gs         55        2}
+  {fsbase     58        8}
+  {gsbase     59        8}
+  {zmm16      67        16}
+  {zmm17      68        16}
+  {zmm18      69        16}
+  {zmm19      70        16}
+  {zmm20      71        16}
+  {zmm21      72        16}
+  {zmm22      73        16}
+  {zmm23      74        16}
+  {zmm24      75        16}
+  {zmm25      76        16}
+  {zmm26      77        16}
+  {zmm27      78        16}
+  {zmm28      79        16}
+  {zmm29      80        16}
+  {zmm30      81        16}
+  {zmm31      82        16}
+  // privileged registers:
+  // {Tr      62  ???}
+  // {Ldtr    63  ???}
+}
+
+@enum DW_RegCodeX64:
+{
+  @expand(DW_RegCodeTableX64 a) `$(a.name) = $(a.code)`,
+  LAST,
+}

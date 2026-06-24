@@ -92,13 +92,8 @@ coff_read_symbol_name(String8 string_table, COFF_SymbolName *name)
   if (name->long_name.zeroes == 0) {
     str8_deserial_read_cstr(string_table, name->long_name.string_table_offset, &name_str);
   } else {
-    U32 i;
-    for (i = 0; i < sizeof(name->short_name); ++i) {
-      if (name->short_name[i] == '\0') {
-        break;
-      }
-    }
-    name_str = str8(name->short_name, i);
+    U32 name_size = idx_of_zero_byte64(name->short_name, sizeof(name->short_name));
+    name_str = str8(name->short_name, name_size);
   }
   return name_str;
 }
@@ -453,6 +448,21 @@ arch_from_coff_machine(COFF_MachineType machine)
     case COFF_MachineType_Arm64: result = Arch_arm64; break;
   }
   return result;
+}
+
+internal COFF_MachineType
+coff_machine_from_arch(Arch arch)
+{
+  COFF_MachineType machine = COFF_MachineType_Unknown;
+  switch (arch) {
+  case Arch_Null:  machine = COFF_MachineType_Unknown; break;
+  case Arch_x86:   machine = COFF_MachineType_X86;     break;
+  case Arch_x64:   machine = COFF_MachineType_X64;     break;
+  case Arch_arm64: machine = COFF_MachineType_Arm64;   break;
+  case Arch_arm32: machine = COFF_MachineType_Arm;     break;
+  default: InvalidPath; break;
+  }
+  return machine;
 }
 
 internal U64

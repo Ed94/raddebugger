@@ -3,6 +3,13 @@
 
 #pragma once
 
+// entry points
+typedef enum
+{
+  LNK_BootMode_Linker,
+  LNK_BootMode_TypeServer,
+} LNK_BootMode;
+
 #if OS_WINDOWS
 # define LNK_MANIFEST_MERGE_TOOL_NAME "mt.exe"
 #elif OS_LINUX || OS_MAC
@@ -42,23 +49,23 @@ typedef enum
   LNK_CmdSwitch_DefaultLib,
   LNK_CmdSwitch_Delay,
   LNK_CmdSwitch_DelayLoad,
+  LNK_CmdSwitch_DisallowLib,
   LNK_CmdSwitch_Dll,
   LNK_CmdSwitch_DynamicBase,
-  LNK_CmdSwitch_Dump,
-  LNK_CmdSwitch_D2,
   LNK_CmdSwitch_Entry,
-  LNK_CmdSwitch_ErrorReport,
   LNK_CmdSwitch_Export,
-  LNK_CmdSwitch_FastFail,
+  LNK_CmdSwitch_FailIfMismatch,
   LNK_CmdSwitch_FileAlign,
   LNK_CmdSwitch_Fixed,
+  LNK_CmdSwitch_Force,
   LNK_CmdSwitch_FunctionPadMin,
   LNK_CmdSwitch_Heap,
   LNK_CmdSwitch_HighEntropyVa,
   LNK_CmdSwitch_Ignore,
   LNK_CmdSwitch_ImpLib,
   LNK_CmdSwitch_Include,
-  LNK_CmdSwitch_Incremental,
+  LNK_CmdSwitch_InferAsanLibs,
+  LNK_CmdSwitch_InferAsanLibsNo,
   LNK_CmdSwitch_LargeAddressAware,
   LNK_CmdSwitch_Lib,
   LNK_CmdSwitch_LibPath,
@@ -73,87 +80,28 @@ typedef enum
   LNK_CmdSwitch_NoDefaultLib,
   LNK_CmdSwitch_NoExp,
   LNK_CmdSwitch_NoImpLib,
-  LNK_CmdSwitch_NoLogo,
   LNK_CmdSwitch_NxCompat,
   LNK_CmdSwitch_Opt,
   LNK_CmdSwitch_Out,
   LNK_CmdSwitch_Pdb,
   LNK_CmdSwitch_PdbAltPath,
   LNK_CmdSwitch_PdbPageSize,
+  LNK_CmdSwitch_PdbStripped,
+  LNK_CmdSwitch_Release,
   LNK_CmdSwitch_Stack,
   LNK_CmdSwitch_SubSystem,
   LNK_CmdSwitch_Time,
   LNK_CmdSwitch_TsAware,
-
-  // -- NOT Implemented:
-
-  LNK_CmdSwitch_AssemblyDebug,
-  LNK_CmdSwitch_AssemblyLinkResource,
-  LNK_CmdSwitch_AssemblyModule,
-  LNK_CmdSwitch_AssemblyResource,
-  LNK_CmdSwitch_ClrImageType,
-  LNK_CmdSwitch_ClrLoaderOptimization,
-  LNK_CmdSwitch_ClrSupportLastError,
-  LNK_CmdSwitch_ClrThreadAttribute,
-  LNK_CmdSwitch_ClrRunManagedCodeCheck,
-  LNK_CmdSwitch_ClrUnmanagedCheck,
-  LNK_CmdSwitch_Def,
-  LNK_CmdSwitch_DelaySign,
-  LNK_CmdSwitch_DependentLoadFlag,
-  LNK_CmdSwitch_Driver,
-  LNK_CmdSwitch_DisallowLib,
-  LNK_CmdSwitch_EditAndContinue,
-  LNK_CmdSwitch_EmitVolatileMetadata,
-  LNK_CmdSwitch_ExportAdmin,
-  LNK_CmdSwitch_FastGenProfile,
-  LNK_CmdSwitch_FailIfMismatch,
-  LNK_CmdSwitch_Force,
-  LNK_CmdSwitch_Guard,
-  LNK_CmdSwitch_GuardSym,
-  LNK_CmdSwitch_GenProfile,
-  LNK_CmdSwitch_IdlOut,
-  LNK_CmdSwitch_IgnoreIdl,
-  LNK_CmdSwitch_Ilk,
-  LNK_CmdSwitch_IntegrityCheck,
-  LNK_CmdSwitch_InferAsanLibs,
-  LNK_CmdSwitch_InferAsanLibsNo,
-  LNK_CmdSwitch_Kernel,
-  LNK_CmdSwitch_KeyContainer,
-  LNK_CmdSwitch_KeyFile,
-  LNK_CmdSwitch_LinkerRepro,
-  LNK_CmdSwitch_LinkerReproTarget,
-  LNK_CmdSwitch_Ltcg,
-  LNK_CmdSwitch_LtcgOut,
-  LNK_CmdSwitch_Map,
-  LNK_CmdSwitch_MapInfo,
-  LNK_CmdSwitch_Midl,
-  LNK_CmdSwitch_NoAssembly,
-  LNK_CmdSwitch_NoEntry,
-  LNK_CmdSwitch_Order,
-  LNK_CmdSwitch_PdbStripped,
-  LNK_CmdSwitch_Profile,
-  LNK_CmdSwitch_Release,
-  LNK_CmdSwitch_SafeSeh,
-  LNK_CmdSwitch_Section,
-  LNK_CmdSwitch_SourceLink,
-  LNK_CmdSwitch_Stub,
-  LNK_CmdSwitch_SwapRun,
-  LNK_CmdSwitch_TlbId,
-  LNK_CmdSwitch_ThrowingNew,
-  LNK_CmdSwitch_UserProfile,
-  LNK_CmdSwitch_Verbose,
   LNK_CmdSwitch_Version,
-  LNK_CmdSwitch_Winmd,
-  LNK_CmdSwitch_WinmdDelaySign,
-  LNK_CmdSwitch_WinmdKeyContainer,
-  LNK_CmdSwitch_WinmdKeyFile,
   LNK_CmdSwitch_WholeArchive,
-  LNK_CmdSwitch_Wx,
 
   LNK_CmdSwitch_Rad_Age,
-  LNK_CmdSwitch_Rad_AltPchDir,
+  LNK_CmdSwitch_Rad_BootMode,
+  LNK_CmdSwitch_Rad_BuildExp,
+  LNK_CmdSwitch_Rad_BuildImpLib,
   LNK_CmdSwitch_Rad_BuildInfo,
   LNK_CmdSwitch_Rad_CheckUnusedDelayLoadDll,
+  LNK_CmdSwitch_Rad_DataDirCount,
   LNK_CmdSwitch_Rad_Debug,
   LNK_CmdSwitch_Rad_DebugAltPath,
   LNK_CmdSwitch_Rad_DebugName,
@@ -162,6 +110,8 @@ typedef enum
   LNK_CmdSwitch_Rad_EnvLib,
   LNK_CmdSwitch_Rad_Exe,
   LNK_CmdSwitch_Rad_Guid,
+  LNK_CmdSwitch_Rad_Ignore,
+  LNK_CmdSwitch_Rad_ImageAltPath,
   LNK_CmdSwitch_Rad_LargePages,
   LNK_CmdSwitch_Rad_LinkVer, 
   LNK_CmdSwitch_Rad_Log,
@@ -169,6 +119,7 @@ typedef enum
   LNK_CmdSwitch_Rad_Map,
   LNK_CmdSwitch_Rad_MapLinesForUnresolvedSymbols,
   LNK_CmdSwitch_Rad_MemoryMapFiles,
+  LNK_CmdSwitch_Rad_Mode,
   LNK_CmdSwitch_Rad_MtPath,
   LNK_CmdSwitch_Rad_OsVer,
   LNK_CmdSwitch_Rad_PageSize,
@@ -179,14 +130,18 @@ typedef enum
   LNK_CmdSwitch_Rad_RemoveSection,
   LNK_CmdSwitch_Rad_SharedThreadPool,
   LNK_CmdSwitch_Rad_SharedThreadPoolMaxWorkers,
-  LNK_CmdSwitch_Rad_SuppressError,
-  LNK_CmdSwitch_Rad_TargetOs,
+  LNK_CmdSwitch_Rad_SortImports,
   LNK_CmdSwitch_Rad_TimeStamp,
+  LNK_CmdSwitch_Rad_TypeHashAlg,
   LNK_CmdSwitch_Rad_UnresolvedSymbolLimit,
   LNK_CmdSwitch_Rad_UnresolvedSymbolRefLimit,
   LNK_CmdSwitch_Rad_Version,
+  LNK_CmdSwitch_Rad_WorkDir,
   LNK_CmdSwitch_Rad_Workers,
   LNK_CmdSwitch_Rad_WriteTempFiles,
+
+  LNK_CmdSwitch_RadTypeServer,
+  LNK_CmdSwitch_RadTypeServer_MatchObj,
 
   LNK_CmdSwitch_Help,
 
@@ -209,6 +164,7 @@ typedef enum
   LNK_Input_Lib,
   LNK_Input_Res,
   LNK_Input_Manifest,
+  LNK_Input_RRT,
   LNK_Input_Count
 } LNK_InputType;
 
@@ -323,11 +279,14 @@ typedef enum
   LNK_TypeNameHashMode_Full,
 } LNK_TypeNameHashMode;
 
+
 typedef struct LNK_Config
 {
   Arena                      *arena;
+  LNK_BootMode                boot_mode;
   LNK_ConfigFlags             flags;
   LNK_DebugMode               debug_mode;
+  B32                         ghash;
   LNK_SwitchState             opt_ref;
   LNK_SwitchState             opt_icf;
   LNK_SwitchState             opt_lbr;
@@ -357,10 +316,10 @@ typedef struct LNK_Config
   U64                         function_pad_min;
   U64                        *manifest_resource_id;
   B32                         no_default_libs;
+  LNK_SwitchState             infer_asan_libs;
   Version                     link_ver;
   Version                     os_ver;
   Version                     image_ver;
-  OperatingSystem             target_os;
   COFF_MachineType            machine;
   PE_WindowsSubsystem         subsystem;
   Version                     subsystem_ver;
@@ -371,11 +330,13 @@ typedef struct LNK_Config
   PathStyle                   path_style;
   LNK_ManifestOpt             manifest_opt;
   String8                     work_dir;
-  String8                     image_name;
+  String8                     out_path;
+  String8                     image_alt_path;
   String8                     imp_lib_name;
   String8List                 raw_cmd_line;
   String8                     pdb_name;
   String8                     pdb_alt_path;
+  String8                     pdb_stripped_name;
   String8                     mt_path;
   LNK_TypeNameHashMode        pdb_hash_type_names;
   String8                     pdb_hash_type_name_map;
@@ -403,22 +364,29 @@ typedef struct LNK_Config
   B32                         build_imp_lib;
   B32                         build_exp;
   LNK_SwitchState             write_temp_files;
-  String8                     temp_image_name;
+  String8                     temp_out_path;
   String8                     temp_pdb_name;
   String8                     temp_rad_debug_name;
   String8                     temp_rad_chunk_map_name;
+  String8                     temp_type_server_name;
   String8                     delay_load_helper_name;
   String8List                 remove_sections;
   LNK_IO_Flags                io_flags;
-  HashTable                  *export_ht;
-  HashTable                  *alt_name_ht;
-  HashTable                  *include_symbol_ht;
-  HashTable                  *delay_load_ht;
-  HashTable                  *disallow_lib_ht;
+  HashMap                     export_ht;
+  HashMap                     alt_name_ht;
+  HashMap                     include_symbol_ht;
+  HashMap                     delay_load_ht;
+  HashMap                     disallow_lib_ht;
+  HashMap                     fail_if_mismatch_ht;
+  HashMap                     whole_archive_ht;
+  B32                         whole_archive_all;
   U64                         unresolved_symbol_limit;
   U64                         unresolved_symbol_ref_limit;
   LNK_SwitchState             map_lines_for_unresolved_symbols;
-  String8List                 alt_pch_dirs;
+  LLVM_GHashAlg               type_hash_alg;
+  String8                     type_server_name;
+  LNK_SwitchState             type_server;
+  LNK_SwitchState             sort_imports;
 } LNK_Config;
 
 // --- MSVC Error Codes --------------------------------------------------------
@@ -557,12 +525,8 @@ internal LNK_InputType        lnk_input_type_from_string(String8 string);
 internal LNK_DebugMode        lnk_debug_mode_from_string(String8 string);
 internal LNK_TypeNameHashMode lnk_type_name_hash_mode_from_string(String8 string);
 
-// --- Command Line Helpers ----------------------------------------------------
-
-internal LNK_CmdOption * lnk_cmd_line_push_option_if_not_presentf(Arena *arena, LNK_CmdLine *cmd_line, LNK_CmdSwitchType cmd_switch_type, char *param_fmt, ...);
-internal LNK_CmdOption * lnk_cmd_line_push_optionf               (Arena *arena, LNK_CmdLine *cmd_line, LNK_CmdSwitchType cmd_switch_type, char *param_fmt, ...);
-
-internal B32 lnk_cmd_line_has_switch(LNK_CmdLine cmd_line, LNK_CmdSwitchType cmd_switch_type);
+internal String8List lnk_cmd_line_values_from_switch(Arena *arena, LNK_CmdLine cmd_line, LNK_CmdSwitchType cmd_switch_type);
+internal B32         lnk_cmd_line_has_switch        (LNK_CmdLine cmd_line, LNK_CmdSwitchType cmd_switch_type);
 
 // --- Errors ------------------------------------------------------------------
 
@@ -596,6 +560,7 @@ internal LNK_MergeDirectiveNode * lnk_merge_directive_list_push(Arena *arena, LN
 // --- Getters -----------------------------------------------------------------
 
 internal String8 lnk_get_image_name               (LNK_Config *config);
+internal String8 lnk_get_pdb_name                 (LNK_Config *config);
 internal U64     lnk_get_default_function_pad_min (COFF_MachineType machine);
 internal U64     lnk_get_base_addr                (LNK_Config *config);
 internal Version lnk_get_default_subsystem_version(PE_WindowsSubsystem subsystem, COFF_MachineType machine);
@@ -612,9 +577,12 @@ internal B32     lnk_is_lib_disallowed(LNK_Config *config, String8 path);
 
 internal void lnk_include_symbol(LNK_Config *config, String8 name, struct LNK_Obj *obj);
 
+internal void lnk_whole_archive(LNK_Config *config, String8 lib_name);
+
 // --- Config ------------------------------------------------------------------
 
 internal void lnk_apply_cmd_option_to_config(LNK_Config *config, String8 name, String8List value_list, struct LNK_Obj *obj);
+internal void lnk_config_pushf(LNK_Config *config, char *fmt, ...);
 
-internal LNK_Config * lnk_config_from_cmd_line(String8List raw_cmd_line, LNK_CmdLine cmd_line);
+internal LNK_Config * lnk_config_init(LNK_CmdLine cmd_line);
 

@@ -41,6 +41,7 @@ RD_RegSlot_UIKey,
 RD_RegSlot_SrcUIKey,
 RD_RegSlot_OffPx,
 RD_RegSlot_RegSlot,
+RD_RegSlot_CtxExpr,
 RD_RegSlot_PID,
 RD_RegSlot_ForceConfirm,
 RD_RegSlot_ForceFocus,
@@ -51,10 +52,14 @@ RD_RegSlot_DoLister,
 RD_RegSlot_DoBigRows,
 RD_RegSlot_AllWindows,
 RD_RegSlot_NonGraphical,
+RD_RegSlot_PreferNewTab,
+RD_RegSlot_ActivateWithSingleClick,
+RD_RegSlot_DisableAddresses,
+RD_RegSlot_SmallSize,
 RD_RegSlot_Dir2,
 RD_RegSlot_String,
 RD_RegSlot_CmdName,
-RD_RegSlot_OSEvent,
+RD_RegSlot_WMEvent,
 RD_RegSlot_COUNT,
 } RD_RegSlot;
 
@@ -72,10 +77,12 @@ RD_CmdKind_StepOverInst,
 RD_CmdKind_StepIntoLine,
 RD_CmdKind_StepOverLine,
 RD_CmdKind_StepOut,
+RD_CmdKind_StepToExit,
 RD_CmdKind_Halt,
 RD_CmdKind_SoftHaltRefresh,
 RD_CmdKind_SetThreadIP,
 RD_CmdKind_RunToLine,
+RD_CmdKind_RunToName,
 RD_CmdKind_Run,
 RD_CmdKind_Restart,
 RD_CmdKind_StepInto,
@@ -92,12 +99,17 @@ RD_CmdKind_FreezeEntity,
 RD_CmdKind_ThawEntity,
 RD_CmdKind_SetEntityColor,
 RD_CmdKind_SetEntityName,
+RD_CmdKind_DownloadModuleDebugInfo,
 RD_CmdKind_Attach,
+RD_CmdKind_OpenCrashDump,
 RD_CmdKind_Exit,
 RD_CmdKind_OpenPalette,
 RD_CmdKind_RunCommand,
 RD_CmdKind_RunExternalDriverTextCommand,
-RD_CmdKind_OSEvent,
+RD_CmdKind_State,
+RD_CmdKind_Eval,
+RD_CmdKind_LineFromVAddr,
+RD_CmdKind_WMEvent,
 RD_CmdKind_SelectThread,
 RD_CmdKind_SelectUnwind,
 RD_CmdKind_UpOneFrame,
@@ -153,9 +165,8 @@ RD_CmdKind_TabBarBottom,
 RD_CmdKind_TabSettings,
 RD_CmdKind_SetCurrentPath,
 RD_CmdKind_Open,
-RD_CmdKind_Switch,
+RD_CmdKind_OpenSourceFileFromDebugInfo,
 RD_CmdKind_SwitchToPartnerFile,
-RD_CmdKind_RecordFileInProject,
 RD_CmdKind_ShowFileInExplorer,
 RD_CmdKind_GoToDisassembly,
 RD_CmdKind_GoToSource,
@@ -176,6 +187,7 @@ RD_CmdKind_ProjectSettings,
 RD_CmdKind_Edit,
 RD_CmdKind_Accept,
 RD_CmdKind_Cancel,
+RD_CmdKind_FocusMenu,
 RD_CmdKind_MoveLeft,
 RD_CmdKind_MoveRight,
 RD_CmdKind_MoveUp,
@@ -248,7 +260,6 @@ RD_CmdKind_RemoveBreakpoint,
 RD_CmdKind_EnableBreakpoint,
 RD_CmdKind_DisableBreakpoint,
 RD_CmdKind_ClearBreakpoints,
-RD_CmdKind_ListBreakpoints,
 RD_CmdKind_ClearOutput,
 RD_CmdKind_AddWatchPin,
 RD_CmdKind_ToggleWatchPin,
@@ -270,6 +281,8 @@ RD_CmdKind_DisableTarget,
 RD_CmdKind_RemoveTarget,
 RD_CmdKind_RegisterAsJITDebugger,
 RD_CmdKind_FindCodeLocation,
+RD_CmdKind_GoToMemory,
+RD_CmdKind_BreakWhenValueChanges,
 RD_CmdKind_Search,
 RD_CmdKind_SearchBackwards,
 RD_CmdKind_PickFile,
@@ -441,17 +454,18 @@ typedef struct RD_NameSchemaInfo RD_NameSchemaInfo;
 struct RD_NameSchemaInfo
 {
 String8 name;
+B32 is_view;
 String8 schema;
 };
 
 typedef struct RD_Regs RD_Regs;
 struct RD_Regs
 {
-CTRL_Handle machine;
-CTRL_Handle module;
-CTRL_Handle process;
-CTRL_Handle thread;
-CTRL_Handle ctrl_entity;
+D_Handle machine;
+D_Handle module;
+D_Handle process;
+D_Handle thread;
+D_Handle ctrl_entity;
 CFG_ID window;
 CFG_ID panel;
 CFG_ID tab;
@@ -479,6 +493,7 @@ UI_Key ui_key;
 UI_Key src_ui_key;
 Vec2F32 off_px;
 RD_RegSlot reg_slot;
+String8 ctx_expr;
 U32 pid;
 B32 force_confirm;
 B32 force_focus;
@@ -489,10 +504,14 @@ B32 do_lister;
 B32 do_big_rows;
 B32 all_windows;
 B32 non_graphical;
+B32 prefer_new_tab;
+B32 activate_with_single_click;
+B32 disable_addresses;
+B32 small_size;
 Dir2 dir2;
 String8 string;
 String8 cmd_name;
-OS_Event * os_event;
+WM_Event * wm_event;
 };
 
 typedef struct RD_Query RD_Query;
@@ -501,8 +520,6 @@ struct RD_Query
 RD_QueryFlags flags;
 RD_RegSlot slot;
 String8 expr;
-String8 view_name;
-CTRL_EntityKind ctrl_entity_kind;
 };
 
 typedef struct RD_CmdKindInfo RD_CmdKindInfo;
@@ -511,7 +528,7 @@ struct RD_CmdKindInfo
 String8 string;
 String8 description;
 String8 search_tags;
-String8 ctx_filter;
+String8 filter_tags;
 RD_CmdKindFlags flags;
 RD_Query query;
 };
@@ -577,6 +594,7 @@ Z(getting_started)\
 .src_ui_key = rd_regs()->src_ui_key,\
 .off_px = rd_regs()->off_px,\
 .reg_slot = rd_regs()->reg_slot,\
+.ctx_expr = rd_regs()->ctx_expr,\
 .pid = rd_regs()->pid,\
 .force_confirm = rd_regs()->force_confirm,\
 .force_focus = rd_regs()->force_focus,\
@@ -587,20 +605,24 @@ Z(getting_started)\
 .do_big_rows = rd_regs()->do_big_rows,\
 .all_windows = rd_regs()->all_windows,\
 .non_graphical = rd_regs()->non_graphical,\
+.prefer_new_tab = rd_regs()->prefer_new_tab,\
+.activate_with_single_click = rd_regs()->activate_with_single_click,\
+.disable_addresses = rd_regs()->disable_addresses,\
+.small_size = rd_regs()->small_size,\
 .dir2 = rd_regs()->dir2,\
 .string = rd_regs()->string,\
 .cmd_name = rd_regs()->cmd_name,\
-.os_event = rd_regs()->os_event,\
+.wm_event = rd_regs()->wm_event,\
 
 C_LINKAGE_BEGIN
 extern String8 rd_tab_fast_path_view_name_table[25];
 extern String8 rd_tab_fast_path_query_name_table[25];
-extern RD_VocabInfo rd_vocab_info_table[358];
-extern RD_NameSchemaInfo rd_name_schema_info_table[26];
-extern String8 rd_reg_slot_code_name_table[47];
-extern Rng1U64 rd_reg_slot_range_table[47];
-extern String8 rd_binding_version_remap_old_name_table[8];
-extern String8 rd_binding_version_remap_new_name_table[8];
+extern RD_VocabInfo rd_vocab_info_table[368];
+extern RD_NameSchemaInfo rd_name_schema_info_table[39];
+extern String8 rd_reg_slot_code_name_table[52];
+extern Rng1U64 rd_reg_slot_range_table[52];
+extern String8 rd_binding_version_remap_old_name_table[9];
+extern String8 rd_binding_version_remap_new_name_table[9];
 extern String8 rd_icon_kind_text_table[75];
 extern String8 rd_code_color_slot_name_table[14];
 extern String8 rd_theme_preset_display_string_table[11];

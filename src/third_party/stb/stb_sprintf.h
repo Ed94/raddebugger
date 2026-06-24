@@ -436,7 +436,7 @@ cl = lg;                                 \
         } else
 #endif
         {
-          *(stbsp__uint32 *)bf = v;
+          memory_write32(bf, v);
         }
         bf += 4;
         f += 4;
@@ -631,15 +631,17 @@ cl = lg;                                 \
         dp = 0;
         cs = 0;
       }goto scopy;
-
+      
       case 'm':
       case 'M':
       {
+        stbsp__flush_cb();
+        
         static const U64 one_kib = 1ull * 1024;
         static const U64 one_mib = 1ull * 1024 * 1024;
         static const U64 one_gib = 1ull * 1024 * 1024 * 1024;
         static const U64 one_tib = 1ull * 1024 * 1024 * 1024 * 1024;
-
+        
         U64 size;
         if(f[0] == 'M')
         {
@@ -649,11 +651,11 @@ cl = lg;                                 \
         {
           size = va_arg(va, U32);
         }
-
+        
         U64 lo = 0;
         U64 hi = 0;
         char *units = "";
-
+        
         if(size < one_kib)
         {
           hi = size;
@@ -684,7 +686,7 @@ cl = lg;                                 \
           lo = ((size * 100) / one_tib) % 100;
           units = "TiB";
         }
-
+        
         // format high part
         if(hi > 0)
         {
@@ -705,37 +707,37 @@ cl = lg;                                 \
           *bf = '0';
           ++bf;
         }
-
+        
         // format low part
         if(lo > 0)
         {
           *bf = '.';
           ++bf;
-
+          
           s = num;
           for(U64 n = lo; n > 0; n /= 10ull)
           {
             *s = (char)(n % 10ull) + '0';
             ++s;
           }
-
+          
           U64 lead_zero_count = 3 - (U64)(s-num);
           for(U64 i = 1; i < lead_zero_count; ++i)
           {
             *bf = '0';
             ++bf;
           }
-
+          
           for(S64 i = (S64)(s-num)-1; i >= 0; --i)
           {
             *bf = num[i];
             ++bf;
           }
         }
-
+        
         *bf = ' ';
         ++bf;
-
+        
         // copy units
         for(U64 i = 0; units[i] != 0; ++i)
         {
@@ -743,30 +745,14 @@ cl = lg;                                 \
           ++bf;
         }
       }break;
-
+      
       case 'r':
       {
+        stbsp__flush_cb();
         Rng1U64 range = va_arg(va, Rng1U64);
-        *bf = '['; ++bf;
-
-        U8 buffer[ARENA_HEADER_SIZE + 128];
-        Arena *arena = arena_alloc_(&(ArenaParams){ .flags = ArenaFlag_NoChain, .reserve_size = sizeof(buffer), .commit_size = sizeof(buffer), .optional_backing_buffer = buffer });
-
-        String8 min = str8_from_u64(arena, range.min, 16, 0, 0);
-        MemoryCopy(bf, min.str, min.size);
-        bf += min.size;
-
-        *bf = ','; ++bf;
-        *bf = ' '; ++bf;
-
-        arena_clear(arena);
-        String8 max = str8_from_u64(arena, range.max, 16, 0, 0);
-        MemoryCopy(bf, max.str, max.size);
-        bf += max.size;
-
-        *bf = ')'; ++bf;
+        bf += STB_SPRINTF_DECORATE(sprintf)(bf, "[0x%llx, 0x%llx)", (unsigned long long)range.min, (unsigned long long)range.max);
       }break;
-
+      
       //
       // NOTE(rjf): DEBUGGER PROJECT ADDITION ^^^
       //-

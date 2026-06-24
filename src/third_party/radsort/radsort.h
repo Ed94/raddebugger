@@ -112,8 +112,15 @@ typedef void rs_small_sort_func( void * left, size_t n, size_t element_size, is_
 #define RS_SMALL_FLIP_TO_INSERTION_GT_SIZE sizeof( size_t )
 typedef struct RS_MAX_BUBBLE_BUF { char b[RS_SMALL_FLIP_TO_INSERTION_GT_SIZE]; } RS_MAX_BUBBLE_BUF; 
 
+#if _MSC_VER
+# define radsort_break_ __debugbreak()
+#else
+# define radsort_break_ __builtin_trap()
+#endif
+
 #define radsort( start, len, is_before_func ) \
 do { \
+if (sizeof((start)[0]) > sizeof(RS_MAX_SIMPLE_BUF)) { radsort_break_; } \
 char __rs_tmp[ sizeof( (start)[0] ) ]; \
 radsortinternal( start, len, sizeof( (start)[0] ), \
 is_before_func, \
@@ -431,9 +438,9 @@ RSFORCEINLINE void radsortinternal( void * start, size_t len, size_t element_siz
   if ( len <= 1 )
     return;
   
-#if _DEBUG
+#if BUILD_DEBUG
   if ( element_size > sizeof( RS_MAX_SIMPLE_BUF ) )
-    __debugbreak();
+    radsort_break_;
 #endif
   
   // stack for no recursion

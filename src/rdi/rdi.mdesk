@@ -77,7 +77,7 @@
   "";
   "// \"raddbg\\0\\0\"";
   "#define RDI_MAGIC_CONSTANT   0x0000676264646172";
-  "#define RDI_ENCODING_VERSION 17";
+  "#define RDI_ENCODING_VERSION 23";
   "";
   "////////////////////////////////////////////////////////////////";
   "//~ Format Types & Functions";
@@ -135,50 +135,80 @@ RDI_HeaderMemberTable:
 @table(name  name_lower  element_type  value  index_base_type  desc)
 RDI_SectionTable:
 {
-  {NULL                          null                               RDI_U8              0x0000   -                                              ""}
-  {TopLevelInfo                  top_level_info                     RDI_TopLevelInfo    0x0001   -                                              ""}
-  {StringData                    string_data                        RDI_U8              0x0002   -                                              ""}
-  {StringTable                   string_table                       RDI_U32             0x0003   U32                                            ""}
-  {IndexRuns                     index_runs                         RDI_U32             0x0004   U32                                            ""}
-  {BinarySections                binary_sections                    RDI_BinarySection   0x0005   U32                                            ""}
-  {FilePathNodes                 file_path_nodes                    RDI_FilePathNode    0x0006   U32                                            ""}
-  {SourceFiles                   source_files                       RDI_SourceFile      0x0007   U32                                            ""}
-  {LineTables                    line_tables                        RDI_LineTable       0x0008   U32                                            ""}
-  {LineInfoVOffs                 line_info_voffs                    RDI_U64             0x0009   U32                                            ""}
-  {LineInfoLines                 line_info_lines                    RDI_Line            0x000A   U32                                            ""}
-  {LineInfoColumns               line_info_columns                  RDI_Column          0x000B   U32                                            ""}
-  {SourceLineMaps                source_line_maps                   RDI_SourceLineMap   0x000C   U32                                            ""}
-  {SourceLineMapNumbers          source_line_map_numbers            RDI_U32             0x000D   U32                                            ""}
-  {SourceLineMapRanges           source_line_map_ranges             RDI_U32             0x000E   U32                                            ""}
-  {SourceLineMapVOffs            source_line_map_voffs              RDI_U64             0x000F   U32                                            ""}
-  {Units                         units                              RDI_Unit            0x0010   U32                                            ""}
-  {UnitVMap                      unit_vmap                          RDI_VMapEntry       0x0011   -                                              ""}
-  {TypeNodes                     type_nodes                         RDI_TypeNode        0x0012   U32                                            ""}
-  {UDTs                          udts                               RDI_UDT             0x0013   U32                                            ""}
-  {Members                       members                            RDI_Member          0x0014   U32                                            ""}
-  {EnumMembers                   enum_members                       RDI_EnumMember      0x0015   U32                                            ""}
-  {GlobalVariables               global_variables                   RDI_GlobalVariable  0x0016   U32                                            ""}
-  {GlobalVMap                    global_vmap                        RDI_VMapEntry       0x0017   -                                              ""}
-  {ThreadVariables               thread_variables                   RDI_ThreadVariable  0x0018   U32                                            ""}
-  {Constants                     constants                          RDI_Constant        0x0019   U32                                            ""}
-  {Procedures                    procedures                         RDI_Procedure       0x001A   U32                                            ""}
-  {Scopes                        scopes                             RDI_Scope           0x001B   U32                                            ""}
-  {ScopeVOffData                 scope_voff_data                    RDI_U64             0x001C   U32                                            ""}
-  {ScopeVMap                     scope_vmap                         RDI_VMapEntry       0x001D   -                                              ""}
-  {InlineSites                   inline_sites                       RDI_InlineSite      0x001E   U32                                            ""}
-  {Locals                        locals                             RDI_Local           0x001F   U32                                            ""}
-  {LocationBlocks                location_blocks                    RDI_LocationBlock   0x0020   U32                                            ""}
-  {LocationData                  location_data                      RDI_U8              0x0021   U32                                            ""}
-  {ConstantValueData             constant_value_data                RDI_U8              0x0022   U32                                            ""}
-  {ConstantValueTable            constant_value_table               RDI_U32             0x0023   U32                                            ""}
-  {MD5Checksums                  md5_checksums                      RDI_MD5             0x0024   U32                                            ""}
-  {SHA1Checksums                 sha1_checksums                     RDI_SHA1            0x0025   U32                                            ""}
-  {SHA256Checksums               sha256_checksums                   RDI_SHA256          0x0026   U32                                            ""}
-  {Timestamps                    timestamps                         RDI_U64             0x0027   U32                                            ""}
-  {NameMaps                      name_maps                          RDI_NameMap         0x0028   U32                                            ""}
-  {NameMapBuckets                name_map_buckets                   RDI_NameMapBucket   0x0029   U32                                            ""}
-  {NameMapNodes                  name_map_nodes                     RDI_NameMapNode     0x002A   U32                                            ""}
-  {COUNT                         count                              RDI_U8              0x002B   -                                              ""}
+  {NULL                          null                               RDI_U8                   0x0000   -                                              ""}
+  
+  //- rjf: top-level-info
+  {TopLevelInfo                  top_level_info                     RDI_TopLevelInfo         0x0001   -                                              ""}
+  
+  //- rjf: strings
+  {StringData                    string_data                        RDI_U8                   0x0002   -                                              ""}
+  {StringTable                   string_table                       RDI_U32                  0x0003   U32                                            ""}
+  
+  //- rjf: index runs
+  {IndexRuns                     index_runs                         RDI_U32                  0x0004   U32                                            ""}
+  
+  //- rjf: binary sections
+  {BinarySections                binary_sections                    RDI_BinarySection        0x0005   U32                                            ""}
+  
+  //- rjf: filesystem / source files
+  {FilePathNodes                 file_path_nodes                    RDI_FilePathNode         0x0006   U32                                            ""}
+  {SourceFiles                   source_files                       RDI_SourceFile           0x0007   U32                                            ""}
+  
+  //- rjf: voff -> line info
+  {LineTables                    line_tables                        RDI_LineTable            0x0008   U32                                            ""}
+  {LineInfoVOffs                 line_info_voffs                    RDI_U64                  0x0009   U32                                            ""}
+  {LineInfoLines                 line_info_lines                    RDI_Line                 0x000A   U32                                            ""}
+  {LineInfoColumns               line_info_columns                  RDI_Column               0x000B   U32                                            ""}
+  
+  //- rjf: line -> voff info
+  {SourceLineMaps                source_line_maps                   RDI_SourceLineMap        0x000C   U32                                            ""}
+  {SourceLineMapNumbers          source_line_map_numbers            RDI_U32                  0x000D   U32                                            ""}
+  {SourceLineMapRanges           source_line_map_ranges             RDI_U32                  0x000E   U32                                            ""}
+  {SourceLineMapVOffs            source_line_map_voffs              RDI_U64                  0x000F   U32                                            ""}
+  
+  //- rjf: units
+  {Units                         units                              RDI_Unit                 0x0010   U32                                            ""}
+  {UnitVMap                      unit_vmap                          RDI_VMapEntry            0x0011   -                                              ""}
+  
+  //- rjf: namespaces
+  {Namespaces                    namespaces                         RDI_Namespace            0x0012   U32                                            ""}
+  
+  //- rjf: type info
+  {TypeNodes                     type_nodes                         RDI_TypeNode             0x0013   U32                                            ""}
+  {UDTs                          udts                               RDI_UDT                  0x0014   U32                                            ""}
+  {Members                       members                            RDI_Member               0x0015   U32                                            ""}
+  {EnumMembers                   enum_members                       RDI_EnumMember           0x0016   U32                                            ""}
+  
+  //- rjf: scope info
+  {Scopes                        scopes                             RDI_Scope                0x0017   U32                                            ""}
+  {ScopeVOffData                 scope_voff_data                    RDI_U64                  0x0018   U32                                            ""}
+  {ScopeVMap                     scope_vmap                         RDI_VMapEntry            0x0019   -                                              ""}
+  {InlineSites                   inline_sites                       RDI_InlineSite           0x001A   U32                                            ""}
+  
+  //- rjf: symbols
+  {GlobalVariables               global_variables                   RDI_Symbol               0x001B   U32                                            ""}
+  {GlobalVMap                    global_vmap                        RDI_VMapEntry            0x001C   -                                              ""}
+  {ThreadVariables               thread_variables                   RDI_Symbol               0x001D   U32                                            ""}
+  {Constants                     constants                          RDI_Symbol               0x001E   U32                                            ""}
+  {Procedures                    procedures                         RDI_Symbol               0x001F   U32                                            ""}
+  {LocalVariables                local_variables                    RDI_Symbol               0x0020   U32                                            ""}
+  
+  //- rjf: locations
+  {LocationsBytecodeData         locations_bytecode_data            RDI_U8                   0x0021   U32                                            ""}
+  {LocationsConstantData         locations_constant_data            RDI_U8                   0x0022   U32                                            ""}
+  {LocationsSetElements          locations_set_elements             RDI_LocationSetElement   0x0023   U32                                            ""}
+  
+  //- rjf: checksums / timestamps
+  {MD5Checksums                  md5_checksums                      RDI_MD5                  0x0024   U32                                            ""}
+  {SHA1Checksums                 sha1_checksums                     RDI_SHA1                 0x0025   U32                                            ""}
+  {SHA256Checksums               sha256_checksums                   RDI_SHA256               0x0026   U32                                            ""}
+  {Timestamps                    timestamps                         RDI_U64                  0x0027   U32                                            ""}
+  
+  //- rjf: name maps
+  {NameMaps                      name_maps                          RDI_NameMap              0x0028   U32                                            ""}
+  {NameMapBuckets                name_map_buckets                   RDI_NameMapBucket        0x0029   U32                                            ""}
+  {NameMapNodes                  name_map_nodes                     RDI_NameMapNode          0x002A   U32                                            ""}
+  {COUNT                         count                              RDI_U8                   0x002B   -                                              ""}
 }
 
 @table(name value)
@@ -278,74 +308,8 @@ RDI_VMapEntryMemberTable:
 RDI_ArchTable:
 {
   {NULL    0     0}
-  {X86     1     4}
-  {X64     2     8}
-}
-
-@table(name value)
-RDI_RegCodeX86Table:
-{
-  {nil             0}
-  {eax             1}
-  {ecx             2}
-  {edx             3}
-  {ebx             4}
-  {esp             5}
-  {ebp             6}
-  {esi             7}
-  {edi             8}
-  {fsbase          9}
-  {gsbase         10}
-  {eflags         11}
-  {eip            12}
-  {dr0            13}
-  {dr1            14}
-  {dr2            15}
-  {dr3            16}
-  {dr4            17}
-  {dr5            18}
-  {dr6            19}
-  {dr7            20}
-  {fpr0           21}
-  {fpr1           22}
-  {fpr2           23}
-  {fpr3           24}
-  {fpr4           25}
-  {fpr5           26}
-  {fpr6           27}
-  {fpr7           28}
-  {st0            29}
-  {st1            30}
-  {st2            31}
-  {st3            32}
-  {st4            33}
-  {st5            34}
-  {st6            35}
-  {st7            36}
-  {fcw            37}
-  {fsw            38}
-  {ftw            39}
-  {fop            40}
-  {fcs            41}
-  {fds            42}
-  {fip            43}
-  {fdp            44}
-  {mxcsr          45}
-  {mxcsr_mask     46}
-  {ss             47}
-  {cs             48}
-  {ds             49}
-  {es             50}
-  {fs             51}
-  {gs             52}
-  {ymm0           53}
-  {ymm1           54}
-  {ymm2           55}
-  {ymm3           56}
-  {ymm4           57}
-  {ymm5           58}
-  {ymm6           59}
-  {ymm7           60}
+  {X64     1     8}
+  {X86     2     4}
 }
 
 @table(name value)
@@ -392,68 +356,60 @@ RDI_RegCodeX64Table:
   {st5             38}
   {st6             39}
   {st7             40}
-  {fpr0            41}
-  {fpr1            42}
-  {fpr2            43}
-  {fpr3            44}
-  {fpr4            45}
-  {fpr5            46}
-  {fpr6            47}
-  {fpr7            48}
-  {zmm0            49}
-  {zmm1            50}
-  {zmm2            51}
-  {zmm3            52}
-  {zmm4            53}
-  {zmm5            54}
-  {zmm6            55}
-  {zmm7            56}
-  {zmm8            57}
-  {zmm9            58}
-  {zmm10           59}
-  {zmm11           60}
-  {zmm12           61}
-  {zmm13           62}
-  {zmm14           63}
-  {zmm15           64}
-  {zmm16           65}
-  {zmm17           66}
-  {zmm18           67}
-  {zmm19           68}
-  {zmm20           69}
-  {zmm21           70}
-  {zmm22           71}
-  {zmm23           72}
-  {zmm24           73}
-  {zmm25           74}
-  {zmm26           75}
-  {zmm27           76}
-  {zmm28           77}
-  {zmm29           78}
-  {zmm30           79}
-  {zmm31           80}
-  {k0              81}
-  {k1              82}
-  {k2              83}
-  {k3              84}
-  {k4              85}
-  {k5              86}
-  {k6              87}
-  {k7              88}
-  {mxcsr           89}
-  {fsbase          90}
-  {gsbase          91}
-  {fcw             92}
-  {fsw             93}
-  {ftw             94}
-  {fop             95}
-  {fcs             96}
-  {fds             97}
-  {fip             98}
-  {fdp             99}
-  {mxcsr_mask      100}
-  {cetmsr          101}
-  {cetssp          102}
+  {zmm0            41}
+  {zmm1            42}
+  {zmm2            43}
+  {zmm3            44}
+  {zmm4            45}
+  {zmm5            46}
+  {zmm6            47}
+  {zmm7            48}
+  {zmm8            49}
+  {zmm9            50}
+  {zmm10           51}
+  {zmm11           52}
+  {zmm12           53}
+  {zmm13           54}
+  {zmm14           55}
+  {zmm15           56}
+  {zmm16           57}
+  {zmm17           58}
+  {zmm18           59}
+  {zmm19           60}
+  {zmm20           61}
+  {zmm21           62}
+  {zmm22           63}
+  {zmm23           64}
+  {zmm24           65}
+  {zmm25           66}
+  {zmm26           67}
+  {zmm27           68}
+  {zmm28           69}
+  {zmm29           70}
+  {zmm30           71}
+  {zmm31           72}
+  {k0              73}
+  {k1              74}
+  {k2              75}
+  {k3              76}
+  {k4              77}
+  {k5              78}
+  {k6              79}
+  {k7              80}
+  {mxcsr           81}
+  {fsbase          82}
+  {gsbase          83}
+  {fcw             84}
+  {fsw             85}
+  {ftw             86}
+  {fop             87}
+  {fcs             88}
+  {fds             89}
+  {fip             90}
+  {fdp             91}
+  {mxcsr_mask      92}
+  {cetmsr          93}
+  {cetssp          94}
 }
 
 @enum(RDI_U32) RDI_Arch:
@@ -468,19 +424,9 @@ RDI_RegCodeX64Table:
 
 @enum(RDI_U8) RDI_RegCode: {nil}
 
-@enum(RDI_U8) RDI_RegCodeX86:
-{
-  @expand(RDI_RegCodeX86Table a) `$(a.name .. =>10) = $(a.value)`
-}
-
 @enum(RDI_U8) RDI_RegCodeX64:
 {
   @expand(RDI_RegCodeX64Table a) `$(a.name .. =>10) = $(a.value)`
-}
-
-@xlist RDI_RegCodeX86_XList:
-{
-  @expand(RDI_RegCodeX86Table a) `$(a.name), $(a.value)`
 }
 
 @xlist RDI_RegCodeX64_XList:
@@ -639,6 +585,14 @@ RDI_UnitMemberTable:
   {build_path_node               RDI_U32               ""}
   {language                      RDI_Language          ""}
   {line_table_idx                RDI_U32               ""}
+  {procedures_first_idx          RDI_U32               ""}
+  {procedures_count              RDI_U32               ""}
+  {global_variables_first_idx    RDI_U32               ""}
+  {global_variables_count        RDI_U32               ""}
+  {thread_variables_first_idx    RDI_U32               ""}
+  {thread_variables_count        RDI_U32               ""}
+  {constants_first_idx           RDI_U32               ""}
+  {constants_count               RDI_U32               ""}
 }
 
 @xlist RDI_Unit_XList:
@@ -764,8 +718,6 @@ RDI_LanguageTable:
 @table(name value size bookend1 bookend2)
 RDI_TypeKindTable:
 {
-  {NULL                 0x0000     0                                             }
-  //-
   {Void                 0x0001     0              FirstBuiltIn                   }
   {Handle               0x0002     0xFFFFFFFF                                    }
   {HResult              0x0003     4                                             }
@@ -790,17 +742,23 @@ RDI_TypeKindTable:
   {S256                 0x0016     32                                            }
   {S512                 0x0017     64                                            }
   {Bool                 0x0018     1                                             }
-  {F16                  0x0019     2                                             }
-  {F32                  0x001A     4                                             }
-  {F32PP                0x001B     4                                             }
-  {F48                  0x001C     6                                             }
-  {F64                  0x001D     8                                             }
-  {F80                  0x001E     10                                            }
-  {F128                 0x001F     16                                            }
-  {ComplexF32           0x0020     8                                             }
-  {ComplexF64           0x0021     16                                            }
-  {ComplexF80           0x0022     20                                            }
-  {ComplexF128          0x0023     32              LastBuiltIn                   }
+  {BF16                 0x0019     2                                             }
+  {F16                  0x001A     2                                             }
+  {F32                  0x001B     4                                             }
+  {F32PP                0x001C     4                                             }
+  {F48                  0x001D     6                                             }
+  {F64                  0x001E     8                                             }
+  {F80                  0x001F     10                                            }
+  {F96                  0x0020     12                                            }
+  {F128                 0x0021     16                                            }
+  {ComplexF32           0x0022     8                                             }
+  {ComplexF64           0x0023     16                                            }
+  {ComplexF80           0x0024     20                                            }
+  {ComplexF128          0x0025     32                                            }
+  {Decimal32            0x0026     4                                             }
+  {Decimal64            0x0027     8                                             }
+  {Decimal128           0x0028    16                                             }
+  {Variadic             0x0029     0               LastBuiltIn                   }
   //-
   {Modifier             0x1000     0               FirstConstructed              }
   {Ptr                  0x1001     0                                             }
@@ -822,8 +780,6 @@ RDI_TypeKindTable:
   {IncompleteEnum       0x2008     0               LastIncomplete LastUserDefined}
   //-
   {Bitfield             0xF000     0                                             }
-  {Variadic             0xF001     0                                             }
-  {Count                0xF002     0                                             }
 }
 
 @table(name value)
@@ -851,13 +807,16 @@ RDI_UDTFlagTable:
 @table(name type desc)
 RDI_UDTMemberTable:
 {
-  {self_type_idx   RDI_U32                   ""}
-  {flags           RDI_UDTFlags              ""}
-  {member_first    RDI_U32                   ""}
-  {member_count    RDI_U32                   ""}
-  {file_idx        RDI_U32                   ""}
-  {line            RDI_U32                   ""}
-  {col             RDI_U32                   ""}
+  {self_type_idx     RDI_U32                   ""}
+  {flags             RDI_UDTFlags              ""}
+  {container_flags   RDI_ContainerFlags        ""}
+  {reserved_0        RDI_U16                   ""}
+  {member_first      RDI_U32                   ""}
+  {member_count      RDI_U32                   ""}
+  {file_idx          RDI_U32                   ""}
+  {line              RDI_U32                   ""}
+  {col               RDI_U32                   ""}
+  {container_idx     RDI_U32                   ""}
 }
 
 @table(name value)
@@ -895,9 +854,11 @@ RDI_EnumMemberTable:
 
 @enum(RDI_U16) RDI_TypeKind:
 {
+  `Null`,
   @expand(RDI_TypeKindTable a) `$(a.name .. =>20) = $(a.value)`;
   @expand(RDI_TypeKindTable a) `$(a.bookend1 != "" -> a.bookend1 .. =>20 .. " = RDI_TypeKind_" .. a.name)`;
   @expand(RDI_TypeKindTable a) `$(a.bookend2 != "" -> a.bookend2 .. =>20 .. " = RDI_TypeKind_" .. a.name)`;
+  `COUNT`;
 }
 
 @enum(RDI_U16) RDI_TypeModifierFlags:
@@ -968,7 +929,7 @@ RDI_EnumMemberTable:
   ```
 }
 
-@enum(RDI_U32) RDI_UDTFlags:
+@enum(RDI_U8) RDI_UDTFlags:
 {
   @expand(RDI_UDTFlagTable a) `$(a.name .. =>20) = $(a.value)`
 }
@@ -1024,19 +985,19 @@ RDI_EnumMemberTable:
 //- rjf: tables
 
 @table(name value)
-RDI_LinkFlagTable:
+RDI_ContainerKindTable:
 {
-  {External   `1<<0`}
-  {TypeScoped `1<<1`}
-  {ProcScoped `1<<2`}
+  {NULL       0x0}
+  {Type       0x1}
+  {Scope      0x2}
+  {Namespace  0x3}
 }
 
 @table(name value)
-RDI_LocalKindTable:
+RDI_ContainerFlagTable:
 {
-  {NULL      0x0}
-  {Parameter 0x1}
-  {Variable  0x2}
+  {External `1u<<7`}
+  {KindMask `0x7f`}
 }
 
 @table(name value)
@@ -1045,50 +1006,44 @@ RDI_LocationKindTable:
   {NULL                 0x0}
   {AddrBytecodeStream   0x1}
   {ValBytecodeStream    0x2}
-  {AddrRegPlusU16       0x3}
-  {AddrAddrRegPlusU16   0x4}
+  {AddrRegPlusOff       0x3}
+  {AddrAddrRegPlusOff   0x4}
   {ValReg               0x5}
+  {ModuleOff            0x6}
+  {TLSOff               0x7}
+  {ConstantDataOff      0x8}
+  {Set                  0x9}
+}
+
+@table(name value)
+RDI_SymbolFlagTable:
+{
+  {IsParam 0x1}
+  {IsThunk 0x2}
 }
 
 @table(name type desc)
-RDI_GlobalVariableMemberTable:
+RDI_NamespaceMemberTable:
 {
   {name_string_idx   RDI_U32               ""}
-  {link_flags        RDI_LinkFlags         ""}
-  {voff              RDI_U64               ""}
-  {type_idx          RDI_U32               ""}
+  {container_flags   RDI_ContainerFlags    ""}
+  {padding_0         RDI_U8                ""}
+  {padding_1         RDI_U16               ""}
   {container_idx     RDI_U32               ""}
 }
 
 @table(name type desc)
-RDI_ThreadVariableMemberTable:
+RDI_SymbolMemberTable:
 {
-  {name_string_idx   RDI_U32                    ""}
-  {link_flags        RDI_LinkFlags              ""}
-  {tls_off           RDI_U32                    ""}
-  {type_idx          RDI_U32                    ""}
-  {container_idx     RDI_U32                    ""}
-}
-
-@table(name type desc)
-RDI_ConstantMemberTable:
-{
-  {name_string_idx    RDI_U32                    ""}
-  {type_idx           RDI_U32                    ""}
-  {constant_value_idx RDI_U32                    ""}
-}
-
-@table(name type desc)
-RDI_ProcedureMemberTable:
-{
-  {name_string_idx           RDI_U32                    ""}
-  {link_name_string_idx      RDI_U32                    ""}
-  {link_flags                RDI_LinkFlags              ""}
-  {type_idx                  RDI_U32                    ""}
-  {root_scope_idx            RDI_U32                    ""}
-  {container_idx             RDI_U32                    ""}
-  {frame_base_location_first RDI_U32                    ""}
-  {frame_base_location_opl   RDI_U32                    ""}
+  {name_string_idx       RDI_U32               ""}
+  {symbol_flags          RDI_SymbolFlags       ""}
+  {container_flags       RDI_ContainerFlags    ""}
+  {reserved_0            RDI_U16               ""}
+  {location              RDI_Location          ""}
+  {container_idx         RDI_U32               ""}
+  {type_idx              RDI_U32               ""}
+  {root_scope_idx        RDI_U32               ""}
+  {link_name_string_idx  RDI_U32               ""}
 }
 
 @table(name type desc)
@@ -1115,61 +1070,64 @@ RDI_InlineSiteMemberTable:
 }
 
 @table(name type desc)
-RDI_LocalMemberTable:
+RDI_LocationSetElementMemberTable:
 {
-  {kind            RDI_LocalKind           ""}
-  {name_string_idx RDI_U32                 ""}
-  {type_idx        RDI_U32                 ""}
-  {pad             RDI_U32                 ""}
-  {location_first  RDI_U32                 ""}
-  {location_opl    RDI_U32                 ""}
-}
-
-@table(name type desc)
-RDI_LocationBlockMemberTable:
-{
-  {scope_off_first     RDI_U32                }
-  {scope_off_opl       RDI_U32                }
-  {location_data_off   RDI_U32                }
-}
-
-@table(name type desc)
-RDI_LocationBytecodeStreamMemberTable:
-{
-  {kind RDI_LocationKind ""}
-  // [... 0] null terminated byte sequence RDI_EvalBytecodeStream
-}
-
-@table(name type desc)
-RDI_LocationRegPlusU16MemberTable:
-{
-  {kind             RDI_LocationKind }
-  {reg_code         RDI_RegCode }
-  {offset           RDI_U16 }
-}
-
-@table(name type desc)
-RDI_LocationRegMemberTable:
-{
-  {kind             RDI_LocationKind }
-  {reg_code         RDI_RegCode }
+  {voff_first       RDI_U64                  ""}
+  {voff_opl         RDI_U64                  ""}
+  {location         RDI_Location             ""}
 }
 
 //- rjf: enums
 
-@enum(RDI_U32) RDI_LinkFlags:
+@enum(RDI_U8) RDI_ContainerKind:
 {
-  @expand(RDI_LinkFlagTable a) `$(a.name .. =>20) = $(a.value)`
+  @expand(RDI_ContainerKindTable a) `$(a.name .. =>20) = $(a.value)`
 }
 
-@enum(RDI_U32) RDI_LocalKind:
+@enum(RDI_U8) RDI_ContainerFlags:
 {
-  @expand(RDI_LocalKindTable a) `$(a.name .. =>20) = $(a.value)`
+  @expand(RDI_ContainerFlagTable a) `$(a.name .. =>20) = $(a.value)`,
+}
+
+@enum(RDI_U8) RDI_SymbolFlags:
+{
+  @expand(RDI_SymbolFlagTable a) `$(a.name .. =>20) = $(a.value)`
 }
 
 @enum(RDI_U8) RDI_LocationKind:
 {
   @expand(RDI_LocationKindTable a) `$(a.name .. =>20) = $(a.value)`
+}
+
+@gen(enums)
+{
+  `typedef RDI_U64 RDI_Location;`;
+  `#define RDI_Location_KindMask               0xff00000000000000ull`;
+  `#define RDI_Location_KindShift              56`;
+  `#define RDI_Location_OffMask                0x00ffffffffffffffull`;
+  `#define RDI_Location_OffShift               0`;
+  `#define RDI_Location_SetFirstIndexMask      0x00000000ffffffffull`;
+  `#define RDI_Location_SetFirstIndexShift     0`;
+  `#define RDI_Location_SetCountMask           0x00ffffff00000000ull`;
+  `#define RDI_Location_SetCountShift          32`;
+  `#define RDI_Location_RegCodeMask            0x00ff000000000000ull`;
+  `#define RDI_Location_RegCodeShift           48`;
+  `#define RDI_Location_RegOffMask             0x0000ffff00000000ull`;
+  `#define RDI_Location_RegOffShift            32`;
+  `#define rdi_kind_from_location(l)            ((((l) & RDI_Location_KindMask) >> RDI_Location_KindShift))`;
+  `#define rdi_regcode_from_location(l)           ((rdi_kind_from_location(l) == RDI_LocationKind_AddrRegPlusOff || rdi_kind_from_location(l) == RDI_LocationKind_AddrAddrRegPlusOff || rdi_kind_from_location(l) == RDI_LocationKind_ValReg) ? (((l) & RDI_Location_RegCodeMask) >> RDI_Location_RegCodeShift) : 0)`;
+  `#define rdi_regoff_from_location(l)            (RDI_S64)(RDI_S32)(RDI_S16)((rdi_kind_from_location(l) == RDI_LocationKind_AddrRegPlusOff || rdi_kind_from_location(l) == RDI_LocationKind_AddrAddrRegPlusOff) ? (((l) & RDI_Location_RegOffMask) >> RDI_Location_RegOffShift) : 0)`;
+  `#define rdi_voff_from_location(l)              (rdi_kind_from_location(l) == RDI_LocationKind_ModuleOff          ? (((l) & RDI_Location_OffMask)                >> RDI_Location_OffShift) : 0)`;
+  `#define rdi_toff_from_location(l)              (rdi_kind_from_location(l) == RDI_LocationKind_TLSOff             ? (((l) & RDI_Location_OffMask)                >> RDI_Location_OffShift) : 0)`;
+  `#define rdi_constant_data_off_from_location(l) (rdi_kind_from_location(l) == RDI_LocationKind_ConstantDataOff    ? (((l) & RDI_Location_OffMask)                >> RDI_Location_OffShift) : 0)`;
+  `#define rdi_bytecode_data_off_from_location(l) (rdi_kind_from_location(l) == RDI_LocationKind_AddrBytecodeStream || rdi_kind_from_location(l) == RDI_LocationKind_ValBytecodeStream ? (((l) & RDI_Location_OffMask) >> RDI_Location_OffShift) : 0)`;
+  `#define rdi_set_first_index_from_location(l)   (rdi_kind_from_location(l) == RDI_LocationKind_Set                ? (((l) & RDI_Location_SetFirstIndexMask)      >> RDI_Location_SetFirstIndexShift) : 0)`;
+  `#define rdi_set_count_from_location(l)         (rdi_kind_from_location(l) == RDI_LocationKind_Set                ? (((l) & RDI_Location_SetCountMask)           >> RDI_Location_SetCountShift) : 0)`;
+  `#define rdi_location_voff(voff) ((((RDI_U64)RDI_LocationKind_ModuleOff << RDI_Location_KindShift) & RDI_Location_KindMask) | ((voff) & ~RDI_Location_KindMask))`;
+  `#define rdi_location_toff(toff) ((((RDI_U64)RDI_LocationKind_TLSOff    << RDI_Location_KindShift) & RDI_Location_KindMask) | ((toff) & ~RDI_Location_KindMask))`;
+  `#define rdi_location_constant_data_off(off) ((((RDI_U64)RDI_LocationKind_ConstantDataOff << RDI_Location_KindShift) & RDI_Location_KindMask) | ((off) & ~RDI_Location_KindMask))`;
+  `#define rdi_location_reg(kind, reg, off) ((((RDI_U64)(kind) << RDI_Location_KindShift) & RDI_Location_KindMask) | (((RDI_U64)(reg) << RDI_Location_RegCodeShift) & RDI_Location_RegCodeMask) | (((RDI_U64)(off) << RDI_Location_RegOffShift) & RDI_Location_RegOffMask))`;
+  `#define rdi_location_bytecode(kind, off) ((((RDI_U64)(kind) << RDI_Location_KindShift) & RDI_Location_KindMask) | (((RDI_U64)(off) << RDI_Location_OffShift) & RDI_Location_OffMask))`;
 }
 
 //- rjf: xlists
@@ -1179,29 +1137,19 @@ RDI_LocationRegMemberTable:
   @expand(RDI_LinkFlagTable a) `$(a.name != COUNT -> a.name)`;
 }
 
-@xlist RDI_LocalKind_XList:
-{
-  @expand(RDI_LocalKindTable a) `$(a.name != COUNT -> a.name)`;
-}
-
 @xlist RDI_LocationKind_XList:
 {
   @expand(RDI_LocationKindTable a) `$(a.name != COUNT -> a.name)`;
 }
 
-@xlist RDI_GlobalVariable_XList:
+@xlist RDI_Namespace_XList:
 {
-  @expand(RDI_GlobalVariableMemberTable a) `$(a.type), $(a.name)`
+  @expand(RDI_NamespaceMemberTable a) `$(a.type), $(a.name)`
 }
 
-@xlist RDI_ThreadVariable_XList:
+@xlist RDI_Symbol_XList:
 {
-  @expand(RDI_ThreadVariableMemberTable a) `$(type), $(a.name)`
-}
-
-@xlist RDI_Procedure_XList:
-{
-  @expand(RDI_ProcedureMemberTable a) `$(a.type), $(a.name)`
+  @expand(RDI_SymbolMemberTable a) `$(a.type), $(a.name)`
 }
 
 @xlist RDI_Scope_XList:
@@ -1214,51 +1162,16 @@ RDI_LocationRegMemberTable:
   @expand(RDI_InlineSiteMemberTable a) `$(a.type), $(a.name)`
 }
 
-@xlist RDI_Local_XList:
-{
-  @expand(RDI_LocalMemberTable a) `$(a.type), $(a.name)`
-}
-
-@xlist RDI_LocationBlock_XList:
-{
-  @expand(RDI_LocationBlockMemberTable a) `$(a.type), $(a.name)`
-}
-
-@xlist RDI_LocationBytecodeStream_XList:
-{
-  @expand(RDI_LocationBytecodeStreamMemberTable a) `$(a.type), $(a.name)`
-}
-
-@xlist RDI_LocationRegPlusU16_XList:
-{
-  @expand(RDI_LocationRegPlusU16MemberTable a) `$(a.type), $(a.name)`
-}
-
-@xlist RDI_LocationReg_XList:
-{
-  @expand(RDI_LocationRegMemberTable a) `$(a.type), $(a.name)`
-}
-
 //- rjf: structs
 
-@struct RDI_GlobalVariable:
+@struct RDI_Namespace:
 {
-  @expand(RDI_GlobalVariableMemberTable a) `$(a.type) $(a.name)`
+  @expand(RDI_NamespaceMemberTable a) `$(a.type) $(a.name)`
 }
 
-@struct RDI_ThreadVariable:
+@struct RDI_Symbol:
 {
-  @expand(RDI_ThreadVariableMemberTable a) `$(a.type) $(a.name)`
-}
-
-@struct RDI_Constant:
-{
-  @expand(RDI_ConstantMemberTable a) `$(a.type) $(a.name)`
-}
-
-@struct RDI_Procedure:
-{
-  @expand(RDI_ProcedureMemberTable a) `$(a.type) $(a.name)`
+  @expand(RDI_SymbolMemberTable a) `$(a.type) $(a.name)`
 }
 
 @struct RDI_Scope:
@@ -1271,103 +1184,86 @@ RDI_LocationRegMemberTable:
   @expand(RDI_InlineSiteMemberTable a) `$(a.type) $(a.name)`
 }
 
-@struct RDI_Local:
+@struct RDI_LocationSetElement:
 {
-  @expand(RDI_LocalMemberTable a) `$(a.type) $(a.name)`
-}
-
-@struct RDI_LocationBlock:
-{
-  @expand(RDI_LocationBlockMemberTable a) `$(a.type) $(a.name)`
-}
-
-@struct RDI_LocationBytecodeStream:
-{
-  @expand(RDI_LocationBytecodeStreamMemberTable a) `$(a.type) $(a.name)`
-}
-
-@struct RDI_LocationRegPlusU16:
-{
-  @expand(RDI_LocationRegPlusU16MemberTable a) `$(a.type) $(a.name)`
-}
-
-@struct RDI_LocationReg:
-{
-  @expand(RDI_LocationRegMemberTable a) `$(a.type) $(a.name)`
+  @expand(RDI_LocationSetElementMemberTable a) `$(a.type) $(a.name)`
 }
 
 ////////////////////////////////
 //~ rjf: Evaluation Bytecode Tables
 
-@table(name value num_decodes num_pops num_pushes)
+@table(name value num_decodes num_pops num_pushes bookend)
 RDI_EvalOpTable:
 {
   {Stop            0       0 0 0}
   {Noop            1       0 0 0}
-  {Cond            2       1 1 0}
+  {Cond            2       2 1 0}
   {Skip            3       2 0 0}
   {MemRead         4       1 1 1}
   {RegRead         5       4 0 1}
-  {RegReadDyn      6       0 1 1}
-  {FrameOff        7       8 0 1}
-  {ModuleOff       8       4 0 1}
-  {TLSOff          9       4 0 1}
-  {ObjectOff       10      0 0 0}
-  {CFA             11      0 0 0}
-  {ConstU8         12      1 0 1}
-  {ConstU16        13      2 0 1}
-  {ConstU32        14      4 0 1}
-  {ConstU64        15      8 0 1}
-  {ConstU128       16     16 0 1}
-  {ConstString     17      1 0 1}
-  {Abs             18      1 1 1}
-  {Neg             19      1 1 1}
-  {Add             20      1 2 1}
-  {Sub             21      1 2 1}
-  {Mul             22      1 2 1}
-  {Div             23      1 2 1}
-  {Mod             24      1 2 1}
-  {LShift          25      2 2 1}
-  {RShift          26      2 2 1}
-  {BitAnd          27      1 2 1}
-  {BitOr           28      1 2 1}
-  {BitXor          29      1 2 1}
-  {BitNot          30      1 1 1}
-  {LogAnd          31      1 2 1}
-  {LogOr           32      1 2 1}
-  {LogNot          33      1 1 1}
-  {EqEq            34      1 2 1}
-  {NtEq            35      1 2 1}
-  {LsEq            36      1 2 1}
-  {GrEq            37      1 2 1}
-  {Less            38      1 2 1}
-  {Grtr            39      1 2 1}
-  {Trunc           40      1 1 1}
-  {TruncSigned     41      1 1 1}
-  {Convert         42      2 1 1}
-  {Pick            43      1 0 1}
-  {Pop             44      0 1 0}
-  {Insert          45      1 0 0}
+  {FrameOff        6       8 0 1}
+  {ModuleOff       7       4 0 1}
+  {TLSOff          8       4 0 1}
+  {ObjectOff       9       0 0 0}
+  {CFA             10      0 0 0}
+  {ConstU8         11      1 0 1}
+  {ConstU16        12      2 0 1}
+  {ConstU32        13      4 0 1}
+  {ConstU64        14      8 0 1}
+  {ConstU128       15     16 0 1}
+  {ConstU256       16     32 0 1}
+  {ConstU512       17     64 0 1}
+  {ConstString     18      1 0 1}
+  {Abs             19      2 1 1}
+  {Neg             20      2 1 1}
+  {Add             21      2 2 1}
+  {Sub             22      2 2 1}
+  {Mul             23      2 2 1}
+  {Div             24      2 2 1}
+  {Mod             25      2 2 1}
+  {LShift          26      2 2 1}
+  {RShift          27      2 2 1}
+  {BitAnd          28      2 2 1}
+  {BitOr           29      2 2 1}
+  {BitXor          30      2 2 1}
+  {BitNot          31      2 1 1}
+  {LogAnd          32      1 2 1 FirstLogical}
+  {LogOr           33      1 2 1}
+  {LogNot          34      1 1 1}
+  {EqEq            35      1 2 1}
+  {NtEq            36      1 2 1}
+  {LsEq            37      1 2 1}
+  {GrEq            38      1 2 1}
+  {Less            39      1 2 1}
+  {Grtr            40      1 2 1 LastLogical}
+  {Trunc           41      1 1 1}
+  {TruncSigned     42      1 1 1}
+  {Convert         43      2 1 1}
+  {Pick            44      1 0 1}
+  {Pop             45      0 1 0}
   {ValueRead       46      1 2 1}
   {ByteSwap        47      1 1 1}
   {CallSiteValue   48      4 0 0}
   {PartialValue    49      4 0 0}
   {PartialValueBit 50      8 0 0}
   {Swap            51      0 2 2} // swaps the top two entries on the stack
-  {COUNT           52      0 0 0}
+  {PushCfa         52      0 0 1} // push canonical frame address on the stack
+  {COUNT           53      0 0 0}
 }
 
 // NOTE(rjf): "ck" -> "conversion kind, when converted to type group", used in square matrix form
 // e.g. x:0, y:0 means other -> other, x:3, y:1 means uint -> f32, etc.
-@table(name value       ck0             ck1         ck2          ck3         ck4)
+@table(name value       ck0             ck1         ck2          ck3         ck4          ck5        ck6)
 RDI_EvalTypeGroupTable:
 {
-  {Other  0              OtherToOther    FromOther   FromOther    FromOther   FromOther   }
-  {U      1              ToOther         Noop        Noop         Legal       Legal       }
-  {S      2              ToOther         Noop        Noop         Legal       Legal       }
-  {F32    3              ToOther         Legal       Legal        Noop        Legal       }
-  {F64    4              ToOther         Legal       Legal        Legal       Noop        }
-  {COUNT  5              Noop            Noop        Noop         Noop        Noop        }
+  {Other  0              OtherToOther    FromOther   FromOther    FromOther   FromOther   FromOther FromOther}
+  {U      1              ToOther         Noop        Noop         Legal       Legal       Legal     Legal    }
+  {S      2              ToOther         Noop        Noop         Legal       Legal       Legal     Legal    }
+  {F32    3              ToOther         Legal       Legal        Noop        Legal       Legal     Legal    }
+  {F64    4              ToOther         Legal       Legal        Legal       Noop        Legal     Legal    }
+  {F80    5              ToOther         Legal       Legal        Legal       Legal       Noop      Legal    }
+  {F128   6              ToOther         Legal       Legal        Legal       Legal       Legal     Noop     }
+  {COUNT  7              Noop            Noop        Noop         Noop        Noop        Noop      Noop     }
 }
 
 @table(name value error_string)
@@ -1383,7 +1279,8 @@ RDI_EvalConversionKindTable:
 
 @enum(RDI_U8) RDI_EvalOp:
 {
-  @expand(RDI_EvalOpTable a) `$(a.name .. =>20) = $(a.value)`
+  @expand(RDI_EvalOpTable a) `$(a.name .. =>20) = $(a.value)`,
+  @expand(RDI_EvalOpTable a) `$(a.bookend != "" -> a.bookend .. " = RDI_EvalOp_" .. a.name)`,
 }
 
 @enum(RDI_U8) RDI_EvalTypeGroup:
@@ -1451,7 +1348,8 @@ RDI_NameMapKindTable:
   {Types              5}
   {LinkNameProcedures 6}
   {NormalSourcePaths  7}
-  {COUNT              8}
+  {Units              8}
+  {COUNT              9}
 }
 
 @table(name type desc)

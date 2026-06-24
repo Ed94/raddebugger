@@ -7,11 +7,13 @@
 ////////////////////////////////
 //~ rjf: Foreign Includes
 
-#include <stdio.h>
 #include <stdarg.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <inttypes.h>
 #include <math.h>
 #include <string.h>
-#include <stdint.h>
 
 ////////////////////////////////
 //~ rjf: Third Party Includes
@@ -180,8 +182,9 @@
 //~ rjf: Member Offsets
 
 #define Member(T,m)                 (((T*)0)->m)
-#define OffsetOf(T,m)               IntFromPtr(&Member(T,m))
+#define OffsetOf(T,m)               offsetof(T, m)
 #define MemberFromOffset(T,ptr,off) (T)((((U8 *)ptr)+(off)))
+#define MemberFromPtr(T,ptr,m)      (void*)((((U8 *)ptr)+OffsetOf(T,m)))
 #define CastFromMember(T,m,ptr)     (T*)(((U8*)ptr) - OffsetOf(T,m))
 
 ////////////////////////////////
@@ -196,6 +199,7 @@
 #define EachNonZeroEnumVal(type, it) (type it = (type)1; it < type##_COUNT; it = (type)(it+1))
 #define EachInRange(it, range) (U64 it = (range).min; it < (range).max; it += 1)
 #define EachNode(it, T, first) (T *it = first; it != 0; it = it->next)
+#define EachBit(it, flags) (U64 (_i_) = (flags), it = (flags) & -(flags); (_i_) != 0; (_i_) &= ((_i_) - 1), it = (flags) & -(flags))
 
 ////////////////////////////////
 //~ rjf: Memory Operation Macros
@@ -203,7 +207,6 @@
 #define MemoryCopy(dst, src, size)    memmove((dst), (src), (size))
 #define MemorySet(dst, byte, size)    memset((dst), (byte), (size))
 #define MemoryCompare(a, b, size)     memcmp((a), (b), (size))
-#define MemoryStrlen(ptr)             strlen(ptr)
 
 #define MemoryCopyStruct(d,s)  MemoryCopy((d),(s),sizeof(*(d)))
 #define MemoryCopyArray(d,s)   MemoryCopy((d),(s),sizeof(d))
@@ -220,9 +223,6 @@
 #define MemoryMatchArray(a,b)   MemoryMatch((a),(b),sizeof(a))
 
 #define MemoryIsZeroStruct(ptr) memory_is_zero((ptr), sizeof(*(ptr)))
-
-#define MemoryRead(T,p,e)    ( ((p)+sizeof(T)<=(e))?(*(T*)(p)):(0) )
-#define MemoryConsume(T,p,e) ( ((p)+sizeof(T)<=(e))?((p)+=sizeof(T),*(T*)((p)-sizeof(T))):((p)=(e),0) )
 
 ////////////////////////////////
 //~ rjf: Asserts
@@ -252,38 +252,44 @@
 #if COMPILER_MSVC
 # include <intrin.h>
 # if ARCH_X64
-#  define ins_atomic_u128_eval_cond_assign(x,k,c) (B32)InterlockedCompareExchange128((__int64 *)(x), ((__int64 *)&(k))[1], ((__int64 *)&(k))[0], (__int64 *)c)
-#  define ins_atomic_u64_eval(x)                  *((volatile U64 *)(x))
-#  define ins_atomic_u64_inc_eval(x)              InterlockedIncrement64((__int64 *)(x))
-#  define ins_atomic_u64_dec_eval(x)              InterlockedDecrement64((__int64 *)(x))
-#  define ins_atomic_u64_eval_assign(x,c)         InterlockedExchange64((__int64 *)(x),(c))
-#  define ins_atomic_u64_add_eval(x,c)            InterlockedAdd64((__int64 *)(x), c)
-#  define ins_atomic_u64_eval_cond_assign(x,k,c)  InterlockedCompareExchange64((__int64 *)(x),(k),(c))
-#  define ins_atomic_u32_eval(x)                  *((volatile U32 *)(x))
-#  define ins_atomic_u32_inc_eval(x)              InterlockedIncrement((LONG *)(x))
-#  define ins_atomic_u32_dec_eval(x)              InterlockedDecrement((LONG *)(x))
-#  define ins_atomic_u32_eval_assign(x,c)         InterlockedExchange((LONG *)(x),(c))
-#  define ins_atomic_u32_eval_cond_assign(x,k,c)  InterlockedCompareExchange((LONG *)(x),(k),(c))
-#  define ins_atomic_u32_add_eval(x,c)            InterlockedAdd((LONG *)(x), (c))
-#  define ins_atomic_u8_eval_assign(x,c)          InterlockedExchange8((CHAR *)(x), (c))
+#  define ins_atomic_u128_eval_cond_assign(x,k,c) (B32)_InterlockedCompareExchange128((__int64 *)(x), ((__int64 *)&(k))[1], ((__int64 *)&(k))[0], (__int64 *)(c))
+#  define ins_atomic_u64_eval(x)                  (U64)__iso_volatile_load64((__int64*)(x))
+#  define ins_atomic_u64_inc_eval(x)              _InterlockedIncrement64((__int64 *)(x))
+#  define ins_atomic_u64_dec_eval(x)              _InterlockedDecrement64((__int64 *)(x))
+#  define ins_atomic_u64_eval_assign(x,c)         _InterlockedExchange64((__int64 *)(x), (c))
+#  define ins_atomic_u64_add_eval(x,c)            _interlockedadd64((__int64 *)(x), (c))
+#  define ins_atomic_u64_eval_cond_assign(x,k,c)  _InterlockedCompareExchange64((__int64 *)(x), (k), (c))
+#  define ins_atomic_u32_eval(x)                  (U32)__iso_volatile_load32((__int32*)(x))
+#  define ins_atomic_u32_inc_eval(x)              _InterlockedIncrement((long *)(x))
+#  define ins_atomic_u32_dec_eval(x)              _InterlockedDecrement((long *)(x))
+#  define ins_atomic_u32_eval_assign(x,c)         _InterlockedExchange((long *)(x), (c))
+#  define ins_atomic_u32_eval_cond_assign(x,k,c)  _InterlockedCompareExchange((long *)(x), (k), (c))
+#  define ins_atomic_u32_add_eval(x,c)            _interlockedadd((long *)(x), (c))
+#  define ins_atomic_u8_eval_assign(x,c)          _InterlockedExchange8((char *)(x), (char)(c))
+#  define ins_atomic_u8_or(x,c)                   _InterlockedOr8((char *)(x), (char)(c))
+#  define ins_atomic_u32_or(x,c)                  _InterlockedOr((long *)(x), (long)(c))
 # else
 #  error Atomic intrinsics not defined for this compiler / architecture combination.
 # endif
 #elif COMPILER_CLANG || COMPILER_GCC
+# include <immintrin.h>
+# include <emmintrin.h>
 #  define ins_atomic_u128_eval_cond_assign(x,k,c) (B32)__atomic_compare_exchange_n((__int128 *)(x),(__int128 *)(c),*(__int128 *)(k),0,__ATOMIC_SEQ_CST,__ATOMIC_SEQ_CST)
-#  define ins_atomic_u64_eval(x)                  __atomic_load_n(x, __ATOMIC_SEQ_CST)
-#  define ins_atomic_u64_inc_eval(x)              (__atomic_fetch_add((U64 *)(x), 1, __ATOMIC_SEQ_CST) + 1)
-#  define ins_atomic_u64_dec_eval(x)              (__atomic_fetch_sub((U64 *)(x), 1, __ATOMIC_SEQ_CST) - 1)
+#  define ins_atomic_u64_eval(x)                  __atomic_load_n((U64 *)(x), __ATOMIC_SEQ_CST)
+#  define ins_atomic_u64_inc_eval(x)              __atomic_add_fetch((U64 *)(x), 1, __ATOMIC_SEQ_CST)
+#  define ins_atomic_u64_dec_eval(x)              __atomic_sub_fetch((U64 *)(x), 1, __ATOMIC_SEQ_CST)
 #  define ins_atomic_u64_eval_assign(x,c)         __atomic_exchange_n(x, c, __ATOMIC_SEQ_CST)
-#  define ins_atomic_u64_add_eval(x,c)            (__atomic_fetch_add((U64 *)(x), c, __ATOMIC_SEQ_CST) + (c))
+#  define ins_atomic_u64_add_eval(x,c)            __atomic_add_fetch((U64 *)(x), c, __ATOMIC_SEQ_CST)
 #  define ins_atomic_u64_eval_cond_assign(x,k,c)  ({ U64 _new = (c); __atomic_compare_exchange_n((U64 *)(x),&_new,(k),0,__ATOMIC_SEQ_CST,__ATOMIC_SEQ_CST); _new; })
 #  define ins_atomic_u32_eval(x)                  __atomic_load_n(x, __ATOMIC_SEQ_CST)
-#  define ins_atomic_u32_inc_eval(x)              (__atomic_fetch_add((U32 *)(x), 1, __ATOMIC_SEQ_CST) + 1)
-#  define ins_atomic_u32_dec_eval(x)              (__atomic_fetch_sub((U32 *)(x), 1, __ATOMIC_SEQ_CST) - 1)
-#  define ins_atomic_u32_add_eval(x,c)            (__atomic_fetch_add((U32 *)(x), c, __ATOMIC_SEQ_CST) + (c))
+#  define ins_atomic_u32_inc_eval(x)              __atomic_add_fetch((U32 *)(x), 1, __ATOMIC_SEQ_CST)
+#  define ins_atomic_u32_dec_eval(x)              __atomic_sub_fetch((U32 *)(x), 1, __ATOMIC_SEQ_CST)
+#  define ins_atomic_u32_add_eval(x,c)            __atomic_add_fetch((U32 *)(x), c, __ATOMIC_SEQ_CST)
 #  define ins_atomic_u32_eval_assign(x,c)         __atomic_exchange_n((x), (c), __ATOMIC_SEQ_CST)
 #  define ins_atomic_u32_eval_cond_assign(x,k,c)  ({ U32 _new = (c); __atomic_compare_exchange_n((U32 *)(x),&_new,(k),0,__ATOMIC_SEQ_CST,__ATOMIC_SEQ_CST); _new; })
 #  define ins_atomic_u8_eval_assign(x,c)          __atomic_exchange_n((x), (c), __ATOMIC_SEQ_CST)
+#  define ins_atomic_u8_or(x,c)                   __atomic_fetch_or((U8 *)(x), (U8)(c), __ATOMIC_SEQ_CST)
+#  define ins_atomic_u32_or(x,c)                  __atomic_fetch_or((U32 *)(x), (U32)(c), __ATOMIC_SEQ_CST)
 #else
 #  error Atomic intrinsics not defined for this compiler / architecture.
 #endif
@@ -363,9 +369,7 @@ CheckNil(nil,p) ? \
 #if COMPILER_MSVC
 # if defined(__SANITIZE_ADDRESS__)
 #  define ASAN_ENABLED 1
-#  define NO_ASAN __declspec(no_sanitize_address)
-# else
-#  define NO_ASAN
+#  define ASAN_NO_ADDR __declspec(no_sanitize_address)
 # endif
 #elif COMPILER_CLANG
 # if defined(__has_feature)
@@ -373,9 +377,15 @@ CheckNil(nil,p) ? \
 #   define ASAN_ENABLED 1
 #  endif
 # endif
-# define NO_ASAN __attribute__((no_sanitize("address")))
-#else
-# define NO_ASAN
+# define ASAN_NO_ADDR   __attribute__((no_sanitize("address")))
+# define UBSAN_NO_ALIGN __attribute__((no_sanitize("alignment")))
+#endif
+
+#ifndef  ASAN_NO_ADDR
+# define ASAN_NO_ADDR
+#endif
+#ifndef  UBSAN_NO_ALIGN
+# define UBSAN_NO_ALIGN
 #endif
 
 #if ASAN_ENABLED
@@ -437,6 +447,9 @@ C_LINKAGE void __asan_unpoison_memory_region(void const volatile *addr, size_t s
 # define this_function_name __func__
 #endif
 
+#define TryRead(func__, cursor__, label__) do { U64 size__ = (func__); if (size__ == 0) { goto label__; } cursor__ += size__; } while (0)
+#define TryReadBreak(func__, cursor__)     { U64 size__ = (func__); if (size__ == 0) { break; } cursor__ += size__; }
+
 ////////////////////////////////
 //~ rjf: Base Types
 
@@ -462,6 +475,8 @@ union U128
   U16 u16[8];
   U32 u32[4];
   U64 u64[2];
+  F32 f32[4];
+  F64 f64[2];
 };
 typedef union U256 U256;
 union U256
@@ -471,6 +486,8 @@ union U256
   U32 u32[8];
   U64 u64[4];
   U128 u128[2];
+  F32 f32[8];
+  F64 f64[4];
 };
 typedef union U512 U512;
 union U512
@@ -481,7 +498,18 @@ union U512
   U64 u64[8];
   U128 u128[4];
   U256 u256[2];
+  F32 f32[16];
+  F64 f64[8];
 };
+
+#pragma pack(push, 1)
+typedef struct U80 U80;
+struct U80
+{
+  U64 int1_frac63;
+  U16 sign1_exp15;
+};
+#pragma pack(pop)
 
 ////////////////////////////////
 //~ rjf: Basic Type Structures
@@ -489,29 +517,29 @@ union U512
 typedef struct U16Array U16Array;
 struct U16Array
 {
-  U64  count;
   U16 *v;
+  U64 count;
 };
 
 typedef struct U32Array U32Array;
 struct U32Array
 {
-  U64  count;
   U32 *v;
+  U64 count;
 };
 
 typedef struct U64Array U64Array;
 struct U64Array
 {
-  U64  count;
   U64 *v;
+  U64 count;
 };
 
 typedef struct U128Array U128Array;
 struct U128Array
 {
-  U64   count;
   U128 *v;
+  U64 count;
 };
 
 ////////////////////////////////
@@ -611,19 +639,19 @@ typedef enum Arch
   Arch_arm64,
   Arch_arm32,
   Arch_COUNT,
-#if ARCH_X64
-  Arch_CURRENT = Arch_x64,
-#elif ARCH_X86
-  Arch_CURRENT = Arch_x86,
-#elif ARCH_ARM64
-  Arch_CURRENT = Arch_arm64,
-#elif ARCH_ARM32
-  Arch_CURRENT = Arch_arm32,
-#else
-  Arch_CURRENT = Arch_Null,
-#endif
 }
 Arch;
+#if ARCH_X64
+# define Arch_CURRENT Arch_x64
+#elif ARCH_X86
+# define Arch_CURRENT Arch_x86
+#elif ARCH_ARM64
+# define Arch_CURRENT Arch_arm64
+#elif ARCH_ARM32
+# define Arch_CURRENT Arch_arm32
+#else
+# define Arch_CURRENT Arch_Null
+#endif
 
 typedef enum Compiler
 {
@@ -632,17 +660,42 @@ typedef enum Compiler
   Compiler_gcc,
   Compiler_clang,
   Compiler_COUNT,
-#if COMPILER_MSVC
-  Compiler_CURRENT = Compiler_msvc,
-#elif COMPILER_GCC
-  Compiler_CURRENT = Compiler_gcc,
-#elif COMPILER_CLANG
-  Compiler_CURRENT = Compiler_clang,
-#else
-  Compiler_CURRENT = Compiler_Null,
-#endif
 }
 Compiler;
+#if COMPILER_MSVC
+# define Compiler_CURRENT Compiler_msvc
+#elif COMPILER_GCC
+# define Compiler_CURRENT Compiler_gcc
+#elif COMPILER_CLANG
+# define Compiler_CURRENT Compiler_clang
+#else
+# define Compiler_CURRENT Compiler_Null
+#endif
+
+typedef enum Linker
+{
+  Linker_Null,
+  Linker_radlink,
+  Linker_msvc,
+  Linker_lld,
+  Linker_COUNT
+}
+Linker;
+
+////////////////////////////////
+//~ rjf: Access Flags
+
+typedef U32 AccessFlags;
+enum
+{
+  AccessFlag_Read        = (1<<0),
+  AccessFlag_Write       = (1<<1),
+  AccessFlag_Execute     = (1<<2),
+  AccessFlag_Append      = (1<<3),
+  AccessFlag_ShareRead   = (1<<4),
+  AccessFlag_ShareWrite  = (1<<5),
+  AccessFlag_Inherited   = (1<<6),
+};
 
 ////////////////////////////////
 //~ rjf: Text 2D Coordinates & Ranges
@@ -677,6 +730,29 @@ union Guid
   U8 v[16];
 };
 StaticAssert(sizeof(Guid) == 16, g_guid_size_check);
+
+////////////////////////////////
+//~ Machine Ops
+
+typedef enum MachineOpResult
+{
+  MachineOpResult_Null,
+  MachineOpResult_Ok,
+  MachineOpResult_Fail,
+  MachineOpResult_Maybe,
+} MachineOpResult;
+
+#define MACHINE_OP_REG_READ(name) MachineOpResult name(U64 reg_id, void *buffer, U64 buffer_max, void *ud)
+typedef MACHINE_OP_REG_READ(MachineOp_RegRead);
+
+#define MACHINE_OP_REG_WRITE(name) MachineOpResult name(U64 reg_id, void *value, U64 value_size, void *ud)
+typedef MACHINE_OP_REG_WRITE(MachineOp_RegWrite);
+
+#define MACHINE_OP_MEM_READ(name) MachineOpResult name(U64 addr, void *buffer, U64 buffer_size, void *ud)
+typedef MACHINE_OP_MEM_READ(MachineOp_MemRead);
+
+#define MACHINE_OP_MEM_WRITE(name) MachineOpResult name(U64 addr, void *value, U64 value_size, void *ud)
+typedef MACHINE_OP_MEM_WRITE(MachineOp_MemWrite);
 
 ////////////////////////////////
 //~ rjf: Basic Constants
@@ -973,6 +1049,15 @@ internal F32 sign_from_side_F32(Side side);
 
 internal B32 memory_is_zero(void *ptr, U64 size);
 
+internal void memory_write16(void *ptr, U16 v);
+internal void memory_write32(void *ptr, U32 v);
+internal void memory_write64(void *ptr, U64 v);
+
+internal U8  memory_read8(void *ptr);
+internal U16 memory_read16(void *ptr);
+internal U32 memory_read32(void *ptr);
+internal U64 memory_read64(void *ptr);
+
 ////////////////////////////////
 //~ rjf: Text 2D Coordinate/Range Functions
 
@@ -991,6 +1076,8 @@ internal B32 txt_rng_contains(TxtRng r, TxtPt pt);
 
 internal U64 bit_size_from_arch(Arch arch);
 internal U64 byte_size_from_arch(Arch arch);
+internal U64 max_ops_per_instruction_from_arch(Arch arch);
+internal U64 min_instruction_size_from_arch(Arch arch);
 internal U64 max_instruction_size_from_arch(Arch arch);
 
 ////////////////////////////////
@@ -1002,12 +1089,32 @@ internal DateTime  date_time_from_micro_seconds(U64 time);
 internal DateTime  date_time_from_unix_time(U64 unix_time);
 
 ////////////////////////////////
-//~ rjf: Non-Fancy Ring Buffer Reads/Writes
+//~ rjf: @per_os_impl Debugger Attachment Checking
 
-internal U64 ring_write(U8 *ring_base, U64 ring_size, U64 ring_pos, void *src_data, U64 src_data_size);
-internal U64 ring_read(U8 *ring_base, U64 ring_size, U64 ring_pos, void *dst_data, U64 read_size);
-#define ring_write_struct(ring_base, ring_size, ring_pos, ptr) ring_write((ring_base), (ring_size), (ring_pos), (ptr), sizeof(*(ptr)))
-#define ring_read_struct(ring_base, ring_size, ring_pos, ptr) ring_read((ring_base), (ring_size), (ring_pos), (ptr), sizeof(*(ptr)))
+internal B32 debugger_is_attached(void);
+
+////////////////////////////////
+//~ rjf: @per_os_impl Platform Time Functions
+
+internal U64 now_time_us(void);
+internal U32 now_time_unix(void);
+internal DateTime now_time_universal(void);
+internal DateTime universal_from_local_time(DateTime *dt);
+internal DateTime local_from_universal_time(DateTime *dt);
+internal void sleep_ms(U32 ms);
+
+////////////////////////////////
+//~ rjf: @per_os_impl Platform GUID Functions
+
+internal Guid make_guid(void);
+
+////////////////////////////////
+//~ rjf: Wrapped Ring Buffer Reads/Writes
+
+internal U64 wrapped_write(U8 *ring_base, U64 ring_size, U64 ring_pos, void *src_data, U64 src_data_size);
+internal U64 wrapped_read(U8 *ring_base, U64 ring_size, U64 ring_pos, void *dst_data, U64 read_size);
+#define wrapped_write_struct(ring_base, ring_size, ring_pos, ptr) wrapped_write((ring_base), (ring_size), (ring_pos), (ptr), sizeof(*(ptr)))
+#define wrapped_read_struct(ring_base, ring_size, ring_pos, ptr) wrapped_read((ring_base), (ring_size), (ring_pos), (ptr), sizeof(*(ptr)))
 
 ////////////////////////////////
 //~ rjf: Sorts
@@ -1020,7 +1127,9 @@ internal U64 u64_array_bsearch(U64 *arr, U64 count, U64 value);
 
 ////////////////////////////////
 
+internal U32 idx_of_zero_byte64(U8 *ptr, U64 size); // size must be exactly 8 bytes
 internal U64 index_of_zero_u32(U32 *ptr, U64 count);
 internal U64 index_of_zero_u64(U64 *ptr, U64 count);
+internal U64 count_digits_u64(U64 v, U64 radix);
 
 #endif // BASE_CORE_H

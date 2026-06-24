@@ -18,9 +18,8 @@ ac_init(void)
     ac_shared->req_batches[idx].mutex = mutex_alloc();
     ac_shared->req_batches[idx].arena = arena_alloc();
   }
+  ac_shared->cancel_thread_semaphore = semaphore_alloc(0, 1, str8_zero());
   ac_shared->cancel_thread = thread_launch(ac_cancel_thread_entry_point, 0);
-  ac_shared->cancel_thread_mutex = mutex_alloc();
-  mutex_take(ac_shared->cancel_thread_mutex);
 }
 
 ////////////////////////////////
@@ -59,6 +58,7 @@ ac_artifact_from_key_(Access *access, String8 key, AC_ArtifactParams *params, U6
           cache->slots_count = Max(256, params->slots_count);
           cache->slots = push_array(cache_stripe->arena, AC_Slot, cache->slots_count);
           cache->stripes = stripe_array_alloc(cache_stripe->arena);
+          cache->stripe_free_node_ptrs = push_array(cache_stripe->arena, AC_NodePtr *, cache->stripes.count);
         }
       }
       if(cache != 0)
@@ -73,6 +73,9 @@ ac_artifact_from_key_(Access *access, String8 key, AC_ArtifactParams *params, U6
   U64 slot_idx = hash%cache->slots_count;
   AC_Slot *slot = &cache->slots[slot_idx];
   Stripe *stripe = stripe_from_slot_idx(&cache->stripes, slot_idx);
+  
+  //- rjf: unpack thread context
+  B32 is_node_work_active = (ac_tctx != 0);
   
   //- rjf: cache * key -> existing artifact
   B32 artifact_is_stale = 1;
@@ -93,11 +96,16 @@ ac_artifact_from_key_(Access *access, String8 key, AC_ArtifactParams *params, U6
           artifact_is_stale = is_stale;
           artifact = n->val;
           access_touch(access, &n->access_pt, stripe->cv);
+          ins_atomic_u64_eval_assign(&n->last_touched_ac_request_gen, ins_atomic_u64_eval(&ac_shared->request_gen));
         }
         if(is_stale)
         {
           B32 got_task = (ins_atomic_u64_eval_cond_assign(&n->working_count, 1, 0) == 0);
           need_request = got_task;
+          if(is_node_work_active)
+          {
+            ins_atomic_u32_eval_assign(&n->other_nodes_depend_on_me, 1);
+          }
         }
         break;
       }
@@ -109,7 +117,7 @@ ac_artifact_from_key_(Access *access, String8 key, AC_ArtifactParams *params, U6
   {
     RWMutexScope(stripe->rw_mutex, 1) for(;;)
     {
-      B32 out_of_time = (os_now_microseconds() >= endt_us);
+      B32 out_of_time = (now_time_us() >= endt_us);
       
       // rjf: find node in cache
       AC_Node *node = 0;
@@ -141,8 +149,12 @@ ac_artifact_from_key_(Access *access, String8 key, AC_ArtifactParams *params, U6
         node->key = str8_copy(stripe->arena, key);
         node->working_count = 1;
         node->evict_threshold_us = params->evict_threshold_us;
+        if(is_node_work_active)
+        {
+          node->other_nodes_depend_on_me = 1;
+        }
       }
-      node->access_pt.last_time_touched_us = os_now_microseconds();
+      node->access_pt.last_time_touched_us = now_time_us();
       node->access_pt.last_update_idx_touched = update_tick_idx();
       
       // rjf: request
@@ -179,9 +191,10 @@ ac_artifact_from_key_(Access *access, String8 key, AC_ArtifactParams *params, U6
       if(!got_artifact && ins_atomic_u64_eval(&node->completion_count) != 0 && ((node->last_completed_gen == params->gen) || !(params->flags & AC_Flag_WaitForFresh) || out_of_time))
       {
         got_artifact = 1;
-        artifact_is_stale = (node->last_completed_gen == params->gen);
+        artifact_is_stale = (node->last_completed_gen != params->gen);
         artifact = node->val;
         access_touch(access, &node->access_pt, stripe->cv);
+        ins_atomic_u64_eval_assign(&node->last_touched_ac_request_gen, ins_atomic_u64_eval(&ac_shared->request_gen));
       }
       
       // rjf: abort if needed
@@ -218,7 +231,7 @@ ac_async_tick(void)
   //
   if(lane_idx() == 0)
   {
-    mutex_drop(ac_shared->cancel_thread_mutex);
+    semaphore_drop(ac_shared->cancel_thread_semaphore);
   }
   
   //////////////////////////////
@@ -244,7 +257,9 @@ ac_async_tick(void)
               for(AC_Node *n = slot->first, *next = 0; n != 0; n = next)
               {
                 next = n->next;
-                if(access_pt_is_expired(&n->access_pt, .time = n->evict_threshold_us) && ins_atomic_u64_eval(&n->working_count) == 0)
+                if(access_pt_is_expired(&n->access_pt, .time = n->evict_threshold_us) &&
+                   ins_atomic_u64_eval(&n->working_count) == 0 &&
+                   (ins_atomic_u32_eval(&n->other_nodes_depend_on_me) == 0 || ac_shared->request_gen > n->last_touched_ac_request_gen))
                 {
                   slot_has_work = 1;
                   if(!write_mode)
@@ -329,6 +344,11 @@ ac_async_tick(void)
   lane_sync();
   
   //////////////////////////////
+  //- rjf: set up artifact cache thread context
+  //
+  ac_tctx = push_array(scratch.arena, AC_TCTX, 1);
+  
+  //////////////////////////////
   //- rjf: do all requests
   //
   for EachIndex(task_idx, tasks_count)
@@ -376,7 +396,7 @@ ac_async_tick(void)
         AC_Artifact val = r->create(r->key, r->cancel_signal, &retry, &gen);
         
         // rjf: retry? -> resubmit request
-        if(retry && lane_idx() == 0)
+        if(retry && lane_idx() == 0 && !ins_atomic_u32_eval(r->cancel_signal))
         {
           AC_RequestBatch *batch = &ac_shared->req_batches[task_idx];
           MutexScope(batch->mutex)
@@ -423,6 +443,19 @@ ac_async_tick(void)
             {
               if(str8_match(n->key, r->key, 0))
               {
+                // rjf: eliminate existing values, if any, if they do not match the current
+                if(cache->destroy != 0 && !MemoryMatchStruct(&n->val, &val) && ins_atomic_u64_eval(&n->completion_count) > 0) for(;;)
+                {
+                  if(access_pt_is_expired(&n->access_pt, .time = 0, .update_idxs = 0))
+                  {
+                    cache->destroy(n->val);
+                    MemoryZeroStruct(&n->val);
+                    break;
+                  }
+                  cond_var_wait_rw(stripe->cv, stripe->rw_mutex, 1, max_U64);
+                }
+                
+                // rjf: write new value
                 n->last_completed_gen = gen;
                 n->val = val;
                 ins_atomic_u64_dec_eval(&n->working_count);
@@ -485,7 +518,7 @@ ac_async_tick(void)
         lane_ctx(lane_ctx_restore);
         
         // rjf: retry? -> resubmit request
-        if(retry)
+        if(retry && !ins_atomic_u32_eval(r->cancel_signal))
         {
           AC_RequestBatch *batch = &ac_shared->req_batches[task_idx];
           MutexScope(batch->mutex)
@@ -532,6 +565,19 @@ ac_async_tick(void)
             {
               if(str8_match(n->key, r->key, 0))
               {
+                // rjf: eliminate existing values, if any, if they do not match the current
+                if(cache->destroy != 0 && !MemoryMatchStruct(&n->val, &val) && ins_atomic_u64_eval(&n->completion_count) > 0) for(;;)
+                {
+                  if(access_pt_is_expired(&n->access_pt, .time = 0, .update_idxs = 0))
+                  {
+                    cache->destroy(n->val);
+                    MemoryZeroStruct(&n->val);
+                    break;
+                  }
+                  cond_var_wait_rw(stripe->cv, stripe->rw_mutex, 1, max_U64);
+                }
+                
+                // rjf: store
                 n->last_completed_gen = gen;
                 n->val = val;
                 ins_atomic_u64_dec_eval(&n->working_count);
@@ -586,11 +632,35 @@ ac_async_tick(void)
   lane_sync();
   
   //////////////////////////////
+  //- rjf: increment the request gen, only if all requests are empty
+  //
+  if(lane_idx() == 0)
+  {
+    B32 have_live_requests = 0;
+    for EachElement(idx, ac_shared->req_batches)
+    {
+      MutexScope(ac_shared->req_batches[idx].mutex)
+      {
+        have_live_requests = (ac_shared->req_batches[idx].wide_count != 0 || ac_shared->req_batches[idx].thin_count != 0);
+      }
+    }
+    if(!have_live_requests)
+    {
+      ac_shared->request_gen += 1;
+    }
+  }
+  
+  //////////////////////////////
+  //- rjf: reset thread context
+  //
+  ac_tctx = 0;
+  
+  //////////////////////////////
   //- rjf: disable cancellation scanning
   //
   if(lane_idx() == 0)
   {
-    mutex_take(ac_shared->cancel_thread_mutex);
+    semaphore_take(ac_shared->cancel_thread_semaphore, max_U64);
   }
   scratch_end(scratch);
 }
@@ -603,8 +673,8 @@ ac_cancel_thread_entry_point(void *p)
 {
   for(;;)
   {
-    os_sleep_milliseconds(50);
-    MutexScope(ac_shared->cancel_thread_mutex)
+    sleep_ms(50);
+    semaphore_take(ac_shared->cancel_thread_semaphore, max_U64);
     {
       for EachIndex(cache_slot_idx, ac_shared->cache_slots_count)
       {
@@ -650,5 +720,6 @@ ac_cancel_thread_entry_point(void *p)
         }
       }
     }
+    semaphore_drop(ac_shared->cancel_thread_semaphore);
   }
 }

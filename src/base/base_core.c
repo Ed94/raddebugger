@@ -79,19 +79,21 @@ u64_up_to_pow2(U64 x){
 }
 
 internal S32
-extend_sign32(U32 x, U32 size){
-  U32 high_bit = size * 8;
-  U32 shift = 32 - high_bit;
-  S32 result = ((S32)x << shift) >> shift;
-  return result;
+extend_sign32(U32 x, U32 size)
+{
+  U32 n = size * 8;
+  U32 m = (U32)1 << (n - 1);
+  S32 r = (S32)((x ^ m) - m);
+  return r;
 }
 
 internal S64
-extend_sign64(U64 x, U64 size){
-  U64 high_bit = size * 8;
-  U64 shift = 64 - high_bit;
-  S64 result = ((S64)x << shift) >> shift;
-  return result;
+extend_sign64(U64 x, U64 size)
+{
+  U64 n = size * 8;
+  U64 m = (U64)1 << (n - 1);
+  S64 r = (S64)((x ^ m) - m);
+  return r;
 }
 
 internal F32
@@ -286,6 +288,56 @@ memory_is_zero(void *ptr, U64 size)
   return result;
 }
 
+internal void UBSAN_NO_ALIGN
+memory_write16(void *ptr, U16 v)
+{
+  MemoryCopy(ptr, &v, sizeof(v));
+}
+
+internal void UBSAN_NO_ALIGN
+memory_write32(void *ptr, U32 v)
+{
+  MemoryCopy(ptr, &v, sizeof(v));
+}
+
+internal void UBSAN_NO_ALIGN
+memory_write64(void *ptr, U64 v)
+{
+  MemoryCopy(ptr, &v, sizeof(v));
+}
+
+internal U8 UBSAN_NO_ALIGN
+memory_read8(void *ptr)
+{
+  U8 result;
+  MemoryCopy(&result, ptr, sizeof(result));
+  return result;
+}
+
+internal U16 UBSAN_NO_ALIGN
+memory_read16(void *ptr)
+{
+  U16 result;
+  MemoryCopy(&result, ptr, sizeof(result));
+  return result;
+}
+
+internal U32 UBSAN_NO_ALIGN
+memory_read32(void *ptr)
+{
+  U32 result;
+  MemoryCopy(&result, ptr, sizeof(result));
+  return result;
+}
+
+internal U64 UBSAN_NO_ALIGN
+memory_read64(void *ptr)
+{
+  U64 result;
+  MemoryCopy(&result, ptr, sizeof(result));
+  return result;
+}
+
 ////////////////////////////////
 //~ rjf: Text 2D Coordinate/Range Functions
 
@@ -414,6 +466,38 @@ byte_size_from_arch(Arch arch)
 }
 
 internal U64
+max_ops_per_instruction_from_arch(Arch arch)
+{
+  U64 max_ops = 0;
+  switch (arch)
+  {
+    case Arch_Null: break;
+    case Arch_x64: max_ops = 1; break;
+    case Arch_x86:
+    case Arch_arm32:
+    case Arch_arm64: NotImplemented; break;
+    default: InvalidPath;
+  }
+  return max_ops;
+}
+
+internal U64
+min_instruction_size_from_arch(Arch arch)
+{
+  U64 min_instruction_size = 0;
+  switch(arch)
+  {
+    case Arch_Null: break;
+    case Arch_x64: min_instruction_size = 1; break;
+    case Arch_x86:
+    case Arch_arm32:
+    case Arch_arm64: NotImplemented; break;
+    default: InvalidPath;
+  }
+  return min_instruction_size;
+}
+
+internal U64
 max_instruction_size_from_arch(Arch arch)
 {
   // TODO(rjf): make this real
@@ -539,10 +623,10 @@ date_time_from_unix_time(U64 unix_time)
 }
 
 ////////////////////////////////
-//~ rjf: Non-Fancy Ring Buffer Reads/Writes
+//~ rjf: Wrapped Ring Buffer Reads/Writes
 
 internal U64
-ring_write(U8 *ring_base, U64 ring_size, U64 ring_pos, void *src_data, U64 src_data_size)
+wrapped_write(U8 *ring_base, U64 ring_size, U64 ring_pos, void *src_data, U64 src_data_size)
 {
   Assert(src_data_size <= ring_size);
   {
@@ -559,7 +643,7 @@ ring_write(U8 *ring_base, U64 ring_size, U64 ring_pos, void *src_data, U64 src_d
 }
 
 internal U64
-ring_read(U8 *ring_base, U64 ring_size, U64 ring_pos, void *dst_data, U64 read_size)
+wrapped_read(U8 *ring_base, U64 ring_size, U64 ring_pos, void *dst_data, U64 read_size)
 {
   Assert(read_size <= ring_size);
   {
@@ -608,6 +692,26 @@ u64_array_bsearch(U64 *arr, U64 count, U64 value)
 
 ////////////////////////////////
 
+internal U32
+idx_of_zero_byte64(U8 *ptr, U64 size)
+{
+  Assert(size == 8);
+#if ARCH_X64
+  __m128i v = _mm_loadl_epi64((__m128i*)ptr);
+  __m128i m = _mm_cmpeq_epi8(v, _mm_setzero_si128());
+  U32 bits = _mm_movemask_epi8(m);
+  return ctz32(bits);
+#else
+  U64 x;
+  MemoryCopyStruct(&x, ptr);
+  U64 splat    = ~0ULL / 255;
+  U64 mask_lsb = 0x01 * splat;
+  U64 mask_msb = 0x80 * splat;
+  U64 t = (x - mask_lsb) & (~x & mask_msb);
+  return ctz64(t) / 8;
+#endif
+}
+
 internal U64
 index_of_zero_u32(U32 *ptr, U64 count)
 {
@@ -628,6 +732,15 @@ index_of_zero_u64(U64 *ptr, U64 count)
     }
   }
   return max_U64;
+}
+
+internal U64
+count_digits_u64(U64 v, U64 radix)
+{
+  if (v == 0) { return 1; }
+  U64 count = 0;
+  for (U64 x = v; x > 0; x /= radix) { count += 1; }
+  return count;
 }
 
 ////////////////////////////////

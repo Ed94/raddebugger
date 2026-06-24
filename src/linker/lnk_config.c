@@ -3,162 +3,108 @@
 
 global read_only LNK_CmdSwitch g_cmd_switch_map[] =
 {
-  { LNK_CmdSwitch_Null,               0, "",                     "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "NOT_IMPLEMENTED",      "", ""                                                                                                      },
-  { LNK_CmdSwitch_Align,              0, "ALIGN",                ":#", ""                                                                                                    },
-  { LNK_CmdSwitch_AllowBind,          0, "ALLOWBIND",            "[:NO]", ""                                                                                                 },
-  { LNK_CmdSwitch_AllowIsolation,     0, "ALLOWISOLATION",       "[:NO]", ""                                                                                                 },
-  { LNK_CmdSwitch_AlternateName,      1, "ALTERNATENAME",        "Creates an a symbol alias \"FROM=TO\"."                                                                    },
-  { LNK_CmdSwitch_AppContainer,       0, "APPCONTAINER",         "[:NO]", ""                                                                                                 },
-  { LNK_CmdSwitch_NotImplemented,     0, "ASSEMBLYDEBUG",        "", ""                                                                                                      }, // .NET
-  { LNK_CmdSwitch_NotImplemented,     0, "ASSEMBLYLINKRESOURCE", "", ""                                                                                                      }, // .NET
-  { LNK_CmdSwitch_NotImplemented,     0, "ASSEMBLYMODULE",       "", ""                                                                                                      }, // .NET
-  { LNK_CmdSwitch_NotImplemented,     0, "ASSEMBLYRESOURCE",     "", ""                                                                                                      }, // .NET
-  { LNK_CmdSwitch_Base,               0, "BASE",                 "{ADDRESS[,SIZE]|@FILENAME,KEY}", ""                                                                        },
-  { LNK_CmdSwitch_Brepro,             0, "BREPRO",               "", "Not supported"                                                                                         },
-  { LNK_CmdSwitch_NotImplemented,     0, "CLRIMAGETYPE",         "", ""                                                                                                      }, // .NET
-  { LNK_CmdSwitch_NotImplemented,     0, "CLRLOADEROPTIMIZATION","", ""                                                                                                      }, // .NET
-  { LNK_CmdSwitch_NotImplemented,     0, "CLRSUPPORTLASTERROR",  "", ""                                                                                                      }, // .NET
-  { LNK_CmdSwitch_NotImplemented,     0, "CLRTHREADATTRIBUTE",   "", ""                                                                                                      }, // .NET
-  { LNK_CmdSwitch_NotImplemented,     0, "CLRUNMANAGEDCODECHECK","", ""                                                                                                      }, // .NET
-  { LNK_CmdSwitch_Debug,              0, "DEBUG",                "[:{FULL|NONE}]", ""                                                                                        },
-  { LNK_CmdSwitch_Dump,               0, "DUMP",                 "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "DEF",                  ":FILENAME", ""                                                                                             },
-  { LNK_CmdSwitch_DefaultLib,         1, "DEFAULTLIB",           ":LIBNAME", ""                                                                                              },
-  { LNK_CmdSwitch_Delay,              0, "DELAY",                ":{NOBIND|UNLOAD}", ""                                                                                      },
-  { LNK_CmdSwitch_DelayLoad,          0, "DELAYLOAD",            ":DLL", ""                                                                                                  },
-  { LNK_CmdSwitch_NotImplemented,     0, "DELAYSIGN",            "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "DEPENDENTLOADFLAG",    "", ""                                                                                                      },
-  { LNK_CmdSwitch_Dll,                0, "DLL",                  "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "DRIVER",               "", ""                                                                                                      },
-  { LNK_CmdSwitch_DisallowLib,        1, "DISALLOWLIB",          ":LIBRARY", "",                                                                                             },
-  { LNK_CmdSwitch_D2,                 0, "D2",                   ""                                                                                                          },
-  { LNK_CmdSwitch_EditAndContinue,    1, "EDITANDCONTINUE",      "[:NO]", ""                                                                                                 },
-  { LNK_CmdSwitch_DynamicBase,        0, "DYNAMICBASE",          "[:NO]", ""                                                                                                 },
-  { LNK_CmdSwitch_NotImplemented,     0, "EMITVOLATILEMETADATA", "", ""                                                                                                      },
-  { LNK_CmdSwitch_Entry,              1, "ENTRY",                ":FUNCTION", ""                                                                                             },
-  { LNK_CmdSwitch_ErrorReport,        0, "ERRORREPORT",          "", "Deprecated starting Windows Vista."                                                                    },
-  { LNK_CmdSwitch_Export,             1, "EXPORT",               ":SYMBOL", ""                                                                                               },
-  { LNK_CmdSwitch_NotImplemented,     0, "EXPORTADMIN",          "", ""                                                                                                      },
-  { LNK_CmdSwitch_FastFail,           0, "FASTFAIL",             "", "Not used."                                                                                             },
-  { LNK_CmdSwitch_NotImplemented,     0, "FASTGENPROFILE",       "", ""                                                                                                      },
-  { LNK_CmdSwitch_FailIfMismatch,     1, "FAILIFMISMATCH",       "", ""                                                                                                      },
-  { LNK_CmdSwitch_FileAlign,          0, "FILEALIGN",            ":#", ""                                                                                                    },
-  { LNK_CmdSwitch_Fixed,              0, "FIXED",                "[:NO]", ""                                                                                                 },
-  { LNK_CmdSwitch_NotImplemented,     0, "FORCE",                "", ""                                                                                                      },
-  { LNK_CmdSwitch_FunctionPadMin,     0, "FUNCTIONPADMIN",      ":#", "Not Implemented"                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "GUARD",                "", ""                                                                                                      },
-  { LNK_CmdSwitch_GuardSym,           1, "GUARDSYM",             "", "",                                                                                                     },
-  { LNK_CmdSwitch_NotImplemented,     0, "GENPROFILE",           "", ""                                                                                                      },
-  { LNK_CmdSwitch_Heap,               0, "HEAP",                 "RESERVE[,COMMIT]", ""                                                                                      },
-  { LNK_CmdSwitch_HighEntropyVa,      0, "HIGHENTROPYVA",        "[:NO]", ""                                                                                                 },
-  { LNK_CmdSwitch_NotImplemented,     0, "IDLOUT",               "", ""                                                                                                      },
-  { LNK_CmdSwitch_Ignore,             0, "IGNORE",               ":#", ""                                                                                                    },
-  { LNK_CmdSwitch_NotImplemented,     0, "IGNOREIDL",            "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "ILK",                  "", ""                                                                                                      },
-  { LNK_CmdSwitch_ImpLib,             0, "IMPLIB",               ":FILENAME", ""                                                                                             },
-  { LNK_CmdSwitch_Include,            1, "INCLUDE",              "", ""                                                                                                      },
-  { LNK_CmdSwitch_Incremental,        0, "INCREMENTAL",          "[:NO]", "Incremental linking is not supported."                                                            },
-  { LNK_CmdSwitch_NotImplemented,     0, "INTEGRITYCHECK",       "", ""                                                                                                      },
-  { LNK_CmdSwitch_InferAsanLibs,      1, "INFERASANLIBS",        "[:NO]", ""                                                                                                 },
-  { LNK_CmdSwitch_InferAsanLibsNo,    1, "INFERASANLIBSNO",      "", "",                                                                                                     },
-  { LNK_CmdSwitch_NotImplemented,     0, "KERNEL",               "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "KEYCONTAINER",         "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "KEYFILE",              "", ""                                                                                                      },
-  { LNK_CmdSwitch_LargeAddressAware,  0, "LARGEADDRESSAWARE",    "[:NO]", ""                                                                                                 },
-  { LNK_CmdSwitch_Lib,                0, "LIB",                  ""                                                                                                          },
-  { LNK_CmdSwitch_LibPath,            0, "LIBPATH",              ":DIR", ""                                                                                                  },
-  { LNK_CmdSwitch_NotImplemented,     0, "LINKERREPO",           "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "LINKERREPOTARGET",     "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "LTCG",                 "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "LTCGOUT",              "", ""                                                                                                      },
-  { LNK_CmdSwitch_Machine,            0, "MACHINE",              ":{X64|X86}", ""                                                                                            },
-  { LNK_CmdSwitch_Manifest,           0, "MANIFEST",             "[:{EMBED[,ID=#]|NO]", ""                                                                                   },
-  { LNK_CmdSwitch_ManifestDependency, 1, "MANIFESTDEPENDENCY",   ":\"manifest dependency XML string\"", ""                                                                   },
-  { LNK_CmdSwitch_ManifestFile,       0, "MANIFESTFILE",         ":FILENAME", ""                                                                                             },
-  { LNK_CmdSwitch_ManifestInput,      0, "MANIFESTINPUT",        ":FILENAME", ""                                                                                             },
-  { LNK_CmdSwitch_ManifestUac,        0, "MANIFESTUAC",          ":{NO|{'level'={'asInvoker'|'highestAvailable'|'requireAdministrator'} ['uiAccess'={'true'|'false'}]}}", "" },
-  { LNK_CmdSwitch_NotImplemented,     0, "MAP",                  "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "MAPINFO",              "", ""                                                                                                      },
-  { LNK_CmdSwitch_Merge,              1, "MERGE",                ":from=to", ""                                                                                              },
-  { LNK_CmdSwitch_NotImplemented,     0, "MIDL",                 "", ""                                                                                                      },
-  { LNK_CmdSwitch_Natvis,             0, "NATVIS",               ":FILENAME", ""                                                                                             },
-  { LNK_CmdSwitch_NotImplemented,     0, "NOASSEMBLY",           "", ""                                                                                                      },
-  { LNK_CmdSwitch_NoDefaultLib,       1, "NODEFAULTLIB",         ":LIBNAME", ""                                                                                              },
-  { LNK_CmdSwitch_NoDefaultLib,       0, "NOD",                  ":LIBNAME", ""                                                                                              },
-  { LNK_CmdSwitch_NotImplemented,     0, "NOENTRY",              "", ""                                                                                                      },
-  { LNK_CmdSwitch_NoExp,              0, "NOEXP",                "", ".exp is not supported."                                                                                },
-  { LNK_CmdSwitch_NoImpLib,           0, "NOIMPLIB",             "", ""                                                                                                      },
-  { LNK_CmdSwitch_NoLogo,             0, "NOLOGO",               "", ""                                                                                                      },
-  { LNK_CmdSwitch_NxCompat,           0, "NXCOMPAT",             "[:NO]", ""                                                                                                 },
-  { LNK_CmdSwitch_Opt,                0, "OPT",                  "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "ORDER",                "", ""                                                                                                      },
-  { LNK_CmdSwitch_Out,                0, "OUT",                  ":FILENAME", ""                                                                                             },
-  { LNK_CmdSwitch_Pdb,                0, "PDB",                  ":FILENAME", ""                                                                                             },
-  { LNK_CmdSwitch_PdbAltPath,         0, "PDBALTPATH",           "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "PDBSTRIPPED",          "", ""                                                                                                      },
-  { LNK_CmdSwitch_PdbPageSize,        0, "PDBPAGESIZE",          ":#", "Page size must be power of two"                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "PROFILE",              "", ""                                                                                                      },
-  { LNK_CmdSwitch_Release,            1, "RELEASE",              "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "SAFESEH",              "", ""                                                                                                      },
-  { LNK_CmdSwitch_Section,            1, "SECTION",              "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "SOURCELINK",           "", ""                                                                                                      },
-  { LNK_CmdSwitch_Stack,              1, "STACK",                ":RESERVE[,COMMIT]", ""                                                                                     },
-  { LNK_CmdSwitch_NotImplemented,     0, "STUB",                 "", ""                                                                                                      },
-  { LNK_CmdSwitch_SubSystem,          1, "SUBSYSTEM",            ":{CONSOLE|NATIVE|WINDOWS}[,#[.##]]", ""                                                                    },
-  { LNK_CmdSwitch_NotImplemented,     0, "SWAPRUN",              "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "TLBID",                "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "TLBOUT",               "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "TIME",                 "", ""                                                                                                      },
-  { LNK_CmdSwitch_TsAware,            0, "TSAWARE",              "[:NO]", ""                                                                                                 },
-  { LNK_CmdSwitch_ThrowingNew,        1, "THROWINGNEW",          "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "USERPROFILE",          "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "VERBOSE",              "", ""                                                                                                      },
-  { LNK_CmdSwitch_Version,            0, "VERSION",              "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "WINMD",                "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "WINMDDELAYSIGN",       "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "WINMDKEYCONTAINER",    "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "WINMDKEYFILE",         "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "WHOLEARCHIVE",         "", ""                                                                                                      },
-  { LNK_CmdSwitch_NotImplemented,     0, "WX",                   "", ""                                                                                                      },
+  { LNK_CmdSwitch_Null,               0, "",                     "", ""                                                                                           },
+  { LNK_CmdSwitch_NotImplemented,     0, "NOT_IMPLEMENTED",      "", ""                                                                                           },
+  { LNK_CmdSwitch_Align,              0, "ALIGN",                ":#",                             "Set section alignment in the virtual address space."          },
+  { LNK_CmdSwitch_AllowBind,          0, "ALLOWBIND",            "[:NO]",                          "Toggles bind bit in the image header."                        },
+  { LNK_CmdSwitch_AllowIsolation,     0, "ALLOWISOLATION",       "[:NO]",                          "Toggles isolation bit in the image header."                   },
+  { LNK_CmdSwitch_AlternateName,      1, "ALTERNATENAME",        ":FROM=TO",                       "Creates a symbol alias \"FROM=TO\"."                          },
+  { LNK_CmdSwitch_AppContainer,       0, "APPCONTAINER",         "[:NO]",                          "Toggles app container bit in the image header."               },
+  { LNK_CmdSwitch_Base,               0, "BASE",                 "{ADDRESS[,SIZE]|@FILENAME,KEY}", "Set default image base address."                              },
+  { LNK_CmdSwitch_Brepro,             0, "BREPRO",               "",                               "No support."                                                  },
+  { LNK_CmdSwitch_Debug,              0, "DEBUG",                "[:{FULL|NONE}]",                 "Controls debug info level."                                   },
+  { LNK_CmdSwitch_DefaultLib,         1, "DEFAULTLIB",           ":LIBNAME",                       "Set default library."                                         },
+  { LNK_CmdSwitch_Delay,              0, "DELAY",                ":{NOBIND|UNLOAD}",               "Controls emission of unload and bind tables."                 },
+  { LNK_CmdSwitch_DelayLoad,          0, "DELAYLOAD",            ":DLL",                           "Delay load DLL."                                              },
+  { LNK_CmdSwitch_Dll,                0, "DLL",                  "",                               "Link to a DLL."                                               },
+  { LNK_CmdSwitch_DisallowLib,        1, "DISALLOWLIB",          ":LIBRARY",                       "Prevents LIBRARY from being linked.",                         },
+  { LNK_CmdSwitch_DynamicBase,        0, "DYNAMICBASE",          "[:NO]",                          "Enable random base address in the linked image."              },
+  { LNK_CmdSwitch_Entry,              1, "ENTRY",                ":FUNCTION",                      "Name of the entry point symbol."                              },
+  { LNK_CmdSwitch_Export,             1, "EXPORT",               ":SYMBOL",                        "Create an export entry for SYMBOL."                           },
+  { LNK_CmdSwitch_FailIfMismatch,     1, "FAILIFMISMATCH",       "{id=value}",                     "Fails to link if same ids have conflicting values."           },
+  { LNK_CmdSwitch_FileAlign,          0, "FILEALIGN",            ":#",                             "Set section alignment in the file."                           },
+  { LNK_CmdSwitch_Fixed,              0, "FIXED",                "[:NO]",                          "Load the image at the default base address."                  },
+  { LNK_CmdSwitch_FunctionPadMin,     0, "FUNCTIONPADMIN",       ":#",                             "Minimum function byte size."                                  },
+  { LNK_CmdSwitch_Heap,               0, "HEAP",                 "RESERVE[,COMMIT]",               "Set reserve and commit size for the heap."                    },
+  { LNK_CmdSwitch_HighEntropyVa,      0, "HIGHENTROPYVA",        "[:NO]",                          "Indicate that image supports full 64-bit address space ASLR." },
+  { LNK_CmdSwitch_Ignore,             0, "IGNORE",               ":#",                             "Ignore a warning."                                            },
+  { LNK_CmdSwitch_ImpLib,             0, "IMPLIB",               ":FILENAME",                      "Set file name for the import library."                        },
+  { LNK_CmdSwitch_Include,            1, "INCLUDE",              ":SYMBOL",                        "Force a link against SYMBOL."                                 },
+  { LNK_CmdSwitch_InferAsanLibs,      1, "INFERASANLIBS",        "[:NO]",                          "No support."                                                  },
+  { LNK_CmdSwitch_InferAsanLibsNo,    1, "INFERASANLIBSNO",      "",                               "No support.",                                                 },
+  { LNK_CmdSwitch_LargeAddressAware,  0, "LARGEADDRESSAWARE",    "[:NO]",                          "For images that can handle addresses > 2GiB."                 },
+  { LNK_CmdSwitch_Lib,                0, "LIB",                  "",                               "Turn linker into lib.exe."                                    },
+  { LNK_CmdSwitch_LibPath,            0, "LIBPATH",              ":DIR",                           "Add DIR for the linker to search for libraries."              },
+  { LNK_CmdSwitch_Machine,            0, "MACHINE",              ":{X64|X86}",                     "Image target platform."                                       },
+  { LNK_CmdSwitch_Manifest,           0, "MANIFEST",             "[:{EMBED[,ID=#]|NO]",            "Controls whether the linker should create a side manifest."   },
+  { LNK_CmdSwitch_ManifestDependency, 1, "MANIFESTDEPENDENCY",   ":\"manifest dependency XML string\"", "Add a manifest dependency."                              },
+  { LNK_CmdSwitch_ManifestFile,       0, "MANIFESTFILE",         ":FILENAME",                      "Specifies a manifest file."                                   },
+  { LNK_CmdSwitch_ManifestInput,      0, "MANIFESTINPUT",        ":FILENAME",                      "Manifest that is embedded in the image."                      },
+  { LNK_CmdSwitch_ManifestUac,        0, "MANIFESTUAC",          ":{NO|{'level'={'asInvoker'|'highestAvailable'|'requireAdministrator'} ['uiAccess'={'true'|'false'}]}}", "Controls UAC information in the manifest." },
+  { LNK_CmdSwitch_Merge,              1, "MERGE",                ":FROM=TO",                       "Merges sections."                                             },
+  { LNK_CmdSwitch_Natvis,             0, "NATVIS",               ":FILENAME",                      "NATVIS to embed in the PDB."                                  },
+  { LNK_CmdSwitch_NoDefaultLib,       1, "NODEFAULTLIB",         ":LIBNAME",                       "Ignore a /DEFAULTLIB."                                        },
+  { LNK_CmdSwitch_NoDefaultLib,       0, "NOD",                  ":LIBNAME",                       "Alias for /NODEFAULTLIB."                                     },
+  { LNK_CmdSwitch_NoExp,              0, "NOEXP",                "",                               "No support."                                                  },
+  { LNK_CmdSwitch_NoImpLib,           0, "NOIMPLIB",             "",                               "Do not create the import library."                            },
+  { LNK_CmdSwitch_NxCompat,           0, "NXCOMPAT",             "[:NO]",                          "Image is compatible with data execution prevention."          },
+  { LNK_CmdSwitch_Opt,                0, "OPT",                  "{REF|ICF}",                      "Optimizations."                                               },
+  { LNK_CmdSwitch_Out,                0, "OUT",                  ":FILENAME",                      "File name of the output image."                               },
+  { LNK_CmdSwitch_Pdb,                0, "PDB",                  ":FILENAME",                      "File name of the output PDB."                                 },
+  { LNK_CmdSwitch_PdbAltPath,         0, "PDBALTPATH",           ":PATH",                          "Alternative output path for the PDB."                         },
+  { LNK_CmdSwitch_PdbPageSize,        0, "PDBPAGESIZE",          ":#",                             "Page size must be power of two."                              },
+  { LNK_CmdSwitch_PdbStripped,        0, "PDBSTRIPPED",          ":FILENAME",                      "Create a stripped PDB containing public symbols, a section map, and a list of object files." },
+  { LNK_CmdSwitch_Release,            1, "RELEASE",              "",                               "Write image checksum."                                        },
+  { LNK_CmdSwitch_Stack,              1, "STACK",                ":RESERVE[,COMMIT]",              "Set reserve and commit size for the stack."                   },
+  { LNK_CmdSwitch_SubSystem,          1, "SUBSYSTEM",            ":{CONSOLE|NATIVE|WINDOWS}[,#[.##]]", "Set subsystem for the image."                             },
+  { LNK_CmdSwitch_TsAware,            0, "TSAWARE",              "[:NO]",                          "Image is terminal server aware."                              },
+  { LNK_CmdSwitch_Version,            0, "VERSION",              "",                               "Image version."                                               },
+  { LNK_CmdSwitch_WholeArchive,       0, "WHOLEARCHIVE",         "[:LIBNAME]",                     "Force linker to pull in all objs from the specified lib."     },
 
-  //- internal switches
   { LNK_CmdSwitch_Rad_Age,                          0, "RAD_AGE",                              ":#",        "Age embeded in EXE and PDB, used to validate incremental build. Default is 1."    },
-  { LNK_CmdSwitch_Rad_AltPchDir,                    0, "RAD_ALT_PCH_DIR",                      ":PATH",     "Alternative directory to search for PCH object files."                            },
+  //{ LNK_CmdSwitch_Rad_BuildExp,                     0, "RAD_BUILD_EXP",                        "[:NO]",     "Build export data."                                                             },
   { LNK_CmdSwitch_Rad_BuildInfo,                    0, "RAD_BUILD_INFO",                       "",          "Print build info and exit."                                                       },
-  { LNK_CmdSwitch_Rad_CheckUnusedDelayLoadDll,      0, "RAD_CHECK_UNUSED_DELAY_LOAD_DLL",      "[:NO]",     ""                                                                                 },
+  { LNK_CmdSwitch_Rad_BuildImpLib,                  0, "RAD_BUILD_IMPLIB",                     "[:NO]",     "Build import library."                                                            },
+  { LNK_CmdSwitch_Rad_CheckUnusedDelayLoadDll,      0, "RAD_CHECK_UNUSED_DELAY_LOAD_DLL",      "[:NO]",     "Check for unused delay load dlls."                                                },
+  { LNK_CmdSwitch_Rad_DataDirCount,                 0, "RAD_DATA_DIR_COUNT",                   ":#",        "Internal default for PE optional header data directory count."                    },
   { LNK_CmdSwitch_Rad_Map,                          0, "RAD_MAP",                              ":FILENAME", "Emit file with the output image's layout description."                            },
   { LNK_CmdSwitch_Rad_MapLinesForUnresolvedSymbols, 0, "RAD_MAP_LINES_FOR_UNRESOLVED_SYMBOLS", "[:NO]",     "Use debug info to print source file location for unresolved symbol"               },
-  { LNK_CmdSwitch_Rad_MemoryMapFiles,               0, "RAD_MEMORY_MAP_FILES",                 "[:NO]",     "When enabled, files are memory-mapped instead of being read entirely on request." },
+  { LNK_CmdSwitch_Rad_MemoryMapFiles,               0, "RAD_MEMORY_MAP_FILES",                 "[:{NO|READ_ONLY|READ_WRITE}]", "When enabled, files are memory-mapped instead of being read entirely on request." },
+  { LNK_CmdSwitch_Rad_BootMode,                     0, "RAD_BOOT_MODE",                        "[:LINKER|TYPE_SERVER]", "Overrides default boot program."                                      },
   { LNK_CmdSwitch_Rad_Debug,                        0, "RAD_DEBUG",                            "[:NO]",     "Emit RAD debug info file."                                                        },
-  { LNK_CmdSwitch_Rad_DebugAltPath,                 0, "RAD_DEBUGALTPATH",                     "", ""                                                                                          },
-  { LNK_CmdSwitch_Rad_DebugName,                    0, "RAD_DEBUG_NAME",                       ":FILENAME", "Sets file name for RAD debug info file."                                          },
-  { LNK_CmdSwitch_Rad_DelayBind,                    0, "RAD_DELAY_BIND",                       "[:NO]", ""                                                                                     },
-  { LNK_CmdSwitch_Rad_DoMerge,                      0, "RAD_DO_MERGE",                         "[:NO]", ""                                                                                     },
-  { LNK_CmdSwitch_Rad_EnvLib,                       0, "RAD_ENV_LIB",                          "[:NO]", ""                                                                                     },
-  { LNK_CmdSwitch_Rad_Exe,                          0, "RAD_EXE",                              "[:NO]", ""                                                                                     },
-  { LNK_CmdSwitch_Rad_Guid,                         0, "RAD_GUID",                             ":{IMAGEBLAKE3|XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXXXXXX}", ""                                   },
+  { LNK_CmdSwitch_Rad_DebugAltPath,                 0, "RAD_DEBUGALTPATH",                     ":PATH",     "Alternative output path for the RDI."                                             },
+  { LNK_CmdSwitch_Rad_DebugName,                    0, "RAD_DEBUG_NAME",                       ":FILENAME", "Set file name for RAD debug info file."                                           },
+  { LNK_CmdSwitch_Rad_DelayBind,                    0, "RAD_DELAY_BIND",                       "[:NO]",     "Emit bindable imports."                                                           },
+  { LNK_CmdSwitch_Rad_DoMerge,                      0, "RAD_DO_MERGE",                         "[:NO]",     "Set whether the linker should execute /MERGE."                                    },
+  { LNK_CmdSwitch_Rad_EnvLib,                       0, "RAD_ENV_LIB",                          "[:NO]",     "Collect libraries from %%LIB%% and %%LIBPATH%% varibles."                         },
+  { LNK_CmdSwitch_Rad_Exe,                          0, "RAD_EXE",                              "[:NO]",     "Set EXE bit in the image header."                                                 },
+  { LNK_CmdSwitch_Rad_Guid,                         0, "RAD_GUID",                             ":{IMAGEBLAKE3|XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXXXXXX}", "The image guid that is embeded in the debug info." },
   { LNK_CmdSwitch_Rad_LargePages,                   0, "RAD_LARGE_PAGES",                      "[:NO]",     "Disabled by default on Windows."                                                  },
-  { LNK_CmdSwitch_Rad_LinkVer,                      0, "RAD_LINK_VER",                         ":##,##", ""                                                                                    },
-  { LNK_CmdSwitch_Rad_Log,                          0, "RAD_LOG",                              ":{ALL,INPUT_OBJ,INPUT_LIB,IO,LINK_STATS,TIMERS}", ""                                           },
-  { LNK_CmdSwitch_Rad_MtPath,                       0, "RAD_MT_PATH",                          ":EXEPATH",  "Exe path to manifest tool, default: " LNK_MANIFEST_MERGE_TOOL_NAME                },
-  { LNK_CmdSwitch_Rad_OsVer,                        0, "RAD_OS_VER",                           ":##,##", ""                                                                                    },
+  { LNK_CmdSwitch_Rad_LinkVer,                      0, "RAD_LINK_VER",                         ":##,##",    "Linker version."                                                                  },
+  { LNK_CmdSwitch_Rad_Log,                          0, "RAD_LOG",                              ":{ALL,INPUT_OBJ,INPUT_LIB,IO,LINK_STATS,TIMERS}", "Loggers."                                   },
+  { LNK_CmdSwitch_Rad_MtPath,                       0, "RAD_MT_PATH",                          ":EXEPATH",  "Exe path to the manifest tool (default: " LNK_MANIFEST_MERGE_TOOL_NAME ")"        },
+  { LNK_CmdSwitch_Rad_OsVer,                        0, "RAD_OS_VER",                           ":##,##",    "OS version."                                                                      },
   { LNK_CmdSwitch_Rad_PageSize,                     0, "RAD_PAGE_SIZE",                        ":#",        "Must be power of two."                                                            },
-  { LNK_CmdSwitch_Rad_PathStyle,                    0, "RAD_PATH_STYLE",                       ":{WindowsAbsolute|UnixAbsolute}", ""                                                           },
+  { LNK_CmdSwitch_Rad_PathStyle,                    0, "RAD_PATH_STYLE",                       ":{WindowsAbsolute|UnixAbsolute}", "Set path style in the PDB."                                 },
   { LNK_CmdSwitch_Rad_PdbHashTypeNameLength,        0, "RAD_PDB_HASH_TYPE_NAME_LENGTH",        ":#",        "Number of hash bytes to use to replace type name. Default 8 bytes (Max 16)."      },
   { LNK_CmdSwitch_Rad_PdbHashTypeNameMap,           0, "RAD_PDB_HASH_TYPE_NAME_MAP",           ":FILENAME", "Produce map file with hash -> type name mappings."                                },
   { LNK_CmdSwitch_Rad_PdbHashTypeNames,             0, "RAD_PDB_HASH_TYPE_NAMES",              ":{NONE|LENIENT|FULL}", "Replace type names in LF_STRUCTURE and LF_CLASS with hashes."          },
-  { LNK_CmdSwitch_Rad_RemoveSection,                0, "RAD_REMOVE_SECTION",                   ":NAME",     "Removes a section from output image."                                             },
+  { LNK_CmdSwitch_Rad_RemoveSection,                0, "RAD_REMOVE_SECTION",                   ":NAME",     "Removes a section from the image."                                                },
   { LNK_CmdSwitch_Rad_SharedThreadPool,             0, "RAD_SHARED_THREAD_POOL",               "[:STRING]", "Default value \"" LNK_DEFAULT_THREAD_POOL_NAME "\""                               },
-  { LNK_CmdSwitch_Rad_SharedThreadPoolMaxWorkers,   0, "RAD_SHARED_THREAD_POOL_MAX_WORKERS",   ":#",        "Sets maximum number of workers in a thread pool."                                 },
-  { LNK_CmdSwitch_Rad_SuppressError,                0, "RAD_SUPPRESS_ERROR",                   ":#",        ""                                                                                 },
-  { LNK_CmdSwitch_Rad_TargetOs,                     0, "RAD_TARGET_OS",                        ":{WINDOWS,LINUX,MAC}"                                                                          },
+  { LNK_CmdSwitch_Rad_SharedThreadPoolMaxWorkers,   0, "RAD_SHARED_THREAD_POOL_MAX_WORKERS",   ":#",        "Set maximum number of workers in a thread pool."                                  },
+  { LNK_CmdSwitch_Rad_SortImports,                  0, "RAD_SORT_IMPORTS",                     "[:NO]",     "Sort static and delayed import tables by their order of appearance in libs, without assuming link order." },
+  { LNK_CmdSwitch_Rad_Ignore,                       0, "RAD_IGNORE",                           ":#",        "Ignore the specified RAD linker warning."                                         },
+  { LNK_CmdSwitch_Rad_ImageAltPath,                 0, "RAD_IMAGEALTPATH",                     ":FILENAME", "Alternative name for the image"                                                   },
   { LNK_CmdSwitch_Rad_WriteTempFiles,               0, "RAD_WRITE_TEMP_FILES",                 "[:NO]",     "When speicifed linker writes image and debug info to temporary files and renames after link is done." },
   { LNK_CmdSwitch_Rad_TimeStamp,                    0, "RAD_TIME_STAMP",                       ":#",        "Time stamp embeded in EXE and PDB."                                               },
+  { LNK_CmdSwitch_Rad_TypeHashAlg,                  0, "RAD_TPYE_HASH_ALG",                    ":{BLAKE3}", "Sets hashing algorithm for type merging."                                         },
   { LNK_CmdSwitch_Rad_UnresolvedSymbolLimit,        0, "RAD_UNRESOLVED_SYMBOL_LIMIT",          ":#",        "Limits number of unresolved symbol errors linker reports."                        },
   { LNK_CmdSwitch_Rad_UnresolvedSymbolRefLimit,     0, "RAD_UNRESOLVED_SYMBOL_REF_LIMIT",      ":#",        "Limit number of unresolved symbol references linker reports."                     },
   { LNK_CmdSwitch_Rad_Version,                      0, "RAD_VERSION",                          "",          "Print version and exit."                                                          },
-  { LNK_CmdSwitch_Rad_Workers,                      0, "RAD_WORKERS",                          ":#",        "Sets number of workers created in the pool. Number is capped at 1024. When /RAD_SHARED_THREAD_POOL is specified this number cant exceed /RAD_SHARED_THREAD_POOL_MAX_WORKERS." },
+  { LNK_CmdSwitch_Rad_Workers,                      0, "RAD_WORKERS",                          ":#",        "Set number of workers created in the pool. Number is capped at 1024. When /RAD_SHARED_THREAD_POOL is specified this number cant exceed /RAD_SHARED_THREAD_POOL_MAX_WORKERS." },
+  { LNK_CmdSwitch_Rad_WorkDir,                      0, "RAD_WORK_DIR",                         ":PATH",     "Working directory used for stable debug paths."                                   },
+
+  { LNK_CmdSwitch_RadTypeServer,                   0, "RAD_TYPE_SERVER", ":FILENAME", "Merge types and store them in the specified file. The filename must have the .rrt extension." },
 
   { LNK_CmdSwitch_Help, 0, "HELP", "", "" },
   { LNK_CmdSwitch_Help, 0, "?",    "", "" },
@@ -173,7 +119,9 @@ global read_only struct
   { "obj",  LNK_Input_Obj },
   { "lib",  LNK_Input_Lib },
   { "rlib", LNK_Input_Lib }, // rust libs
+  { "a",    LNK_Input_Lib }, // GNU lib
   { "res",  LNK_Input_Res },
+  { "rrt",  LNK_Input_RRT },
 };
 
 global read_only struct
@@ -271,32 +219,18 @@ lnk_type_name_hash_mode_from_string(String8 name)
   return LNK_TypeNameHashMode_Null;
 }
 
-internal LNK_CmdOption *
-lnk_cmd_line_push_option_if_not_presentf(Arena *arena, LNK_CmdLine *cmd_line, LNK_CmdSwitchType cmd_switch_type, char *param_fmt, ...)
+internal String8List
+lnk_cmd_line_values_from_switch(Arena *arena, LNK_CmdLine cmd_line, LNK_CmdSwitchType cmd_switch)
 {
-  LNK_CmdOption *opt = 0;
-  String8 cmd_switch_name = lnk_string_from_cmd_switch_type(cmd_switch_type);
-  if (!lnk_cmd_line_has_option_string(*cmd_line, cmd_switch_name)) {
-    va_list param_args;
-    va_start(param_args, param_fmt);
-    String8 param_str = push_str8fv(arena, param_fmt, param_args);
-    va_end(param_args);
-
-    opt = lnk_cmd_line_push_option_string(arena, cmd_line, cmd_switch_name, param_str);
-  }
-  return opt;
-}
-
-internal LNK_CmdOption *
-lnk_cmd_line_push_optionf(Arena *arena, LNK_CmdLine *cmd_line, LNK_CmdSwitchType cmd_switch, char *param_fmt, ...)
-{
-  va_list param_args;
-  va_start(param_args, param_fmt);
-  String8 param_str = push_str8fv(arena, param_fmt, param_args);
-  va_end(param_args);
+  String8List values = {0};
   String8 cmd_switch_name = lnk_string_from_cmd_switch_type(cmd_switch);
-  LNK_CmdOption *opt = lnk_cmd_line_push_option_string(arena, cmd_line, cmd_switch_name, param_str);
-  return opt;
+  for EachNode(cmd, LNK_CmdOption, cmd_line.first_option) {
+    if (str8_match(cmd->string, cmd_switch_name, StringMatchFlag_CaseInsensitive)) {
+      String8List value_strings = str8_list_copy(arena, &cmd->value_strings);
+      str8_list_concat_in_place(&values, &value_strings);
+    }
+  }
+  return values;
 }
 
 internal B32
@@ -397,7 +331,7 @@ lnk_cmd_switch_parse_version(LNK_Obj *obj, LNK_CmdSwitchType cmd_switch, String8
       lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "unable to parse major version");
     }
   } else {
-    lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "invalid number of parameters");
+    lnk_error_cmd_switch_invalid_param_count(LNK_Error_Cmdl, obj, cmd_switch);
   }
 
 exit:;
@@ -424,13 +358,13 @@ lnk_cmd_switch_parse_tuple(LNK_Obj *obj, LNK_CmdSwitchType cmd_switch, String8Li
         tuple_out->v[1] = b;
         return 1;
       } else {
-        lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "unable ot parse second parameter \"%S\"", value_strings.last->string);
+        lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "unable to parse second parameter \"%S\"", value_strings.last->string);
       }
     } else {
       lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "unable to parse first parameter \"%S\"", value_strings.first->string);
     }
   } else {
-    lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "invalid number of parameters");
+    lnk_error_cmd_switch_invalid_param_count(LNK_Error_Cmdl, obj, cmd_switch);
   }
   return 0;
 }
@@ -451,6 +385,24 @@ lnk_try_parse_u64(String8 string, LNK_ParseU64Flags flags, U64 *value_out)
     }
   }
 
+  return 1;
+}
+internal B32
+
+lnk_try_parse_s64(String8 string, LNK_ParseU64Flags flags, S64 *value_out)
+{
+  if (try_s64_from_str8_c_rules(string, value_out)) {
+    if (flags & LNK_ParseU64Flag_CheckUnder32bit) {
+      if (*value_out > max_S64) {
+        return 0;
+      }
+    }
+    if (flags & LNK_ParseU64Flag_CheckPow2) {
+      if (!IsPow2(*value_out)) {
+        return 0;
+      }
+    }
+  }
   return 1;
 }
 
@@ -488,6 +440,19 @@ lnk_cmd_switch_parse_u64_list(Arena *arena, LNK_Obj *obj, LNK_CmdSwitchType cmd_
       return 0;
     }
     u64_list_push(arena, list_out, value);
+  }
+  return 1;
+}
+
+internal B32
+lnk_cmd_switch_parse_s64_list(Arena *arena, LNK_Obj *obj, LNK_CmdSwitchType cmd_switch, String8List value_strings, S64List *list_out, LNK_ParseU64Flags flags)
+{
+  for EachNode(string_n, String8Node, value_strings.first) {
+    S64 v;
+    if (!lnk_try_parse_s64(string_n->string, flags, &v)) {
+      return 0;
+    }
+    s64_list_push(arena, list_out, v);
   }
   return 1;
 }
@@ -594,7 +559,7 @@ lnk_cmd_switch_parse_string(LNK_Obj *obj, LNK_CmdSwitchType cmd_switch, String8L
       lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "empty string is not permitted");
     }
   } else {
-    lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "invalid number of parameters");
+   lnk_error_cmd_switch_invalid_param_count(LNK_Error_Cmdl, obj, cmd_switch);
   }
   return 0;
 }
@@ -783,10 +748,17 @@ lnk_merge_directive_list_push(Arena *arena, LNK_MergeDirectiveList *list, LNK_Me
 internal String8
 lnk_get_image_name(LNK_Config *config)
 {
-  String8 image_name = config->image_name;
-  image_name = str8_skip_last_slash(image_name);
-  image_name = str8_chop_last_dot(image_name);
+  String8 image_path = config->image_alt_path.size ? config->image_alt_path : config->out_path;
+  String8 image_name = str8_skip_last_slash(image_path);
   return image_name;
+}
+
+internal String8
+lnk_get_pdb_name(LNK_Config *config)
+{
+  String8 pdb_path = config->pdb_alt_path.size ? config->pdb_alt_path : config->pdb_name;
+  String8 pdb_name = str8_skip_last_slash(pdb_path);
+  return pdb_name;
 }
 
 internal U64
@@ -953,7 +925,7 @@ lnk_is_section_removed(LNK_Config *config, String8 section_name)
 internal B32
 lnk_is_dll_delay_load(LNK_Config *config, String8 dll_name)
 {
-  return hash_table_search_path_u64(config->delay_load_ht, dll_name, 0);
+  return hash_map_search_path_u64(&config->delay_load_ht, dll_name) != 0;
 }
 
 internal String8
@@ -977,21 +949,21 @@ internal void
 lnk_push_disallow_lib(LNK_Config *config, String8 path)
 {
   String8 lib_name = lnk_get_lib_name(path);
-  hash_table_push_path_u64(config->arena, config->disallow_lib_ht, lib_name, 0);
+  hash_map_push_path_u64(config->arena, &config->disallow_lib_ht, lib_name, 1);
 }
 
 internal B32
 lnk_is_lib_disallowed(LNK_Config *config, String8 path)
 {
   String8 lib_name = lnk_get_lib_name(path);
-  return hash_table_search_path(config->disallow_lib_ht, lib_name) != 0;
+  return hash_map_search_path_u64(&config->disallow_lib_ht, lib_name) != 0;
 }
 
 internal void
 lnk_include_symbol(LNK_Config *config, String8 name, LNK_Obj *obj)
 {
   // is this a duplicate symbol?
-  if (hash_table_search_string_raw(config->include_symbol_ht, name)) {
+  if (hash_map_search_string_raw(&config->include_symbol_ht, name)) {
     return;
   }
 
@@ -1004,16 +976,25 @@ lnk_include_symbol(LNK_Config *config, String8 name, LNK_Obj *obj)
   SLLQueuePush(config->include_symbol_list.first, config->include_symbol_list.last, node);
   config->include_symbol_list.count += 1;
 
-  hash_table_push_string_raw(config->arena, config->include_symbol_ht, name, node);
+  hash_map_push_string_raw(config->arena, &config->include_symbol_ht, name, node);
+}
+
+internal void
+lnk_whole_archive(LNK_Config *config, String8 lib_name)
+{
+  String8Node value = { .string = lib_name };
+  String8List value_strings = {0};
+  str8_list_push_node(&value_strings, &value);
+  lnk_apply_cmd_option_to_config(config, str8_lit("wholearchive"), value_strings, 0);
 }
 
 internal void
 lnk_print_build_info()
 {
-  fprintf(stdout, "  Compiler: %s\n", COMPILER_STRING);
-  fprintf(stdout, "  Mode    : %s\n", BUILD_MODE_STRING);
-  fprintf(stdout, "  Date    : %s %s\n", __TIME__, __DATE__);
-  fprintf(stdout, "  Version : %s\n", BUILD_VERSION_STRING_LITERAL);
+  lnk_fprintf(stdout, "  Compiler: %s\n", COMPILER_STRING);
+  lnk_fprintf(stdout, "  Mode    : %s\n", BUILD_MODE_STRING);
+  lnk_fprintf(stdout, "  Date    : %s %s\n", __TIME__, __DATE__);
+  lnk_fprintf(stdout, "  Version : %s\n", BUILD_VERSION_STRING_LITERAL);
 }
 
 internal void
@@ -1021,73 +1002,74 @@ lnk_print_help(void)
 {
   Temp scratch = scratch_begin(0,0);
 
-  fprintf(stdout, "--- Help -------------------------------------------------------\n");
-  fprintf(stdout, "  %s\n", BUILD_TITLE_STRING_LITERAL);
-  fprintf(stdout, "\n");
-  fprintf(stdout, "  Usage: radlink.exe [Options] [Files] [@rsp]\n");
-  fprintf(stdout, "\n");
+  static char spaces[] = "                                                                                   ";
+  U64 name_max_size = 0; 
+  U64 args_max_size = 0;
+  U64 desc_max_size = 0;
+  for EachElement(i, g_cmd_switch_map) {
+    name_max_size = Max(name_max_size, strlen(g_cmd_switch_map[i].name));
+    args_max_size = Max(args_max_size, strlen(g_cmd_switch_map[i].args));
+    desc_max_size = Max(desc_max_size, strlen(g_cmd_switch_map[i].desc));
+  }
 
-  fprintf(stdout, "  Options:\n");
-  for (U64 i = 0; i < ArrayCount(g_cmd_switch_map); ++i) {
+  lnk_fprintf(stdout, "--- Help -------------------------------------------------------------------------------------------------------------------\n");
+  lnk_fprintf(stdout, "  %s\n", BUILD_TITLE_STRING_LITERAL);
+  lnk_fprintf(stdout, "\n");
+  lnk_fprintf(stdout, "  Usage: radlink.exe [Options] [Files] [@rsp]\n");
+  lnk_fprintf(stdout, "\n");
+
+  lnk_fprintf(stdout, "  Options:\n");
+  U64 option_indent_size   = 4;
+  U64 option_name_max_size = 60;
+  for EachElement(i, g_cmd_switch_map) {
     Temp temp = temp_begin(scratch.arena);
+
+    U64 name_size = strlen(g_cmd_switch_map[i].name);
+    U64 args_size = strlen(g_cmd_switch_map[i].args);
+    U64 desc_size = strlen(g_cmd_switch_map[i].desc);
 
     char *name = g_cmd_switch_map[i].name;
     char *args = g_cmd_switch_map[i].args;
     char *desc = g_cmd_switch_map[i].desc;
     LNK_CmdSwitchType type = g_cmd_switch_map[i].type;
 
-    if (strcmp(name, "") == 0 ||
-        strcmp(name, "NOT_IMPLEMENTED") == 0 ||
-        type == LNK_CmdSwitch_Help) {
+    if (strcmp(name, "") == 0 || strcmp(name, "NOT_IMPLEMENTED") == 0 || type == LNK_CmdSwitch_Help) {
       continue;
     }
 
-    String8 name_args = push_str8f(temp.arena, "%s%s", name, args);
+    String8List fmt = {0};
 
-    fprintf(stdout, "   /%-32.*s %s%s\n",
-            str8_varg(name_args),
-            desc,
-            type == LNK_CmdSwitch_NotImplemented ? "Not Implemented" : "");
+    str8_list_pushf(temp.arena, &fmt, "%.*s", option_indent_size, spaces);
+
+    str8_list_pushf(temp.arena, &fmt, "/");
+
+    B32 put_option_args_on_new_line = name_size + args_size > option_name_max_size;
+    if (put_option_args_on_new_line) {
+      str8_list_pushf(temp.arena, &fmt, "%s%s", name, args[0] == ':' ? ":" : "");
+    } else {
+      str8_list_pushf(temp.arena, &fmt, "%s%s", name, args);
+    }
+
+    U64 desc_indent_size = fmt.total_size < option_name_max_size ? option_name_max_size - fmt.total_size : 0;
+    str8_list_pushf(temp.arena, &fmt, "%.*s", desc_indent_size, spaces);
+
+    str8_list_pushf(temp.arena, &fmt, "%s", desc);
+    str8_list_pushf(temp.arena, &fmt, "\n");
+
+    if (put_option_args_on_new_line) {
+      str8_list_pushf(temp.arena, &fmt, "%.*s", Min(option_name_max_size, option_indent_size + name_size + 1), spaces);
+      str8_list_pushf(temp.arena, &fmt, "%s\n", args[0] == ':' ? args + 1 : args);
+    }
+
+    String8 line = str8_list_join(temp.arena, &fmt, 0);
+    lnk_fprintf(stdout, "%.*s", str8_varg(line));
 
     temp_end(temp);
   }
 
-  fprintf(stdout, "\n");
+  lnk_fprintf(stdout, "\n");
 
   scratch_end(scratch);
-}
-
-internal String8
-lnk_expand_env_vars_windows(Arena *arena, HashTable *env_vars, String8 string)
-{
-  Temp scratch = scratch_begin(&arena, 1);
-
-  String8List list = {0};
-  for (U64 i = 0; i < string.size; ) {
-    U64 open  = str8_find_needle(string, i,      str8_lit("%"), 0);
-    U64 close = str8_find_needle(string, open+1, str8_lit("%"), 0);
-
-    String8 text = str8_substr(string, rng_1u64(i, open));
-    str8_list_push(scratch.arena, &list, text);
-    i += text.size;
-
-    if (open < close) {
-      String8       env_var_name = str8_substr(string, rng_1u64(open+1, close));
-      KeyValuePair *match        = hash_table_search_path(env_vars, env_var_name);
-      if (match) {
-        str8_list_push(scratch.arena, &list, match->value_string);
-        i = close+1;
-      } else {
-        str8_list_pushf(scratch.arena, &list, "%%%S", env_var_name);
-        i = close;
-      }
-    }
-  }
-
-  String8 result = str8_list_join(arena, &list, 0);
-
-  scratch_end(scratch);
-  return result;
 }
 
 internal String8List
@@ -1103,7 +1085,7 @@ lnk_unwrap_rsp(Arena *arena, String8List arg_list)
       // remove "@"
       String8 name = str8_skip(curr->string, 1);
 
-      if (os_file_path_exists(name)) {
+      if (file_path_exists(name)) {
         // read rsp from disk
         String8 file = lnk_read_data_from_file_path(scratch.arena, 0, name);
         
@@ -1128,6 +1110,26 @@ lnk_unwrap_rsp(Arena *arena, String8List arg_list)
   
   scratch_end(scratch);
   return result;
+}
+
+internal void
+lnk_apply_write_temp_files(Arena *arena, LNK_Config *config)
+{
+  if (config->rad_chunk_map_name.size) {
+    config->temp_rad_chunk_map_name = push_str8f(arena, "%S.tmp%x", config->rad_chunk_map_name, config->time_stamp);
+  }
+  if (config->out_path.size) {
+    config->temp_out_path = push_str8f(arena, "%S.tmp%x", config->out_path, config->time_stamp);
+  }
+  if (config->pdb_name.size) {
+    config->temp_pdb_name = push_str8f(arena, "%S.tmp%x", config->pdb_name, config->time_stamp);
+  }
+  if (config->rad_debug_name.size) {
+    config->temp_rad_debug_name = push_str8f(arena, "%S.tmp%x", config->rad_debug_name, config->time_stamp);
+  }
+  if (config->type_server_name.size) {
+    config->temp_type_server_name = push_str8f(arena, "%S.tmp%x", config->type_server_name, config->time_stamp); 
+  }
 }
 
 internal void
@@ -1166,23 +1168,23 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
     if (value_strings.node_count == 1) {
       LNK_AltName alt_name;
       if (lnk_parse_alt_name_directive(value_strings.first->string, obj, &alt_name)) {
-        String8 to_extant = {0};
-        if (hash_table_search_string_string(config->alt_name_ht, alt_name.from, &to_extant)) {
-          if (str8_match(to_extant, alt_name.to, 0)) {
+        String8 *to_extant = hash_map_search_string_string(&config->alt_name_ht, alt_name.from);
+        if (to_extant) {
+          if (str8_match(*to_extant, alt_name.to, 0)) {
             // ignore, duplicate
           } else {
-            lnk_error_obj(LNK_Error_AlternateNameConflict, obj, "conflicting alternative name: existing '%S=%S' vs. new '%S=%S'", alt_name.from, to_extant, alt_name.from, alt_name.to);
+            lnk_error_obj(LNK_Error_AlternateNameConflict, obj, "conflicting alternative name: existing '%S=%S' vs. new '%S=%S'", alt_name.from, *to_extant, alt_name.from, alt_name.to);
           }
         } else {
           alt_name.from = push_str8_copy(config->arena, alt_name.from);
           alt_name.to   = push_str8_copy(config->arena, alt_name.to);
 
           lnk_alt_name_list_push(config->arena, &config->alt_name_list, alt_name);
-          hash_table_push_string_string(config->arena, config->alt_name_ht, alt_name.from, alt_name.to);
+          hash_map_push_string_string(config->arena, &config->alt_name_ht, alt_name.from, alt_name.to);
         }
       }
     } else {
-      lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "invalid number of parameters");
+      lnk_error_cmd_switch_invalid_param_count(LNK_Error_Cmdl, obj, cmd_switch);
     }
   } break;
 
@@ -1218,10 +1220,6 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
     }
   } break;
 
-  case LNK_CmdSwitch_Brepro: {
-    // not supported -- ignore
-  } break;
-
   case LNK_CmdSwitch_Debug: {
     if (value_strings.node_count == 0) {
       config->debug_mode = LNK_DebugMode_Full;
@@ -1229,7 +1227,7 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
       LNK_DebugMode debug_mode = lnk_debug_mode_from_string(value_strings.first->string);
       if (debug_mode == LNK_DebugMode_GHash) {
         config->debug_mode = LNK_DebugMode_Full;
-        lnk_error_cmd_switch(LNK_Warning_Cmdl, obj, cmd_switch, "GHASH is not supported, switching to FULL");
+        config->ghash = 1;
       } else if (debug_mode == LNK_DebugMode_FastLink) {
         config->debug_mode = LNK_DebugMode_Full;
         lnk_error_cmd_switch(LNK_Warning_Cmdl, obj, cmd_switch, "FASTLINK is not supported, switching to FULL");
@@ -1239,7 +1237,7 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
         lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "invalid parameter \"%S\"", value_strings.first->string);
       }
     } else {
-      lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "invalid number of parameters");
+      lnk_error_cmd_switch_invalid_param_count(LNK_Error_Cmdl, obj, cmd_switch);
     }
   } break;
 
@@ -1254,13 +1252,13 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
 
   case LNK_CmdSwitch_Delay: {
     if (value_strings.node_count == 0 || value_strings.node_count > 1) {
-      lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "invalid number of parameters");
+      lnk_error_cmd_switch_invalid_param_count(LNK_Error_Cmdl, obj, cmd_switch);
     } else {
       String8 value = value_strings.first->string;
       if (str8_match_lit("unload", value, StringMatchFlag_CaseInsensitive)) {
-        config->import_table_emit_uiat = 1;
+        config->import_table_emit_uiat = LNK_SwitchState_Yes;
       } else if (str8_match_lit("nobind", value, StringMatchFlag_CaseInsensitive)) {
-        config->import_table_emit_biat = 0;
+        config->import_table_emit_biat = LNK_SwitchState_No;
       } else {
         lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "unknown parameter \"%S\"", value);
       }
@@ -1269,9 +1267,9 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
 
   case LNK_CmdSwitch_DelayLoad: {
     for (String8Node *name_n = value_strings.first; name_n != 0; name_n = name_n->next) {
-      if (hash_table_search_path_u64(config->delay_load_ht, name_n->string, 0)) { continue; }
+      if (hash_map_search_path_u64(&config->delay_load_ht, name_n->string)) { continue; }
       String8 name = push_str8_copy(config->arena, name_n->string);
-      hash_table_push_path_u64(config->arena, config->delay_load_ht, name, 0);
+      hash_map_push_path_u64(config->arena, &config->delay_load_ht, name, 1);
       str8_list_push(config->arena, &config->delay_load_dll_list, name);
     }
   } break;
@@ -1282,14 +1280,6 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
 
   case LNK_CmdSwitch_DynamicBase: {
     lnk_cmd_switch_set_flag_16(obj, cmd_switch, value_strings, &config->dll_characteristics, PE_DllCharacteristic_DYNAMIC_BASE);
-  } break;
-
-  case LNK_CmdSwitch_Dump: { 
-    lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "unsupported switch; binary dump is done by passing /DUMP to link.exe");
-  } break;
-
-  case LNK_CmdSwitch_D2: {
-    // not supported -- ignore
   } break;
 
   case LNK_CmdSwitch_Entry: {
@@ -1304,15 +1294,11 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
     config->entry_point_name = new_entry_point_name;
   } break;
 
-  case LNK_CmdSwitch_ErrorReport: {
-    // not supported -- ignore
-  } break;
-
   case LNK_CmdSwitch_Export: {
     PE_ExportParse export_parse = {0};
     if (lnk_parse_export_directive_ex(config->arena, value_strings, obj, &export_parse)) {
       String8             export_name = pe_name_from_export_parse(&export_parse);
-      PE_ExportParseNode *exp_n       = hash_table_search_string_raw(config->export_ht, export_name);
+      PE_ExportParseNode *exp_n       = hash_map_search_string_raw(&config->export_ht, export_name);
 
       if (exp_n == 0) {
         // make sure export is defined
@@ -1323,7 +1309,7 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
         // push new export
         exp_n = pe_export_parse_list_push(config->arena, &config->export_symbol_list, export_parse);
 
-        hash_table_push_string_raw(config->arena, config->export_ht, export_name, exp_n);
+        hash_map_push_string_raw(config->arena, &config->export_ht, export_name, exp_n);
       } else {
         B32 is_ambiguous = 1;
         PE_ExportParse *extant_export = &exp_n->data;
@@ -1350,8 +1336,34 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
     }
   } break;
 
-  case LNK_CmdSwitch_FastFail: {
-    // do nothing
+  case LNK_CmdSwitch_FailIfMismatch: {
+    if (value_strings.node_count != 1) {
+      lnk_error_cmd_switch_invalid_param_count(LNK_Error_Cmdl, obj, cmd_switch);
+      break;
+    }
+
+    LNK_AltName dir;
+    if ( ! lnk_parse_alt_name_directive(value_strings.first->string, obj, &dir)) {
+      break;
+    }
+
+    LNK_AltName *current = hash_map_search_string_raw(&config->fail_if_mismatch_ht, dir.from);
+    if (current) {
+      if ( ! str8_match(current->to, dir.to, 0)) {
+        lnk_error_cmd_switch(LNK_Error_FailIfMismatch, obj, cmd_switch,
+                      "'%S=%S' mismatch in:\n"
+                      "  %S: /FAILIFMISMATCH:%S=%S\n",
+                      dir.from, dir.to,
+                      lnk_loc_from_obj(scratch.arena, current->obj), current->from, current->to);
+        break;
+      }
+    } else {
+      LNK_AltName *n = push_array(config->arena, LNK_AltName, 1);
+      n->from = push_str8_copy(config->arena, dir.from);
+      n->to   = push_str8_copy(config->arena, dir.to);
+      n->obj  = obj;
+      hash_map_push_string_raw(config->arena, &config->fail_if_mismatch_ht, n->from, n);
+    }
   } break;
 
   case LNK_CmdSwitch_FileAlign: {
@@ -1405,16 +1417,18 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
     if (lnk_cmd_switch_parse_u64(obj, cmd_switch, value_strings, &error_code, 0)) {
       switch (error_code) {
       case LNK_MsWarningCode_UnsuedDelayLoadDll: {
-        lnk_suppress_error(LNK_Warning_UnusedDelayLoadDll);
+        lnk_ignore_error(LNK_Warning_UnusedDelayLoadDll);
       } break;
       case LNK_MsWarningCode_MissingExternalTypeServer: {
-        lnk_suppress_error(LNK_Warning_MissingExternalTypeServer);
+        lnk_ignore_error(LNK_Warning_MissingExternalTypeServer);
       } break;
       case LNK_MsWarningCode_SectionFlagsConflict: {
-        lnk_suppress_error(LNK_Warning_SectionFlagsConflict);
+        lnk_ignore_error(LNK_Warning_SectionFlagsConflict);
       } break;
       default: {
+        #if BUILD_DEBUG
         lnk_not_implemented("TODO: /IGNORE:%llu", error_code);
+        #endif
       } break;
       }
     }
@@ -1430,13 +1444,8 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
     }
   } break;
 
-  case LNK_CmdSwitch_Incremental: {
-    LNK_SwitchState state;
-    if (lnk_cmd_switch_parse_flag(obj, cmd_switch, value_strings, &state)) {
-      if (state == LNK_SwitchState_Yes) {
-        lnk_error_cmd_switch(LNK_Warning_Cmdl, obj, cmd_switch, "incremental linkage is not supported");
-      }
-    }
+  case LNK_CmdSwitch_InferAsanLibs: {
+    lnk_cmd_switch_parse_flag(obj, cmd_switch, value_strings, &config->infer_asan_libs);
   } break;
 
   case LNK_CmdSwitch_LargeAddressAware: {
@@ -1450,8 +1459,8 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
   case LNK_CmdSwitch_LibPath: {
     String8List lib_dir_list = str8_list_copy(config->arena, &value_strings);
     for (String8Node *dir_n = lib_dir_list.first; dir_n != 0; dir_n = dir_n->next) {
-      if (!os_folder_path_exists(dir_n->string)) {
-        String8 full_path = os_full_path_from_path(scratch.arena, dir_n->string);
+      if (!folder_path_exists(dir_n->string)) {
+        String8 full_path = full_path_from_path(scratch.arena, dir_n->string);
         lnk_error_cmd_switch(LNK_Warning_Cmdl, obj, cmd_switch, "path doesn't exist %S", full_path);
       }
     }
@@ -1467,7 +1476,7 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
         lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "unknown parameter \"%S\"", value_strings.first->string);
       }
     } else {
-      lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "invalid number of parameters");
+      lnk_error_cmd_switch_invalid_param_count(LNK_Error_Cmdl, obj, cmd_switch);
     }
   } break;
 
@@ -1598,7 +1607,7 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
         lnk_merge_directive_list_push(config->arena, &config->merge_list, merge);
       }
     } else {
-      lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "invalid number of parameters %d", value_strings.node_count);
+      lnk_error_cmd_switch_invalid_param_count(LNK_Error_Cmdl, obj, cmd_switch);
     }
   } break;
 
@@ -1622,10 +1631,10 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
     } else {
       for (String8Node *lib_n = value_strings.first; lib_n != 0; lib_n = lib_n->next) {
         String8 lib_name = lnk_get_lib_name(lib_n->string);
-        if (hash_table_search_path_raw(config->disallow_lib_ht, lib_name)) {
+        if (hash_map_search_path_u64(&config->disallow_lib_ht, lib_name)) {
           continue;
         }
-        hash_table_push_path_raw(config->arena, config->disallow_lib_ht, lib_name, 0);
+        hash_map_push_path_u64(config->arena, &config->disallow_lib_ht, lib_name, 1);
       }
     }
   } break;
@@ -1636,10 +1645,6 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
 
   case LNK_CmdSwitch_NoImpLib: {
     config->build_imp_lib = 0;
-  } break;
-
-  case LNK_CmdSwitch_NoLogo: {
-    // we don't print logo
   } break;
 
   case LNK_CmdSwitch_NxCompat: {
@@ -1681,7 +1686,7 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
   } break;
 
   case LNK_CmdSwitch_Out: {
-    lnk_cmd_switch_parse_string_copy(config->arena, obj, cmd_switch, value_strings, &config->image_name);
+    lnk_cmd_switch_parse_string_copy(config->arena, obj, cmd_switch, value_strings, &config->out_path);
   } break;
 
   case LNK_CmdSwitch_Pdb: {
@@ -1708,11 +1713,18 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
     }
   } break;
 
+  case LNK_CmdSwitch_PdbStripped: {
+    String8 file_name;
+    if (lnk_cmd_switch_parse_string(obj, cmd_switch, value_strings, &file_name)) {
+      config->pdb_stripped_name = str8_copy(config->arena, file_name);
+    }
+  } break;
+
   case LNK_CmdSwitch_Release: {
     if (value_strings.node_count == 0) {
       config->flags |= LNK_ConfigFlag_WriteImageChecksum;
     } else {
-      lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "invalid number of parameters");
+      lnk_error_cmd_switch_invalid_param_count(LNK_Error_Cmdl, obj, cmd_switch);
     }
   } break;
 
@@ -1746,9 +1758,11 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
       PE_WindowsSubsystem subsystem = pe_subsystem_from_string(value_strings.first->string);
       if (subsystem != PE_WindowsSubsystem_UNKNOWN) {
         if (config->subsystem != PE_WindowsSubsystem_UNKNOWN) {
-          lnk_error_cmd_switch(LNK_Warning_Cmdl, obj, cmd_switch, "overriding subystem \"%S\" with \"%S\"",
-                               pe_string_from_subsystem(config->subsystem),
-                               pe_string_from_subsystem(subsystem));
+          if (config->subsystem != subsystem) {
+            lnk_error_cmd_switch(LNK_Warning_Cmdl, obj, cmd_switch, "overriding subystem \"%S\" with \"%S\"",
+                                 pe_string_from_subsystem(config->subsystem),
+                                 pe_string_from_subsystem(subsystem));
+          }
         }
         config->subsystem = subsystem;
 
@@ -1761,7 +1775,7 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
         lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "invalid subsystem \"%S\"", value_strings.first->string);
       }
     } else {
-      lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "invalid number of parameters");
+      lnk_error_cmd_switch_invalid_param_count(LNK_Error_Cmdl, obj, cmd_switch);
     }
   } break;
 
@@ -1776,26 +1790,54 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
     lnk_cmd_switch_parse_version(obj, cmd_switch, value_strings, &config->image_ver);
   } break;
 
+  case LNK_CmdSwitch_WholeArchive: {
+    if (value_strings.node_count == 0) {
+      config->whole_archive_all = 1;
+    } else {
+      String8 lib_name;
+      if (lnk_cmd_switch_parse_string(obj, cmd_switch, value_strings, &lib_name)) {
+        lib_name = str8_chop_last_dot(str8_skip_last_slash(lib_name));
+        hash_map_push_path_u64(config->arena, &config->whole_archive_ht, lib_name, 1);
+      }
+    }
+  } break;
+
   case LNK_CmdSwitch_Rad_Age: {
     lnk_cmd_switch_parse_u32(obj, cmd_switch, value_strings, &config->age, 0);
   } break;
 
-  case LNK_CmdSwitch_Rad_AltPchDir: {
-    if (value_strings.node_count == 0) {
-      lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "missing parameters");
-      break;
-    }
-    String8List dirs = str8_list_copy(config->arena, &value_strings);
-    str8_list_concat_in_place(&config->alt_pch_dirs, &dirs);
-  } break;
+  //case LNK_CmdSwitch_Rad_BuildExp: {
+  //  LNK_SwitchState state;
+  //  if (lnk_cmd_switch_parse_flag(obj, cmd_switch, value_strings, &state)) {
+  //    config->build_exp = (state == LNK_SwitchState_Yes);
+  //  }
+  //} break;
 
   case LNK_CmdSwitch_Rad_BuildInfo: {
     lnk_print_build_info();
-    os_abort(0);
+    abort_self(0);
+  } break;
+
+  case LNK_CmdSwitch_Rad_BuildImpLib: {
+    LNK_SwitchState state;
+    if (lnk_cmd_switch_parse_flag(obj, cmd_switch, value_strings, &state)) {
+      config->build_imp_lib = (state == LNK_SwitchState_Yes);
+    }
   } break;
 
   case LNK_CmdSwitch_Rad_CheckUnusedDelayLoadDll: {
     lnk_cmd_switch_set_flag_64(obj, cmd_switch, value_strings, &config->flags, LNK_ConfigFlag_CheckUnusedDelayLoadDll);
+  } break;
+
+  case LNK_CmdSwitch_Rad_DataDirCount: {
+    U64 data_dir_count = 0;
+    if (lnk_cmd_switch_parse_u64(obj, cmd_switch, value_strings, &data_dir_count, LNK_ParseU64Flag_CheckUnder32bit)) {
+      if (1 <= data_dir_count && data_dir_count <= PE_DataDirectoryIndex_COUNT) {
+        config->data_dir_count = data_dir_count;
+      } else {
+        lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "invalid data directory count %llu, expected 1 through %u", data_dir_count, PE_DataDirectoryIndex_COUNT);
+      }
+    }
   } break;
 
   case LNK_CmdSwitch_Rad_Map: {
@@ -1808,7 +1850,39 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
   } break;
 
   case LNK_CmdSwitch_Rad_MemoryMapFiles: {
-    lnk_cmd_switch_set_flag_32(obj, cmd_switch, value_strings, &config->io_flags, LNK_IO_Flags_MemoryMapFiles);
+    if (value_strings.node_count == 0) {
+      config->io_flags &= ~LNK_IO_Flags_MemoryMapFilesReadWrite;
+      config->io_flags |=  LNK_IO_Flags_MemoryMapFilesReadOnly;
+    } else if (value_strings.node_count == 1) {
+      String8 value = value_strings.first->string;
+      if (str8_matchi(value, str8_lit("no"))) {
+        config->io_flags &= ~(LNK_IO_Flags_MemoryMapFilesReadOnly|LNK_IO_Flags_MemoryMapFilesReadWrite);
+      } else if (str8_matchi(value, str8_lit("yes")) || str8_matchi(value, str8_lit("read_only"))) {
+        config->io_flags &= ~LNK_IO_Flags_MemoryMapFilesReadWrite;
+        config->io_flags |=  LNK_IO_Flags_MemoryMapFilesReadOnly;
+      } else if (str8_matchi(value, str8_lit("read_write"))) {
+        config->io_flags &= ~LNK_IO_Flags_MemoryMapFilesReadOnly;
+        config->io_flags |=  LNK_IO_Flags_MemoryMapFilesReadWrite;
+      } else {
+        lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "invalid parameter: \"%S\", expected NO, READ_ONLY, or READ_WRITE", value);
+      }
+    } else {
+      lnk_error_cmd_switch_invalid_param_count(LNK_Error_Cmdl, obj, cmd_switch);
+    }
+  } break;
+
+  case LNK_CmdSwitch_Rad_BootMode: {
+    if (value_strings.node_count == 1) {
+      if (str8_matchi(value_strings.first->string, str8_lit("linker"))) {
+        config->boot_mode = LNK_BootMode_Linker;
+      } else if (str8_matchi(value_strings.first->string, str8_lit("type_server"))) {
+        config->boot_mode = LNK_BootMode_TypeServer;
+      } else {
+        lnk_error_cmd_switch(LNK_Error_Boot, obj, cmd_switch, "unknown value: \"%S\".", value_strings.first->string);
+      }
+    } else {
+      lnk_error_cmd_switch_invalid_param_count(LNK_Error_Boot, obj, cmd_switch);
+    }
   } break;
 
   case LNK_CmdSwitch_Rad_Debug: {
@@ -1845,7 +1919,7 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
       if (str8_match_lit("imageblake3", value_strings.first->string, StringMatchFlag_CaseInsensitive)) {
         config->guid_type = Lnk_DebugInfoGuid_ImageBlake3;
       } else if (str8_match_lit("random", value_strings.first->string, StringMatchFlag_CaseInsensitive)) {
-        config->guid = os_make_guid();
+        config->guid = make_guid();
       } else {
         Guid guid;
         if (try_guid_from_string(value_strings.first->string, &guid)) {
@@ -1861,7 +1935,7 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
 
   case LNK_CmdSwitch_Rad_LargePages: {
     if (value_strings.node_count == 0) {
-      OS_ProcessInfo *process_info = os_get_process_info();
+      ProcessInfo *process_info = get_process_info();
       if (process_info->large_pages_allowed) {
         arena_default_flags |= ArenaFlag_LargePages;
       } else {
@@ -1878,7 +1952,7 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
       }
     } else if (value_strings.node_count == 1) {
       if (str8_match_lit("quiet", value_strings.first->string, StringMatchFlag_CaseInsensitive)) {
-        OS_ProcessInfo *process_info = os_get_process_info();
+        ProcessInfo *process_info = get_process_info();
         if (process_info->large_pages_allowed) {
           arena_default_flags |= ArenaFlag_LargePages;
         }
@@ -1888,7 +1962,7 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
         lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "invalid parameter: \"%S\", expected NO or QUIET", value_strings.first->string);
       }
     } else {
-      lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "invalid number of parameters");
+      lnk_error_cmd_switch_invalid_param_count(LNK_Error_Cmdl, obj, cmd_switch);
     }
   } break;
 
@@ -1898,23 +1972,31 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
 
   case LNK_CmdSwitch_Rad_Log: {
     if (value_strings.node_count == 1) {
-      if (str8_match_lit("all", value_strings.first->string, StringMatchFlag_CaseInsensitive)) {
+      String8 value = value_strings.first->string;
+      
+      B32 status = 1;
+      if (str8_starts_with(value, str8_lit("-"))) {
+        value = str8_skip(value, 1);
+        status = 0;
+      }
+
+      if (str8_match_lit("all", value, StringMatchFlag_CaseInsensitive)) {
         for (U64 ilog = 0; ilog < LNK_Log_Count; ilog += 1) {
-          lnk_set_log_status((LNK_LogType)ilog, 1);
+          lnk_set_log_status((LNK_LogType)ilog, status);
         }
-      } else if (str8_match_lit("io", value_strings.first->string, StringMatchFlag_CaseInsensitive)) {
-        lnk_set_log_status(LNK_Log_IO_Read, 1);
-        lnk_set_log_status(LNK_Log_IO_Write, 1);
+      } else if (str8_match_lit("io", value, StringMatchFlag_CaseInsensitive)) {
+        lnk_set_log_status(LNK_Log_IO_Read, status);
+        lnk_set_log_status(LNK_Log_IO_Write, status);
       } else {
-        LNK_LogType log_type = lnk_log_type_from_string(value_strings.first->string);
+        LNK_LogType log_type = lnk_log_type_from_string(value);
         if (log_type == LNK_Log_Null) {
-          lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "unknown parameter \"%S\"", value_strings.first->string);
+          lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "unknown parameter \"%S\"", value);
         } else {
-          lnk_set_log_status(log_type, 1);
+          lnk_set_log_status(log_type, status);
         }
       }
     } else {
-      lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "invalid number of parameters, expected 1");
+      lnk_error_cmd_switch_invalid_param_count(LNK_Error_Cmdl, obj, cmd_switch);
     }
   } break;
 
@@ -1939,7 +2021,7 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
         lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "unable to parse parameter \"%S\"", value_strings.first->string);
       }
     } else {
-      lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "invalid number of parameters");
+      lnk_error_cmd_switch_invalid_param_count(LNK_Error_Cmdl, obj, cmd_switch);
     }
   } break;
 
@@ -1987,7 +2069,7 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
   } break;
 
   case LNK_CmdSwitch_Rad_SharedThreadPoolMaxWorkers: {
-    OS_SystemInfo *sysinfo = os_get_system_info();
+    SystemInfo *sysinfo = get_system_info();
     if (value_strings.node_count == 0) {
       config->max_worker_count = sysinfo->logical_processor_count;
     } else {
@@ -2001,39 +2083,57 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
     }
   } break;
 
-  case LNK_CmdSwitch_Rad_SuppressError: {
-    U64List error_code_list = {0};
-    if (lnk_cmd_switch_parse_u64_list(scratch.arena, obj, cmd_switch, value_strings, &error_code_list, 0)) {
-      for (U64Node *error_code_n = error_code_list.first; error_code_n != 0; error_code_n = error_code_n->next) {
-        if (error_code_n->data < LNK_Error_Count) {
-          lnk_suppress_error(error_code_n->data);
-        } else {
-          lnk_error_cmd_switch(LNK_Warning_Cmdl, obj, cmd_switch, "unknown error code %llu", error_code_n->data);
-        }
+  case LNK_CmdSwitch_Rad_SortImports: {
+    lnk_cmd_switch_parse_flag(obj, cmd_switch, value_strings, &config->sort_imports);
+  } break;
+
+  case LNK_CmdSwitch_Rad_Ignore: {
+    S64List error_code_list = {0};
+    if ( ! lnk_cmd_switch_parse_s64_list(scratch.arena, obj, cmd_switch, value_strings, &error_code_list, 0)) {
+      lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "failed to parse input code");
+      break;
+    }
+
+    for EachNode(error_code_n, S64Node, error_code_list.first) {
+      S64 code = error_code_n->v;
+
+      if (abs_s64(code) >= LNK_Error_Count) {
+        lnk_error_cmd_switch(LNK_Warning_Cmdl, obj, cmd_switch, "unknown error code %llu", (U64)abs_s64(code));
+        continue;
+      }
+
+      if (code > 0) {
+        lnk_ignore_error(code);
+      } else if (code < 0) {
+        lnk_activate_error(abs_s64(code));
       }
     }
   } break;
 
-  case LNK_CmdSwitch_Rad_TargetOs: {
-    if (value_strings.node_count == 1) {
-      String8 os_string = str8_list_first(&value_strings);
-      OperatingSystem target_os = operating_system_from_string(os_string);
-      if (target_os != OperatingSystem_Null) {
-        config->target_os = target_os;
-      } else {
-        lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "unknown operating system type %S", os_string);
-      }
-    } else {
-      lnk_error_cmd_switch(LNK_Warning_Cmdl, obj, cmd_switch, "expected 1 parameter");
-    }
+  case LNK_CmdSwitch_Rad_ImageAltPath: {
+    lnk_cmd_switch_parse_string_copy(config->arena, obj, cmd_switch, value_strings, &config->image_alt_path);
   } break;
 
   case LNK_CmdSwitch_Rad_WriteTempFiles: {
     lnk_cmd_switch_parse_flag(obj, cmd_switch, value_strings, &config->write_temp_files);
+    if (config->write_temp_files == LNK_SwitchState_Yes) {
+      lnk_apply_write_temp_files(config->arena, config);
+    }
   } break;
 
   case LNK_CmdSwitch_Rad_TimeStamp: {
     lnk_cmd_switch_parse_u32(obj, cmd_switch, value_strings, &config->time_stamp, 0);
+  } break;
+
+  case LNK_CmdSwitch_Rad_TypeHashAlg: {
+    String8 alg = {0};
+    if (lnk_cmd_switch_parse_string(obj, cmd_switch, value_strings, &alg)) {
+      if (str8_match(alg, str8_lit("BLAKE3"), StringMatchFlag_CaseInsensitive)) {
+        config->type_hash_alg = LLVM_GHashAlg_BLAKE3;
+      } else {
+        lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "unknown hash alg: %S", alg);
+      }
+    }
   } break;
 
   case LNK_CmdSwitch_Rad_UnresolvedSymbolLimit: {
@@ -2045,8 +2145,8 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
   } break;
 
   case LNK_CmdSwitch_Rad_Version: {
-    fprintf(stdout, "%s\n", BUILD_TITLE_STRING_LITERAL);
-    os_abort(0);
+    lnk_fprintf(stdout, "%s\n", BUILD_TITLE_STRING_LITERAL);
+    abort_self(0);
   } break;
 
   case LNK_CmdSwitch_Rad_Workers: {
@@ -2056,56 +2156,75 @@ lnk_apply_cmd_option_to_config(LNK_Config *config, String8 cmd_name, String8List
     }
   } break;
 
+  case LNK_CmdSwitch_Rad_WorkDir: {
+    lnk_cmd_switch_parse_string_copy(config->arena, obj, cmd_switch, value_strings, &config->work_dir);
+  } break;
+
   case LNK_CmdSwitch_Help: {
     lnk_print_help();
-    os_abort(0);
+    abort_self(0);
+  } break;
+
+  case LNK_CmdSwitch_RadTypeServer: {
+    lnk_cmd_switch_parse_string_copy(config->arena, obj, cmd_switch, value_strings, &config->type_server_name);
+
+    if (config->type_server_name.size) {
+      String8 ext = str8_postfix(config->type_server_name, s("rrt").size);
+      if (str8_matchi(ext, s("rrt"))) {
+        config->boot_mode = LNK_BootMode_TypeServer;
+      } else {
+        lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "missing .rrt file extension after type server name %S", config->type_server_name);
+      }
+    } else {
+      lnk_error_cmd_switch(LNK_Error_Cmdl, obj, cmd_switch, "missing type server file path");
+    }
   } break;
   }
 
   scratch_end(scratch);
 }
 
+internal void
+lnk_config_pushf(LNK_Config *config, char *fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+  LNK_CmdLine cmd_line = lnk_cmd_line_from_stringfv_windows_rules(config->arena, fmt, args);
+  va_end(args);
+
+  for EachNode(cmd, LNK_CmdOption, cmd_line.first_option) {
+    lnk_apply_cmd_option_to_config(config, cmd->string, cmd->value_strings, &(LNK_Obj){0});
+  }
+}
+
 internal LNK_Config *
-lnk_config_from_cmd_line(String8List raw_cmd_line, LNK_CmdLine cmd_line)
+lnk_config_init(LNK_CmdLine cmd_line)
 {
   ProfBeginFunction();
-  Temp scratch = scratch_begin(0, 0);
+  Temp scratch = scratch_begin(0,0);
   
   Arena      *arena  = arena_alloc();
   LNK_Config *config = push_array(arena, LNK_Config, 1);
-  config->arena                     = arena;
-  config->raw_cmd_line              = str8_list_copy(arena, &raw_cmd_line);
-  config->work_dir                  = os_get_current_path(arena);
-  config->build_imp_lib             = 1;
-  config->build_exp                 = 1;
-  config->heap_reserve              = MB(1);
-  config->heap_commit               = KB(1);
-  config->stack_reserve             = MB(1);
-  config->stack_commit              = KB(1);
-  config->pdb_hash_type_names       = LNK_TypeNameHashMode_None;
-  config->pdb_hash_type_name_length = 8;
-  config->data_dir_count            = PE_DataDirectoryIndex_COUNT;
-  config->export_ht                 = hash_table_init(arena, max_U16/2);
-  config->alt_name_ht               = hash_table_init(arena, 0x100);
-  config->include_symbol_ht         = hash_table_init(arena, 0x100);
-  config->delay_load_ht             = hash_table_init(arena, 0x100);
-  config->disallow_lib_ht           = hash_table_init(arena, 0x100);
+  config->arena        = arena;
+  config->raw_cmd_line = str8_list_copy(arena, &cmd_line.raw_cmd_line);
+  config->work_dir     = get_current_path(arena);
 
-  // process command line switches
-  for (LNK_CmdOption *cmd = cmd_line.first_option; cmd != 0; cmd = cmd->next) {
+  // apply command line switches
+  for EachNode(cmd, LNK_CmdOption, cmd_line.first_option) {
     lnk_apply_cmd_option_to_config(config, cmd->string, cmd->value_strings, 0);
+  }
+
+  // in shared thread pool mode force fixed number of workers
+  if (lnk_cmd_line_has_switch(cmd_line, LNK_CmdSwitch_Rad_SharedThreadPool) &&
+      !lnk_cmd_line_has_switch(cmd_line, LNK_CmdSwitch_Rad_SharedThreadPoolMaxWorkers)) {
+    config->max_worker_count = get_system_info()->logical_processor_count;
   }
 
   // :manifest_input
   if (lnk_cmd_line_has_switch(cmd_line, LNK_CmdSwitch_ManifestInput)) {
     if (config->manifest_opt == LNK_ManifestOpt_Embed) {
-      for (LNK_CmdOption *cmd = cmd_line.first_option; cmd != 0; cmd = cmd->next) {
-        LNK_CmdSwitchType cmd_switch = lnk_cmd_switch_type_from_string(cmd->string);
-        if (cmd_switch == LNK_CmdSwitch_ManifestInput) {
-          String8List manifest_list = str8_list_copy(arena, &cmd->value_strings);
-          str8_list_concat_in_place(&config->input_list[LNK_Input_Manifest], &manifest_list);
-        }
-      }
+      String8List manifest_list = lnk_cmd_line_values_from_switch(arena, cmd_line, LNK_CmdSwitch_ManifestInput);
+      str8_list_concat_in_place(&config->input_list[LNK_Input_Manifest], &manifest_list);
     } else {
       lnk_error_cmd_switch(LNK_Error_Cmdl, 0, LNK_CmdSwitch_ManifestInput, "missing /MANIFEST:EMBED");
     }
@@ -2121,9 +2240,9 @@ lnk_config_from_cmd_line(String8List raw_cmd_line, LNK_CmdLine cmd_line)
   }
 
   // input files
-  for (String8Node *input_node = cmd_line.input_list.first; input_node != 0; input_node = input_node->next) {
+  for EachNode(input_node, String8Node, cmd_line.input_list.first) {
     String8 path = push_str8_copy(arena, input_node->string);
-    String8 ext = str8_skip_last_dot(path);
+    String8 ext  = str8_skip_last_dot(path);
 
     // map file extension to input type
     LNK_InputType input_type = lnk_input_type_from_string(ext);
@@ -2146,6 +2265,13 @@ lnk_config_from_cmd_line(String8List raw_cmd_line, LNK_CmdLine cmd_line)
   // don't emit bind table with /ALLOWBIND:NO
   if (config->dll_characteristics & PE_DllCharacteristic_NO_BIND) {
     config->import_table_emit_biat = LNK_SwitchState_No;
+  }
+
+  if (config->import_table_emit_biat == LNK_SwitchState_Null) {
+    config->import_table_emit_biat = LNK_SwitchState_Yes;
+  }
+  if (config->import_table_emit_uiat == LNK_SwitchState_Null) {
+    config->import_table_emit_uiat = LNK_SwitchState_Yes;
   }
   
   // set flags for /OPT
@@ -2214,96 +2340,82 @@ lnk_config_from_cmd_line(String8List raw_cmd_line, LNK_CmdLine cmd_line)
 
   // handle empty /OUT
   if (!lnk_cmd_line_has_switch(cmd_line, LNK_CmdSwitch_Out)) {
-    String8 name      = str8_list_first(&config->input_list[LNK_Input_Obj]);
-    String8 ext       = (config->file_characteristics & PE_ImageFileCharacteristic_FILE_DLL) ? str8_lit("dll") : str8_lit("exe");
-    config->image_name = path_replace_file_extension(scratch.arena, name, ext);
+    String8 name     = str8_list_first(&config->input_list[LNK_Input_Obj]);
+    String8 ext      = (config->file_characteristics & PE_ImageFileCharacteristic_FILE_DLL) ? str8_lit("dll") : str8_lit("exe");
+    config->out_path = path_replace_file_extension(scratch.arena, name, ext);
   }
 
   // handle empty /PDB
   if (!lnk_cmd_line_has_switch(cmd_line, LNK_CmdSwitch_Pdb)) {
-    config->pdb_name = path_replace_file_extension(scratch.arena, config->image_name, str8_lit("pdb"));
+    config->pdb_name = path_replace_file_extension(scratch.arena, config->out_path, str8_lit("pdb"));
   }
 
   // handle empty /RAD_DEBUG_NAME
   if (!lnk_cmd_line_has_switch(cmd_line, LNK_CmdSwitch_Rad_DebugName)) {
-    config->rad_debug_name = path_replace_file_extension(scratch.arena, config->image_name, str8_lit("rdi"));
+    config->rad_debug_name = path_replace_file_extension(scratch.arena, config->out_path, str8_lit("rdi"));
   }
 
   // handle empty /IMPLIB
   if (!lnk_cmd_line_has_switch(cmd_line, LNK_CmdSwitch_ImpLib)) {
-    config->imp_lib_name = path_replace_file_extension(scratch.arena, config->image_name, str8_lit("lib"));
+    config->imp_lib_name = path_replace_file_extension(scratch.arena, config->out_path, str8_lit("lib"));
   }
 
   // handle empty /MANIFESTFILE
   if (!lnk_cmd_line_has_switch(cmd_line, LNK_CmdSwitch_ManifestFile)) {
-    config->manifest_name = push_str8f(scratch.arena, "%S.manifest", config->image_name);
+    config->manifest_name = push_str8f(scratch.arena, "%S.manifest", config->out_path);
   }
 
   // convert to full paths
-  config->image_name     = os_full_path_from_path(arena, config->image_name);
-  config->pdb_name       = os_full_path_from_path(arena, config->pdb_name);
-  config->rad_debug_name = os_full_path_from_path(arena, config->rad_debug_name);
-  config->imp_lib_name   = os_full_path_from_path(arena, config->imp_lib_name);
-  config->manifest_name  = os_full_path_from_path(arena, config->manifest_name);
+  config->out_path       = full_path_from_path(arena, config->out_path);
+  config->pdb_name       = full_path_from_path(arena, config->pdb_name);
+  config->rad_debug_name = full_path_from_path(arena, config->rad_debug_name);
+  config->imp_lib_name   = full_path_from_path(arena, config->imp_lib_name);
+  config->manifest_name  = full_path_from_path(arena, config->manifest_name);
 
-  // collect env vars
-  HashTable *env_vars = hash_table_init(scratch.arena, 512);
+  // set up env vars
+  HashMap env_vars = lnk_env_vars_from_process_info(scratch.arena, get_process_info(), LNK_EnvVarRule_Batch);
   {
-#if OS_WINDOWS
-    OS_ProcessInfo *process_info = os_get_process_info();
-    for (String8Node *node = process_info->environment.first; node != 0; node = node->next) {
-      String8List list = str8_split_by_string_chars(scratch.arena, node->string, str8_lit("="), 0);
-
-      String8 key = list.first->string;
-      String8 val = str8_zero();
-      if (list.node_count == 2) {
-        val = list.last->string;
-      } else if (list.node_count > 2) {
-        U64 sep_idx = str8_find_needle(node->string, node->string.size, str8_lit("="), 0);
-        val = str8_skip(node->string, sep_idx+1);
+    // define linker env vars
+    struct { String8 key, value; } key_value_str8_table[] = {
+      { str8_lit("_pdb"),           str8_skip_last_slash(config->pdb_name)       },
+      { str8_lit("_ext"),           str8_skip_last_dot(config->out_path)         },
+      { str8_lit("_rad_pdb_path"),  config->pdb_name                             },
+      { str8_lit("_rad_rdi"),       str8_skip_last_slash(config->rad_debug_name) },
+      { str8_lit("_radi_rdi_path"), config->rad_debug_name                       },
+    };
+    for EachElement(i, key_value_str8_table) {
+      if (lnk_env_var_from_map(&env_vars, key_value_str8_table[i].key)) {
+        lnk_log(LNK_Log_Debug, "Env var already exists: %S\n",key_value_str8_table[i].key);
       }
-
-      hash_table_push_path_string(scratch.arena, env_vars, key, val);
-    }
-#endif
-  }
-
-  // define linker env vars
-  hash_table_push_path_string(scratch.arena, env_vars, str8_lit("_pdb"),          str8_skip_last_slash(config->pdb_name));
-  hash_table_push_path_string(scratch.arena, env_vars, str8_lit("_ext"),          str8_skip_last_dot(config->image_name));
-  hash_table_push_path_string(scratch.arena, env_vars, str8_lit("_rad_pdb_path"), config->pdb_name);
-  hash_table_push_path_string(scratch.arena, env_vars, str8_lit("_rad_rdi"),      str8_skip_last_slash(config->rad_debug_name));
-  hash_table_push_path_string(scratch.arena, env_vars, str8_lit("_rad_rdi_path"), config->rad_debug_name);
-
-  // collect LIB and LIBPATH
-  if (config->flags & LNK_ConfigFlag_EnvLib) {
-    KeyValuePair *lib = hash_table_search_path(env_vars, str8_lit("lib"));
-    if (lib) {
-      String8List val_list      = str8_split_by_string_chars(scratch.arena, lib->value_string, str8_lit(";"), 0);
-      String8List val_list_copy = str8_list_copy(arena, &val_list);
-      str8_list_concat_in_place(&config->lib_dir_list, &val_list_copy);
+      lnk_env_var_batchf(scratch.arena, &env_vars, "%S=%S", key_value_str8_table[i].key, key_value_str8_table[i].value);
     }
 
-    KeyValuePair *lib_path = hash_table_search_path(env_vars, str8_lit("libpath"));
-    if (lib_path) {
-      String8List val_list      = str8_split_by_string_chars(scratch.arena, lib->value_string, str8_lit(";"), 0);
-      String8List val_list_copy = str8_list_copy(arena, &val_list);
-      str8_list_concat_in_place(&config->lib_dir_list, &val_list_copy);
+    if (config->flags & LNK_ConfigFlag_EnvLib) {
+      // collect LIB and LIBPATH
+      struct { String8List *config_list; char *key; } key_str8_list[] = {
+        { &config->lib_dir_list, "lib"      },
+        { &config->lib_dir_list, "lib_path" },
+      };
+      for EachElement(i, key_str8_list) { 
+        LNK_EnvVar *var = lnk_env_var_from_mapf(&env_vars, key_str8_list[i].key);
+        if (var) {
+          String8List value      = lnk_value_list_from_env_var(arena, var);
+          String8List value_copy = str8_list_copy(config->arena, &value);
+          str8_list_concat_in_place(key_str8_list[i].config_list, &value_copy);
+        }
+      }
     }
   }
   
   // :PdbAltPath
-  config->pdb_alt_path = lnk_expand_env_vars_windows(arena, env_vars, config->pdb_alt_path);
+  config->pdb_alt_path = lnk_expand_env_vars_windows(arena, &env_vars, config->pdb_alt_path);
 
   // :Rad_DebugAltPath
-  config->rad_debug_alt_path = lnk_expand_env_vars_windows(arena, env_vars, config->rad_debug_alt_path);
+  config->rad_debug_alt_path = lnk_expand_env_vars_windows(arena, &env_vars, config->rad_debug_alt_path);
 
   // create temporary files names
   if (config->write_temp_files == LNK_SwitchState_Yes) {
-    config->temp_rad_chunk_map_name = push_str8f(arena, "%S.tmp%x", config->rad_chunk_map_name, config->time_stamp);
-    config->temp_image_name         = push_str8f(arena, "%S.tmp%x", config->image_name,         config->time_stamp);
-    config->temp_pdb_name           = push_str8f(arena, "%S.tmp%x", config->pdb_name,           config->time_stamp);
-    config->temp_rad_debug_name     = push_str8f(arena, "%S.tmp%x", config->rad_debug_name,     config->time_stamp);
+    lnk_apply_write_temp_files(arena, config);
   }
 
   scratch_end(scratch);

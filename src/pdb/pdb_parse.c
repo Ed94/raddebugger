@@ -5,17 +5,21 @@
 //~ PDB Parser Functions
 
 internal PDB_Info*
-pdb_info_from_data(Arena *arena, String8 data){
+pdb_info_from_data(Arena *arena, String8 data)
+{
   ProfBegin("pdb_info_from_data");
+  PDB_Info *result = push_array(arena, PDB_Info, 1);
   
   // get header
   PDB_InfoHeader *header = 0;
-  if (data.size >= sizeof(*header)){
+  if(data.size >= sizeof(*header))
+  {
     header = (PDB_InfoHeader *)data.str;
   }
   
-  PDB_Info *result = 0;
-  if (header != 0){
+  // rjf: parse info given header
+  if(header != 0)
+  {
     // read guid
     Guid *auth_guid = 0;
     U32 after_auth_guid_off = sizeof(*header);
@@ -122,7 +126,6 @@ pdb_info_from_data(Arena *arena, String8 data){
   }
   
   ProfEnd();
-  
   return(result);
 }
 
@@ -321,7 +324,7 @@ pdb_tpi_from_data(Arena *arena, String8 data)
 }
 
 internal PDB_TpiHashParsed*
-pdb_tpi_hash_from_data(Arena *arena, PDB_Strtbl *strtbl, PDB_TpiParsed *tpi, String8 data, String8 aux_data)
+pdb_tpi_hash_from_data(Arena *arena, PDB_Strtbl *strtbl, PDB_TpiParsed *tpi, String8 data)
 {
   ProfBeginFunction();
   PDB_TpiHashParsed *result = push_array(arena, PDB_TpiHashParsed, 1);
@@ -439,7 +442,6 @@ pdb_tpi_hash_from_data(Arena *arena, PDB_Strtbl *strtbl, PDB_TpiParsed *tpi, Str
     
     // fill result
     result->data = data;
-    result->aux_data = aux_data;
     result->buckets = buckets;
     result->bucket_count = bucket_count;
     result->bucket_mask = bucket_mask;
@@ -476,56 +478,35 @@ pdb_gsi_from_data(Arena *arena, String8 data)
     // array offsets
     U32 bitmask_u32_count = CeilIntegerDiv(slot_count, 32);
     U32 bitmask_byte_size = bitmask_u32_count*4;
-    U32 bitmask_off = hash_record_array_off + header->hash_record_arr_size;
-    U32 offsets_off = bitmask_off + bitmask_byte_size;
+    U32 bitmask_off       = hash_record_array_off + header->hash_record_arr_size;
+    U32 offsets_off       = bitmask_off + bitmask_byte_size;
     
     // get bitmask & packed offset arrays
-    U8 *bitmasks = 0;
-    U8 *packed_offsets = 0;
+    U32Array  bitmask = {0};
+    U32      *packed_offsets      = 0;
+    U64       packed_offset_count = 0;
     if(bitmask_off + bitmask_byte_size <= data.size)
     {
-      bitmasks = (data.str + bitmask_off);
-      packed_offsets = (data.str + offsets_off);
+      bitmask        = (U32Array){ .v = (U32 *)(data.str + bitmask_off), .count = bitmask_u32_count };
+      packed_offsets = (U32 *)(data.str + offsets_off);
+      packed_offset_count = (data.size - offsets_off)/4;
     }
-    U32 packed_offset_count = (data.size - offsets_off)/4;
     
     // unpack
     U32 *unpacked_offsets = 0;
     if(packed_offsets != 0)
     {
-      unpacked_offsets = push_array(scratch.arena, U32, slot_count);
+      unpacked_offsets = push_array_no_zero(scratch.arena, U32, slot_count);
+      MemorySet(unpacked_offsets, 0xff, sizeof(unpacked_offsets[0]) * slot_count);
       
-      U32 *bitmask_ptr = (U32*)bitmasks;
-      U32 *bitmask_opl = bitmask_ptr + bitmask_u32_count;
-      U32 *src_ptr = (U32*)packed_offsets;
-      U32 *src_opl = src_ptr + packed_offset_count;
-      U32 *dst_ptr = unpacked_offsets;
-      U32 *dst_opl = dst_ptr + slot_count;
-      for(; bitmask_ptr < bitmask_opl && src_ptr < src_opl; bitmask_ptr += 1)
-      {
-        U32 bits = *bitmask_ptr;
-        U32 src_max = (U32)(src_opl - src_ptr);
-        U32 dst_max = (U32)(dst_opl - dst_ptr);
-        U32 k_max0 = ClampTop(32, dst_max);
-        U32 k_max  = ClampTop(k_max0, src_max);
-        for(U32 k = 0; k < k_max; k += 1)
-        {
-          if((bits & 1) == 1)
-          {
-            *dst_ptr = *src_ptr;
-            src_ptr += 1;
-          }
-          else
-          {
-            *dst_ptr = 0xFFFFFFFF;
-          }
-          dst_ptr += 1;
-          bits >>= 1;
-        }
-      }
-      for(; dst_ptr < dst_opl; dst_ptr += 1)
-      {
-        *dst_ptr = 0xFFFFFFFF;
+      U32 *off_ptr = (U32 *)packed_offsets;
+      U32 *off_opl = off_ptr + packed_offset_count;
+      for (U64 slot_idx = 0; ; slot_idx += 1) {
+        slot_idx = bit_array_scan_left_to_right32(bitmask, slot_idx, slot_count, 1);
+        if (slot_idx >= slot_count) { break; }
+        if (off_ptr >= off_opl)     { Assert(0 && "corrupted GSI"); break; }
+        unpacked_offsets[slot_idx] = *off_ptr;
+        off_ptr += 1;
       }
     }
     
@@ -613,7 +594,7 @@ pdb_gsi_symbol_from_string(PDB_GsiParsed *gsi, String8 symbol_data, String8 stri
           sym_opl = symbol_data.str + opl_off;
         }
         
-        Rng1U64 raw_symbol_range = rng_1u64(off + sizeof(*sym_header), off + (sym_header->size - sizeof(sym_header->kind)));
+        Rng1U64 raw_symbol_range = rng_1u64(off + sizeof(*sym_header), opl_off);
         String8 raw_symbol       = str8_substr(symbol_data, raw_symbol_range);
         String8 sym_name         = cv_name_from_symbol(sym_header->kind, raw_symbol);
         
@@ -775,6 +756,37 @@ pdb_comp_unit_contribution_array_from_data(Arena *arena, String8 data, COFF_Sect
   PDB_CompUnitContributionArray result = {0};
   result.contributions = contributions;
   result.count = count;
+  return result;
+}
+
+internal PDB_CompUnitContribution *
+pdb_comp_unit_contribution_from_voff__binary_search(PDB_CompUnitContributionArray *array, U64 voff)
+{
+  PDB_CompUnitContribution *result = 0;
+  if(array->count != 0)
+  {
+    U64 first_idx = 0;
+    U64 last_idx = array->count-1;
+    for(;first_idx < last_idx;)
+    {
+      U64 mid_idx = (last_idx + first_idx) / 2;
+      U64 mid_voff_first = array->contributions[mid_idx].voff_first;
+      U64 mid_voff_opl = array->contributions[mid_idx].voff_opl;
+      if(voff < mid_voff_first)
+      {
+        last_idx = mid_idx;
+      }
+      else if(mid_voff_opl <= voff)
+      {
+        first_idx = mid_idx+1;
+      }
+      else
+      {
+        result = &array->contributions[mid_idx];
+        break;
+      }
+    }
+  }
   return result;
 }
 
@@ -1138,21 +1150,19 @@ pdb_has_file_ref(String8 msf_data, String8List file_list, MSF_RawStreamTable *st
       PDB_Strtbl       *strtbl      = pdb_strtbl_from_data(scratch.arena, strtbl_data);
       if(strtbl->bucket_count != 0)
       {
-        for(String8Node *file_n = file_list.first; file_n != 0; file_n = file_n->next)
+        for EachIndex(idx, strtbl->bucket_count)
         {
-          Temp temp = temp_begin(scratch.arena);
-          String8 path = file_n->string;
-          String8 path_pdbstyle = path_convert_slashes(temp.arena, path, PathStyle_WindowsAbsolute);
-          String8 path_pdbstyle_lower = lower_from_str8(temp.arena, path_pdbstyle);
-          U32 off1 = pdb_strtbl_off_from_string(strtbl, path_pdbstyle);
-          U32 off2 = pdb_strtbl_off_from_string(strtbl, path_pdbstyle_lower);
-          temp_end(temp);
-          if(off1 != max_U32 || off2 != max_U32)
+          String8 stored_string = pdb_strtbl_string_from_index(strtbl, idx);
+          for(String8Node *file_n = file_list.first; file_n != 0; file_n = file_n->next)
           {
-            has_ref = 1;
-            break;
+            if(str8_match(file_n->string, stored_string, StringMatchFlag_CaseInsensitive|StringMatchFlag_SlashInsensitive))
+            {
+              has_ref = 1;
+              goto dbl_break;
+            }
           }
         }
+        dbl_break:;
       }
     }
   }

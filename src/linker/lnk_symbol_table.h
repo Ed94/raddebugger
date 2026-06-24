@@ -20,7 +20,8 @@ typedef struct LNK_ObjSymbolRefNode
 typedef struct LNK_Symbol
 {
   String8               name;
-  LNK_ObjSymbolRefNode *refs;
+  LNK_ObjSymbolRefNode *first_ref;
+  LNK_ObjSymbolRefNode *last_ref;
 } LNK_Symbol;
 
 // --- Symbol Containers -------------------------------------------------------
@@ -134,6 +135,7 @@ internal U64      lnk_foff_from_symbol(COFF_SectionHeader **image_section_table,
 // --- Weak Symbol -------------------------------------------------------------
 
 internal B32 lnk_resolve_weak_symbol(LNK_SymbolTable *symtab, LNK_ObjSymbolRef symbol, LNK_ObjSymbolRef *resolved_symbol_out);
+internal B32 lnk_resolve_symbol(LNK_SymbolTable *symtab, LNK_ObjSymbolRef symbol, LNK_ObjSymbolRef *symbol_out);
 
 internal void lnk_replace_weak_with_default_symbols(TP_Context *tp, LNK_SymbolTable *symtab);
 

@@ -103,6 +103,7 @@ typedef enum UI_EventActionSlot
   UI_EventActionSlot_Accept,
   UI_EventActionSlot_Cancel,
   UI_EventActionSlot_Edit,
+  UI_EventActionSlot_FocusMenu,
   UI_EventActionSlot_COUNT
 }
 UI_EventActionSlot;
@@ -141,8 +142,8 @@ struct UI_Event
   UI_EventActionSlot slot;
   UI_EventFlags flags;
   UI_EventDeltaUnit delta_unit;
-  OS_Key key;
-  OS_Modifiers modifiers;
+  WM_Key key;
+  WM_Modifiers modifiers;
   String8 string;
   String8List paths;
   Vec2F32 pos;
@@ -335,20 +336,24 @@ typedef U64 UI_BoxFlags;
 # define UI_BoxFlag_DrawActiveEffects         (UI_BoxFlags)(1ull<<39)
 # define UI_BoxFlag_DrawOverlay               (UI_BoxFlags)(1ull<<40)
 # define UI_BoxFlag_DrawBucket                (UI_BoxFlags)(1ull<<41)
-# define UI_BoxFlag_Clip                      (UI_BoxFlags)(1ull<<42)
-# define UI_BoxFlag_AnimatePosX               (UI_BoxFlags)(1ull<<43)
-# define UI_BoxFlag_AnimatePosY               (UI_BoxFlags)(1ull<<44)
-# define UI_BoxFlag_DisableTextTrunc          (UI_BoxFlags)(1ull<<45)
-# define UI_BoxFlag_DisableIDString           (UI_BoxFlags)(1ull<<46)
-# define UI_BoxFlag_DisableFocusBorder        (UI_BoxFlags)(1ull<<47)
-# define UI_BoxFlag_DisableFocusOverlay       (UI_BoxFlags)(1ull<<48)
-# define UI_BoxFlag_HasDisplayString          (UI_BoxFlags)(1ull<<49)
-# define UI_BoxFlag_HasFuzzyMatchRanges       (UI_BoxFlags)(1ull<<50)
-# define UI_BoxFlag_RoundChildrenByParent     (UI_BoxFlags)(1ull<<51)
-# define UI_BoxFlag_SquishAnchored            (UI_BoxFlags)(1ull<<52)
+# define UI_BoxFlag_DrawFadeTop               (UI_BoxFlags)(1ull<<42)
+# define UI_BoxFlag_DrawFadeBottom            (UI_BoxFlags)(1ull<<43)
+# define UI_BoxFlag_DrawFadeLeft              (UI_BoxFlags)(1ull<<44)
+# define UI_BoxFlag_DrawFadeRight             (UI_BoxFlags)(1ull<<45)
+# define UI_BoxFlag_Clip                      (UI_BoxFlags)(1ull<<46)
+# define UI_BoxFlag_AnimatePosX               (UI_BoxFlags)(1ull<<47)
+# define UI_BoxFlag_AnimatePosY               (UI_BoxFlags)(1ull<<48)
+# define UI_BoxFlag_DisableTextTrunc          (UI_BoxFlags)(1ull<<49)
+# define UI_BoxFlag_DisableIDString           (UI_BoxFlags)(1ull<<50)
+# define UI_BoxFlag_DisableFocusBorder        (UI_BoxFlags)(1ull<<51)
+# define UI_BoxFlag_DisableFocusOverlay       (UI_BoxFlags)(1ull<<52)
+# define UI_BoxFlag_HasDisplayString          (UI_BoxFlags)(1ull<<53)
+# define UI_BoxFlag_HasFuzzyMatchRanges       (UI_BoxFlags)(1ull<<54)
+# define UI_BoxFlag_RoundChildrenByParent     (UI_BoxFlags)(1ull<<55)
+# define UI_BoxFlag_SquishAnchored            (UI_BoxFlags)(1ull<<56)
 
 //- rjf: debug
-# define UI_BoxFlag_Debug                     (UI_BoxFlags)(1ull<<53)
+# define UI_BoxFlag_Debug                     (UI_BoxFlags)(1ull<<63)
 
 //- rjf: bundles
 # define UI_BoxFlag_Clickable           (UI_BoxFlag_MouseClickable|UI_BoxFlag_KeyboardClickable)
@@ -388,7 +393,7 @@ struct UI_Box
   Vec2F32 min_size;
   UI_Size pref_size[Axis2_COUNT];
   Axis2 child_layout_axis;
-  OS_Cursor hover_cursor;
+  WM_Cursor hover_cursor;
   U32 fastpath_codepoint;
   UI_Key group_key;
   DR_Bucket *draw_bucket;
@@ -523,7 +528,7 @@ typedef struct UI_Signal UI_Signal;
 struct UI_Signal
 {
   UI_Box *box;
-  OS_Modifiers event_flags;
+  WM_Modifiers event_flags;
   Vec2S16 scroll;
   UI_SignalFlags f;
 };
@@ -704,7 +709,7 @@ struct UI_State
   UI_IconInfo icon_info;
   UI_Theme *theme;
   UI_AnimationInfo animation_info;
-  OS_Handle window;
+  WM_Window window;
   UI_EventList *events;
   Vec2F32 mouse;
   F32 animation_dt;
@@ -825,7 +830,7 @@ internal UI_State *ui_get_selected_state(void);
 
 //- rjf: per-frame info
 internal Arena *           ui_build_arena(void);
-internal OS_Handle         ui_window(void);
+internal WM_Window         ui_window(void);
 internal Vec2F32           ui_mouse(void);
 internal FNT_Tag           ui_icon_font(void);
 internal String8           ui_icon_string_from_kind(UI_IconKind icon_kind);
@@ -836,8 +841,8 @@ internal B32 ui_next_event(UI_Event **ev);
 internal void ui_eat_event(UI_Event *ev);
 
 //- rjf: event consumption helpers
-internal B32 ui_key_press(OS_Modifiers mods, OS_Key key);
-internal B32 ui_key_release(OS_Modifiers mods, OS_Key key);
+internal B32 ui_key_press(WM_Modifiers mods, WM_Key key);
+internal B32 ui_key_release(WM_Modifiers mods, WM_Key key);
 internal B32 ui_text(U32 character);
 internal B32 ui_slot_press(UI_EventActionSlot slot);
 
@@ -872,7 +877,7 @@ internal UI_Box *          ui_box_from_key(UI_Key key);
 ////////////////////////////////
 //~ rjf: Top-Level Building API
 
-internal void ui_begin_build(OS_Handle window, UI_EventList *events, UI_IconInfo *icon_info, UI_Theme *theme, UI_AnimationInfo *animation_info, F32 real_dt, F32 animation_dt);
+internal void ui_begin_build(WM_Window window, UI_EventList *events, UI_IconInfo *icon_info, UI_Theme *theme, UI_AnimationInfo *animation_info, F32 real_dt, F32 animation_dt);
 internal void ui_end_build(void);
 internal void ui_calc_sizes_standalone__in_place(UI_Box *root, Axis2 axis);
 internal void ui_calc_sizes_upwards_dependent__in_place(UI_Box *root, Axis2 axis);
@@ -984,7 +989,7 @@ internal Vec4F32                    ui_top_background_color(void);
 internal Vec4F32                    ui_top_text_color(void);
 internal Vec4F32                    ui_top_border_color(void);
 internal F32                        ui_top_squish(void);
-internal OS_Cursor                  ui_top_hover_cursor(void);
+internal WM_Cursor                  ui_top_hover_cursor(void);
 internal FNT_Tag                    ui_top_font(void);
 internal F32                        ui_top_font_size(void);
 internal FNT_RasterFlags            ui_top_text_raster_flags(void);
@@ -1019,7 +1024,7 @@ internal Vec4F32                    ui_bottom_background_color(void);
 internal Vec4F32                    ui_bottom_text_color(void);
 internal Vec4F32                    ui_bottom_border_color(void);
 internal F32                        ui_bottom_squish(void);
-internal OS_Cursor                  ui_bottom_hover_cursor(void);
+internal WM_Cursor                  ui_bottom_hover_cursor(void);
 internal FNT_Tag                    ui_bottom_font(void);
 internal F32                        ui_bottom_font_size(void);
 internal FNT_RasterFlags            ui_bottom_text_raster_flags(void);
@@ -1054,7 +1059,7 @@ internal Vec4F32                    ui_push_background_color(Vec4F32 v);
 internal Vec4F32                    ui_push_text_color(Vec4F32 v);
 internal Vec4F32                    ui_push_border_color(Vec4F32 v);
 internal F32                        ui_push_squish(F32 v);
-internal OS_Cursor                  ui_push_hover_cursor(OS_Cursor v);
+internal WM_Cursor                  ui_push_hover_cursor(WM_Cursor v);
 internal FNT_Tag                    ui_push_font(FNT_Tag v);
 internal F32                        ui_push_font_size(F32 v);
 internal FNT_RasterFlags            ui_push_text_raster_flags(FNT_RasterFlags v);
@@ -1089,7 +1094,7 @@ internal Vec4F32                    ui_pop_background_color(void);
 internal Vec4F32                    ui_pop_text_color(void);
 internal Vec4F32                    ui_pop_border_color(void);
 internal F32                        ui_pop_squish(void);
-internal OS_Cursor                  ui_pop_hover_cursor(void);
+internal WM_Cursor                  ui_pop_hover_cursor(void);
 internal FNT_Tag                    ui_pop_font(void);
 internal F32                        ui_pop_font_size(void);
 internal FNT_RasterFlags            ui_pop_text_raster_flags(void);
@@ -1124,7 +1129,7 @@ internal Vec4F32                    ui_set_next_background_color(Vec4F32 v);
 internal Vec4F32                    ui_set_next_text_color(Vec4F32 v);
 internal Vec4F32                    ui_set_next_border_color(Vec4F32 v);
 internal F32                        ui_set_next_squish(F32 v);
-internal OS_Cursor                  ui_set_next_hover_cursor(OS_Cursor v);
+internal WM_Cursor                  ui_set_next_hover_cursor(WM_Cursor v);
 internal FNT_Tag                    ui_set_next_font(FNT_Tag v);
 internal F32                        ui_set_next_font_size(F32 v);
 internal FNT_RasterFlags            ui_set_next_text_raster_flags(FNT_RasterFlags v);

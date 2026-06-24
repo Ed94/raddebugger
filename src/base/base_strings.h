@@ -160,8 +160,11 @@ internal U64 cstring32_length(U32 *c);
 ////////////////////////////////
 //~ rjf: String Constructors
 
+#define s(S) str8_lit(S)
+
 #define str8_lit(S)  str8((U8*)(S), sizeof(S) - 1)
 #define str8_lit_comp(S) {(U8*)(S), sizeof(S) - 1,}
+#define str8_lit_cstr(S) str8((U8*)(S), sizeof(S))
 #define str8_varg(S) (int)((S).size), ((S).str)
 
 #define str8_array(S,C) str8((U8*)(S), sizeof(*(S))*(C))
@@ -182,7 +185,6 @@ internal String16 str16_cstring(U16 *c);
 internal String32 str32_cstring(U32 *c);
 internal String8  str8_cstring_capped(void *cstr, void *cap);
 internal String16 str16_cstring_capped(void *cstr, void *cap);
-internal String8  str8_cstring_capped_reverse(void *raw_start, void *raw_cap);
 
 ////////////////////////////////
 //~ rjf: String Stylization
@@ -197,6 +199,10 @@ internal String8 backslashed_from_str8(Arena *arena, String8 string);
 #define str8_match_lit(a_lit, b, flags)   str8_match(str8_lit(a_lit), (b), (flags))
 #define str8_match_cstr(a_cstr, b, flags) str8_match(str8_cstring(a_cstr), (b), (flags))
 internal B32 str8_match(String8 a, String8 b, StringMatchFlags flags);
+#define str8_matchi(a, b) str8_match(a, b, StringMatchFlag_CaseInsensitive)
+internal B32 str8_match_wildcard(String8 string, String8 pattern, StringMatchFlags flags);
+internal B32 str8_starts_with(String8 string, String8 expected_prefix);
+internal B32 str8_starts_withi(String8 string, String8 expected_prefix);
 internal U64 str8_find_needle(String8 string, U64 start_pos, String8 needle, StringMatchFlags flags);
 internal U64 str8_find_needle_reverse(String8 string, U64 start_pos, String8 needle, StringMatchFlags flags);
 internal B32 str8_is_before(String8 a, String8 b);
@@ -210,6 +216,7 @@ internal String8 str8_prefix(String8 str, U64 size);
 internal String8 str8_skip(String8 str, U64 amt);
 internal String8 str8_postfix(String8 str, U64 size);
 internal String8 str8_chop(String8 str, U64 amt);
+internal String8 str8_chop_line(String8 *str);
 internal String8 str8_skip_chop_whitespace(String8 string);
 internal String8 str8_skip_chop_slashes(String8 string);
 
@@ -233,6 +240,7 @@ internal String8 push_cstr(Arena *arena, String8 str); // TODO(rjf): this is unn
 //- rjf: string -> integer
 internal S64 sign_from_str8(String8 string, String8 *string_tail);
 internal B32 str8_is_integer(String8 string, U32 radix);
+internal B32 str8_is_integer_signed(String8 string, U32 radix);
 internal U64 u64_from_str8(String8 string, U32 radix);
 internal S64 s64_from_str8(String8 string, U32 radix);
 internal U32 u32_from_str8(String8 string, U32 radix);
@@ -266,7 +274,9 @@ internal void         str8_list_concat_in_place(String8List *list, String8List *
 internal String8Node* str8_list_push_aligner(Arena *arena, String8List *list, U64 min, U64 align);
 internal String8Node* str8_list_pushf(Arena *arena, String8List *list, char *fmt, ...);
 internal String8Node* str8_list_push_frontf(Arena *arena, String8List *list, char *fmt, ...);
+internal String8Node* str8_list_pop_front(String8List *list);
 internal String8List  str8_list_copy(Arena *arena, String8List *list);
+internal String8List  str8_list_substr(Arena *arena, String8List list, Rng1U64 range);
 #define str8_list_first(list) ((list)->first ? (list)->first->string : str8_zero())
 
 ////////////////////////////////
@@ -311,6 +321,8 @@ g_path_style_map[] =
   { str8_lit_comp("unix"),     PathStyle_UnixAbsolute    },
   { str8_lit_comp("system"),   PathStyle_SystemAbsolute  },
 };
+
+internal String8 program_ext_postfix_from_os(OperatingSystem os, B32 require_ext);
 
 internal String8 str8_chop_last_slash(String8 string);
 internal String8 str8_skip_last_slash(String8 string);
@@ -422,13 +434,12 @@ internal U64     str8_serial_push_align(Arena *arena, String8List *srl, U64 alig
 internal void *  str8_serial_push_size(Arena *arena, String8List *srl, U64 size);
 internal void *  str8_serial_push_data(Arena *arena, String8List *srl, void *data, U64 size);
 internal void    str8_serial_push_data_list(Arena *arena, String8List *srl, String8Node *first);
-internal void    str8_serial_push_u64(Arena *arena, String8List *srl, U64 x);
-internal void    str8_serial_push_u32(Arena *arena, String8List *srl, U32 x);
-internal void    str8_serial_push_u16(Arena *arena, String8List *srl, U16 x);
-internal void    str8_serial_push_u8(Arena *arena, String8List *srl, U8 x);
-internal void    str8_serial_push_cstr(Arena *arena, String8List *srl, String8 str);
-internal void    str8_serial_push_string(Arena *arena, String8List *srl, String8 str);
-internal void    str8_serial_push_cstr(Arena *arena, String8List *srl, String8 str);
+internal void *  str8_serial_push_u64(Arena *arena, String8List *srl, U64 x);
+internal void *  str8_serial_push_u32(Arena *arena, String8List *srl, U32 x);
+internal void *  str8_serial_push_u16(Arena *arena, String8List *srl, U16 x);
+internal void *  str8_serial_push_u8(Arena *arena, String8List *srl, U8 x);
+internal void *  str8_serial_push_cstr(Arena *arena, String8List *srl, String8 str);
+internal void *  str8_serial_push_string(Arena *arena, String8List *srl, String8 str);
 #define str8_serial_push_array(arena, srl, ptr, count) str8_serial_push_data(arena, srl, ptr, sizeof(*(ptr)) * (count))
 #define str8_serial_push_struct(arena, srl, ptr) str8_serial_push_array(arena, srl, ptr, 1)
 
@@ -443,6 +454,20 @@ internal U64    str8_deserial_read_windows_utf16_string16(String8 string, U64 of
 internal U64    str8_deserial_read_block(String8 string, U64 off, U64 size, String8 *block_out);
 #define str8_deserial_read_array(string, off, ptr, count) str8_deserial_read((string), (off), (ptr), sizeof(*(ptr))*(count), sizeof(*(ptr)))
 #define str8_deserial_read_struct(string, off, ptr)       str8_deserial_read_array(string, off, ptr, 1)
+internal U64 str8_deserial_read_uleb128(String8 string, U64 off, U64 *value_out);
+internal U64 str8_deserial_read_sleb128(String8 string, U64 off, S64 *value_out);
+
+////////////////////////////////
+//~ string buffer
+
+internal B32 str8_buffer_skip(String8Node *buf, U64 *pos, U64 skip);
+internal U64 str8_buffer_read(String8Node *buf, U64 *pos, U64 read_size, void *out);
+internal U64 str8_buffer_peek(String8Node *buf, U64 *pos, U64 read_size, void *out);
+internal U64 str8_buffer_write(String8Node *buf, U64 *pos, String8 data);
+internal U64 str8_buffer_write_u16(String8Node *buf, U64 *pos, U16 v);
+internal U64 str8_buffer_write_u32(String8Node *buf, U64 *pos, U32 v);
+internal U64 str8_buffer_write_zeroes(String8Node *buf, U64 *pos, U64 size);
+internal U64 str8_buffer_write_string_list(String8Node *buf, U64 *pos, String8List list);
 
 ////////////////////////////////
 //~ rjf: Basic String Hashes

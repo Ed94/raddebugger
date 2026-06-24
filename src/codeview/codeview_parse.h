@@ -24,7 +24,7 @@ struct CV_NumericParsed
 typedef struct CV_RecRange CV_RecRange;
 struct CV_RecRange
 {
-  U32          off;
+  U32 off;
   CV_RecHeader hdr;
 };
 
@@ -34,7 +34,7 @@ typedef struct CV_RecRangeChunk CV_RecRangeChunk;
 struct CV_RecRangeChunk
 {
   struct CV_RecRangeChunk *next;
-  CV_RecRange              ranges[CV_REC_RANGE_CHUNK_SIZE];
+  CV_RecRange ranges[CV_REC_RANGE_CHUNK_SIZE];
 };
 
 typedef struct CV_RecRangeStream CV_RecRangeStream;
@@ -42,14 +42,14 @@ struct CV_RecRangeStream
 {
   CV_RecRangeChunk *first_chunk;
   CV_RecRangeChunk *last_chunk;
-  U64               total_count;
+  U64 total_count;
 };
 
 typedef struct CV_RecRangeArray CV_RecRangeArray;
 struct CV_RecRangeArray
 {
   CV_RecRange *ranges;
-  U64          count;
+  U64 count;
 };
 
 ////////////////////////////////
@@ -58,9 +58,9 @@ struct CV_RecRangeArray
 typedef struct CV_SymTopLevelInfo CV_SymTopLevelInfo;
 struct CV_SymTopLevelInfo
 {
-  CV_Arch     arch;
+  CV_Arch arch;
   CV_Language language;
-  String8     compiler_name;
+  String8 compiler_name;
 };
 
 typedef struct CV_SymParsed CV_SymParsed;
@@ -237,6 +237,18 @@ struct CV_TypeIdArray
 };
 
 ////////////////////////////////
+//~ Record Iterator
+
+typedef struct CV_RecIter CV_RecIter;
+struct CV_RecIter
+{
+  U64 num;
+  U16 kind;
+  void *struct_base;
+  void *opl;
+};
+
+////////////////////////////////
 
 //- Hasher
 
@@ -300,6 +312,9 @@ internal CV_SymParsed * cv_sym_from_data(Arena *arena, String8 sym_data, U64 sym
 //- rjf: leaf stream parsing
 internal CV_LeafParsed * cv_leaf_from_data(Arena *arena, String8 leaf_data, CV_TypeId first);
 internal CV_C13Parsed  * cv_c13_parsed_from_data(Arena *arena, String8 c13_data, String8 strtbl, COFF_SectionHeaderArray sections);
+
+//- rjf: record iterator
+internal B32 cv_rec_next(String8 data, CV_RecRangeArray *recs, B32 is_leaf, CV_RecIter *iter);
 
 #endif // CODEVIEW_PARSE_H
 

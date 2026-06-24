@@ -7,8 +7,9 @@
 
 typedef struct LNK_LibMemberRef
 {
-  LNK_Lib *lib;
-  U32      member_idx;
+  LNK_Lib    *lib;
+  U32         member_idx;
+  LNK_Symbol *link_symbol;
   struct LNK_LibMemberRef *next;
 } LNK_LibMemberRef;
 
@@ -36,7 +37,6 @@ typedef struct LNK_Input
   B32               has_disk_read_failed;
   B32               exclude_from_debug_info;
   LNK_LibMemberRef *link_member;
-  void             *loaded_input;
 
   struct LNK_Input *next;
 } LNK_Input;
@@ -73,11 +73,25 @@ typedef struct LNK_Inputer
 #define LNK_IMPORT_STUB "*** RAD_IMPORT_STUB ***"
 #define LNK_NULL_SYMBOL "*** RAD_NULL_SYMBOL ***"
 
-#define LNK_SECTION_FLAG_LIVE    (1 << 0)
-#define LNK_SECTION_FLAG_DEBUG (1 << 1)
+#define LNK_SECTION_FLAG_DEBUG (1 << 0)
+
+typedef U8 LNK_LibMemberFlags;
+enum
+{
+  LNK_LibMemberFlag_LinkedRegular = (1 << 0),
+  LNK_LibMemberFlag_LinkedImp     = (1 << 1),
+  LNK_LibMemberFlag_WasGenQueued  = (1 << 2),
+};
+
+typedef struct LNK_LibMemberInfo
+{
+  LNK_Symbol        *link;
+  LNK_LibMemberFlags flags;
+} LNK_LibMemberInfo;
 
 typedef struct LNK_Link
 {
+  Arena                   *arena;
   LNK_ObjList              objs;
   LNK_LibList              libs;
   LNK_ObjNode            **last_symbol_input;
@@ -85,9 +99,17 @@ typedef struct LNK_Link
   String8Node            **last_cmd_lib;
   String8Node            **last_default_lib;
   String8Node            **last_obj_lib;
+  HashMap                  lib_member_infos_hm;
   LNK_LibMemberRefList     imports;
   B32                      try_to_resolve_entry_point;
+  B32                      asan_libs_resolved;
 } LNK_Link;
+
+typedef struct LNK_LinkResult
+{
+  LNK_ObjList objs;
+  LNK_LibList libs;
+} LNK_LinkResult;
 
 // -- Image Layout ------------------------------------------------------------
 
@@ -118,9 +140,7 @@ typedef struct LNK_CommonBlockContrib
   } u;
 } LNK_CommonBlockContrib;
 
-// --- Ref ---------------------------------------------------------------------
-
-#define LNK_RELOCS_PER_TASK 0x1000
+// --- Reloc Ref ---------------------------------------------------------------
 
 typedef struct LNK_RelocRefs
 {
@@ -128,25 +148,27 @@ typedef struct LNK_RelocRefs
   COFF_RelocArray  relocs;
 } LNK_RelocRefs;
 
-typedef struct LNK_RelocRefsNode
+typedef struct LNK_RelocRefsBatch LNK_RelocRefsBatch;
+struct LNK_RelocRefsBatch
 {
-  LNK_RelocRefs *v;
-  struct LNK_RelocRefsNode *next;
-} LNK_RelocRefsNode;
+  LNK_RelocRefsBatch *next;
+  U64                count;
+  LNK_RelocRefs      v[64];
+};
 
-typedef union LNK_RelocRefsPointer
+typedef union
 {
   struct {
-    LNK_RelocRefsNode *node;
+    LNK_RelocRefsBatch *node;
     U64                tag;
   };
   U64 v[2];
-} LNK_RelocRefsPointer;
+} LNK_RelocRefsBatchPointer;
 
-typedef struct AlignType(16) LNK_RelocRefsList
+typedef struct AlignType(16) 
 {
-  LNK_RelocRefsPointer head;
-} LNK_RelocRefsList;
+  LNK_RelocRefsBatchPointer head;
+} LNK_RelocRefsBatchList;
 
 // --- Base Reloc --------------------------------------------------------------
 
@@ -182,16 +204,20 @@ typedef struct LNK_BaseRelocPageArray
 typedef struct
 {
   B32                   search_anti_deps;
+  LNK_Link             *link;
+  HashMap              *imports_hm;
   LNK_SymbolTable      *symtab;
+  LNK_Symbol           *import_stub;
   LNK_Lib              *lib;
+  LNK_LibMemberInfo    *lib_member_infos;
   LNK_LibMemberRefList *member_ref_lists;
 } LNK_SearchLibTask;
 
 typedef struct
 {
-  LNK_SymbolTable   *symtab;
-  U32                active_thread_count;
-  LNK_RelocRefsList *reloc_refs;
+  LNK_SymbolTable *symtab;
+  LNK_Config      *config;
+  LNK_ObjList      objs;
 } LNK_OptRefTask;
 
 typedef struct
@@ -238,6 +264,7 @@ typedef struct
   LNK_Obj                  **objs;
   U64                        function_pad_min;
   U64                        default_align;
+  U64                        sect_align;
   LNK_SectionContrib        *null_sc;
   LNK_SectionContrib      ***sect_map;
   HashTable                 *contribs_ht;
@@ -282,9 +309,24 @@ typedef struct
   U128    *hashes;
 } LNK_Blake3Hasher;
 
+typedef struct
+{
+  LNK_MergedTypes *cv_types;
+  String8         *type_data_out;
+  Rng1U64         *type_data_ranges_out;
+} LNK_RRTTypeDataSerializer;
+
+typedef struct
+{
+  RDIM_BakeResults   bake_results;
+  LNK_Config        *config;
+  String8            pdb_data;
+  String8            image_data;
+} LNK_P2R;
+
 // --- Config -----------------------------------------------------------------
 
-internal LNK_Config * lnk_config_from_argcv(Arena *arena, int argc, char **argv);
+internal LNK_Config * lnk_config_from_cmdline(CmdLine *cmdline);
 
 // --- Entry Point -------------------------------------------------------------
 
@@ -340,10 +382,11 @@ internal void                lnk_lib_member_ref_list_concat_in_place_array(LNK_L
 internal int                 lnk_lib_member_ref_is_before(void *raw_a, void *raw_b);
 internal LNK_LibMemberRef ** lnk_array_from_lib_member_list(Arena *arena, LNK_LibMemberRefList list);
 
-internal LNK_ObjNode * lnk_load_objs  (TP_Context *tp, TP_Arena *arena, LNK_Config *config, LNK_Inputer *inputer, LNK_SymbolTable *symtab, LNK_Link *link, U64 *objs_count_out);
-internal void          lnk_load_libs  (TP_Context *tp, TP_Arena *arena, LNK_Config *config, LNK_Inputer *inputer, LNK_Link *link);
-internal void          lnk_link_inputs(TP_Context *tp, TP_Arena *arena, LNK_Config *config, LNK_Inputer *inputer, LNK_SymbolTable *symtab, LNK_Link *link);
-internal LNK_Link *    lnk_link_image (TP_Context *tp, TP_Arena *arena, LNK_Config *config, LNK_Inputer *inputer, LNK_SymbolTable *symtab);
+internal LNK_Link *     lnk_link_init  (TP_Arena *arena, LNK_Config *config);
+internal LNK_ObjNode *  lnk_load_objs  (TP_Context *tp, TP_Arena *arena, LNK_Config *config, LNK_Inputer *inputer, LNK_SymbolTable *symtab, LNK_Link *link, U64 *objs_count_out);
+internal void           lnk_load_libs  (TP_Context *tp, TP_Arena *arena, LNK_Config *config, LNK_Inputer *inputer, LNK_Link *link);
+internal void           lnk_link_inputs(TP_Context *tp, TP_Arena *arena, LNK_Config *config, LNK_Inputer *inputer, LNK_SymbolTable *symtab, LNK_Link *link);
+internal LNK_LinkResult lnk_link_image (TP_Context *tp, TP_Arena *arena, LNK_Config *config, LNK_Inputer *inputer, LNK_SymbolTable *symtab);
 
 // --- Optimizations -----------------------------------------------------------
 
@@ -353,7 +396,7 @@ internal void lnk_opt_ref(TP_Context *tp, LNK_SymbolTable *symtab, LNK_Config *c
 
 internal String8List      lnk_build_guard_tables(TP_Context *tp, LNK_SectionTable *sectab, LNK_SymbolTable *symtab, U64 objs_count, LNK_Obj **objs, COFF_MachineType machine, String8 entry_point_name, LNK_GuardFlags guard_flags, B32 emit_suppress_flag);
 internal String8          lnk_build_base_relocs(TP_Context *tp, TP_Arena *tp_temp, LNK_Config *config, U64 objs_count, LNK_Obj **objs);
-internal String8List      lnk_build_win32_image_header(Arena *arena, LNK_SymbolTable *symtab, LNK_Config *config, LNK_SectionArray sect_arr, U64 expected_image_header_size);
+internal String8List      lnk_build_win32_image_header(Arena *arena, LNK_SymbolTable *symtab, LNK_Config *config, LNK_SectionArray sect_arr, U64 expected_image_header_size, U64 *file_header_offset_out, String8List *string_table_out);
 internal LNK_ImageContext lnk_build_image(TP_Arena *arena, TP_Context *tp, LNK_Config *config, LNK_SymbolTable *symtab, U64 obj_count, LNK_Obj **objs);
 
 // --- Logger ------------------------------------------------------------------

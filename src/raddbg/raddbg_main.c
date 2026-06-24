@@ -2,14 +2,122 @@
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 ////////////////////////////////
-//~ rjf: post-0.9.20 TODO notes
+//~ rjf: evaluation system pass TODO notes
+//
+// The first pass of the debugger's evaluation engine has some significant
+// problems, and sooner rather than later we need to do a pass which addresses
+// them. It's a complicated thing, so I am gathering unstructured notes &
+// comments here:
+//
+// - coupling of some evaluation things to running on the UI thread - for some
+//   things we don't care, e.g. I don't care to evaluate theme colors literally
+//   anywhere except for the UI thread. but, for something like a thread's
+//   call stack, that should pretty unambiguously be accessible via the control
+//   thread (and thus in conditional breakpoints etc.).
+//
+// - whether something is available on the control thread or not, we should be
+//   able to *know* that from the UI thread, so that we can display it clearly.
+//
+// - there is an uncomfortable bifurcation between establishing evaluation
+//   context on the UI thread vs. the control thread. ideally, the common
+//   things (like debug entities) are just common, and there is ~0 extra code.
+//
+// - currently we lump all sorts of "context" things into the same mechanism.
+//   the problem is that a lot of this stuff needs to change *mid-expression*.
+//   for example:
+//
+//   thread.call_stack[1].locals.foo + other_thread.call_stack[2].locals.bar
+//
+//   this requires changing all sorts of things about the context for different
+//   portions of expression bytecode! currently, the only context that we
+//   support changing like this is the 'space'. but there is a lot more
+//   'volatile context' than just the space. so I think instead of "set space"
+//   opcodes, we need (also, or to replace? unclear) a "set context" opcode.
+//
+//   this is all completely distinct from "base context", or whatever we want
+//   to call it, which includes unchanging things, like the set of loaded debug
+//   infos, modules, etc.
+//
+// - we need to be able to disambiguate between *processes* too in expressions.
+//   we can *sort of do this* with addresses, now that we can do
+//   process.memory + 0x1000. but for example if we had a foo.dll in two
+//   processes, we can't disambiguate between the two in identifier resolution.
+//   we can currently do foo.dll!bar, but we'd need to be able to do
+//   `<pid>!foo.dll!bar` too or something.
+//
+// - there are ambiguous cases in the expression language that we need to shake
+//   out, notably because of type views. this is because "$" is overloaded. the
+//   idea was to make it a *chain* of parent expressions, but this seems to be
+//   confusing and/or not working in some cases - the example that found this
+//   was `array(...)` used inside of `rows(...)`, e.g. this:
+//
+//     array(cast(char*)$.data, $.size)
+//
+//   working, but this:
+//
+//     rows($, array(cast(char*)$.data, $.size), some_other_member)
+//
+//   not.
+//
+// - the expression parser, to support C-style syntax, needs identifier
+//   resolution. I took this out before, but that was a mistake, because people
+//   just need to be able to do `(foo)&bar` and have it work. to a dumb
+//   parser without identifier resolution, there is no way to disambiguate that
+//   from a bitwise &. but that is why we need identifier resolution.
+
+////////////////////////////////
+//~ rjf: post-0.9.27 TODO notes
+//
+// [ ] debug info loading retry mechanism, in cases where the load failed, but settings/filesystem state changes -
+//     e.g. turn on automatic downloads, already tried to load symbol server cache file that doesn't exist ->
+//     need to retry
+// [ ] wassim memory bug
+//
+// [ ] core dump saving/loading
+//
+// [ ] memory_size(...) view for quickly evaluating memory sizes
+// [ ] value coloring view in watch window, so you can quickly scroll & see values outside of a threshold
+//
+// [ ] more things should move to user data, but project-tagged - like
+//     recent files, watches?, etc.
+//
+// [ ] linux/dwarf fixes
+//  [ ] excessive CPU usage on async threads - barrier impl?
+//  [ ] type views for `MyByte *` example do not match correctly
+//
+// [ ] many threads hitting conditional breakpoints -> causes 0x8000003 exception!
+// [ ] string conditional breakpoints -> size != 0 check seems to fail, can test w/ "rd_init" subprogram type gen in d2r2
+//
+// [ ] PDB -> RDI conversion memory usage
+//
+//- evaluation space coverage pass
+// [ ] need concrete ways of referring into a space at any offset - e.g. `process.memory + 0x1234`, `file:"foo".data + 0x1234`, `thread.regs + 0x80`, etc.
+// [ ] memory view needs to take advantage of above when peeking; ensure peeking works on files etc.
+// [ ] need to eliminate accelerators from evaluation context, and build them on the fly instead -
+//     this is necessary because, for instance, the correct locals_map varies by expression, if we
+//     want to (we do) support features like "look up call stack to find local"
+//
+//- memory view pass
+// [ ] toggleable ascii column
+// [ ] toggleable annotation tree column
+// [ ] horizontal scrolling
+//
+//- fabian complaints / reports
+// [ ] simplified default layout
+//  [ ] memory view deserves larger spot, in default layout
+// [ ] ambiguous parsing cases - need to re-introduce identifier resolution into eval parse. (foo *)&bar
+// [ ] broadly, view discoverability / docs
+// [ ] signify empty watch window "expression" slot more as a text field?
+//
+//- jeff notes
+// [ ] focus changing on f10/f11? may be related to auto_run/auto_step - look at a bin/jeffr
+//     auto_step, launching terminal, terminal steals focus from debugger...
 //
 //- urgent fixes
 // [ ] (use msvc assert as an example) show fastfail exception info (code, name, etc.) - comes from ExceptionInformation @fastfail
 // [ ] stepping w/ spoofs & shadow stack enabled - writing spoof will send a stack buffer overrun event @shadow_stack_step
-// [ ] hardware breakpoints regression (global eval in ctrl)
 // [ ] native filesystem dialog, resizing raddbg window -> crash!
-// [ ] stdout/stderr path target setting is now busted >:(
+// [ ] stdout/stderr path target setting is now busted >:( (i think this is because of path confusion? check working dir)
 // [ ] target ui entry point should override built-in entry point
 // [ ] list of all tabs in palette
 // [ ] u64 + (ptr - ptr) seems to produce unexpected results - double check with C rules?
@@ -18,14 +126,11 @@
 // [ ] "skip breakpoint, run to source", when stopped at a non-source location
 // [ ] adjust menu bar rendering when not focused
 // [ ] treat int 0x29 similarly to int3
-// [ ] auto_step, launching terminal, terminal steals focus from debugger...
 //
 //- memory view
 // [ ] have smaller visible range than entire memory space, within some bounds (e.g. 64KB)
 // [ ] dynamically expand memory space, based on scrolling
-// [ ] fix clicking through occluded panels etc.
 // [ ] disambiguate . character in ASCII columns
-// [ ] fix type intepretations of cursor in bottom pane
 //
 //- watch improvements
 // [ ] *ALL* expressions in watch windows need to be editable.
@@ -40,8 +145,6 @@
 //     a way we can defer to the underlying shell in a non-horrible way...?
 //
 //- stepping or breakpoint oddness/fixes
-// [ ] halting during a spoof-ridden step leaves the spoofs in place!!!
-//     (repro via LOTS of code on one line & halting)
 // [ ] stepping-onto a line with a conditional breakpoint, which fails, causes a
 // single step over the first instruction of that line, even if the thread
 // would've stopped at the first instruction due to the step, were that bp not
@@ -137,13 +240,11 @@
 //
 //- control improvements
 // [ ] debug info overrides (both path-based AND module-based)
-// [ ] symbol server
 // [ ] can it ignore stepping into _RTC_CheckStackVars generated functions?
 // [ ] jump table thunks, on code w/o /INCREMENTAL:NO
 // [ ] investigate /DEBUG:FASTLINK - can we somehow alert that we do not
 //     support it?
 // [ ] just-in-time debugging
-// [ ] step-out-of-loop
 //
 //- late-conversion performance improvements
 // [ ] live++ investigations - ctrl+alt+f11 in UE?
@@ -152,7 +253,6 @@
 // [ ] search-in-all-files
 //  [ ] automatically snap to search matches when searching source files
 // [ ] memory view
-//  [ ] memory view mutation controls
 //  [ ] memory view user-made annotations
 //  [ ] memory view searching
 // [ ] disasm view
@@ -160,13 +260,12 @@
 //
 //- longer-term future features
 // [ ] long-term future notes from martins
-// [ ] core dump saving/loading
-// [ ] parallel call stacks view
-// [ ] parallel watch view
-// [ ] mixed native/interpreted/jit debugging
-//     - it seems python has a top-level linked list of interpreter states,
-//       which should allow the debugger to map native callstacks to python
-//       code
+//  [ ] parallel call stacks view
+//  [ ] parallel watch view
+//  [ ] mixed native/interpreted/jit debugging
+//      - it seems python has a top-level linked list of interpreter states,
+//        which should allow the debugger to map native callstacks to python
+//        code
 //
 //- code cleanup
 // [ ] eliminate explicit font parameters in the various ui paths (e.g.
@@ -175,31 +274,112 @@
 //     rasterizations)
 
 ////////////////////////////////
+//~ rjf: Recently Completed
+//
+// [x] fix for-loop stepping oddities, likely single-line for-loop stepping
+// [x] `foo, x` needs to correctly match `hex(foo)`, e.g. in application to expansions
+// [x] eval: pointer casts of register space should promote to process space
+// [x] more control over string visualization; specifically, when *not* to do it, even when using e.g. char *s
+// [x] sign bits should not display on unsigned integers?
+// [x] source/disasm ctx menu should include options for e.g. "go to selected thread"
+//  [x] correct type interpretations; togglable interpretations
+//  [x] make address editable; specialized version of the cursor address editor in tab right-click menu
+// [x] broadly, need to complete memory view & fix issues
+// [x] dumb panel click-through thing
+// [x] cursor info at bottom? # of selected bytes, address range, cursor hierarchical location?
+// [x] clean up tooltip? it's a bit big/noisy (maybe remove it after above?)
+// [x] missing call stack frames?
+// [x] scroll bar
+//
+// [x] fix type intepretations of cursor in bottom pane
+// [x] fix clicking through occluded panels etc.
+// [x] hardware breakpoints regression (global eval in ctrl)
+// [x] RDI_Local, RDI_GlobalVariable, RDI_ThreadVariable -> RDI_Variable
+// [x] RDI_Variable gets RDI_ContainerFlags, and a container_idx
+// [x] RDI_Namespace can be a container, same as types/procedures
+// [x] If procedure-contained, then index goes to scope now, not procedure
+// [x] Location sections -> split by location kind, fixed tables for simple locations, one catch-all table for bytecode.
+// [x] Location kind -> can be thread-local offset, or module virtual offset, to enclose globals/tlocals cases
+// [x] Referring to one location -> kind * index
+// [x] Referring to many locations, based on scope offsets -> kind = BlockList; BlockList encodes a first/opl pair into Block table, each Block has scope_off_first/opl, location_kind, location_idx - but a block's location kind CANNOT BE BlockList
+// [x] RDI_Variable has location_kind, location_idx
+//
+// [x] we keep flat tables of symbols, *but*, "sort" by containing unit. unit -> [f, opl) of procedures, globals, threadvars, constants, etc.
+// [x] container can also be a unit, so you can also go from procedure/global/tvar -> unit
+// [x] *OR*, because we can guarantee that the units themselves will be sorted from lowest -> highest in all symbol tables, we can simply binary search the unit table (small) with a symbol's index to find its corresponding unit. that way, no need to duplicate e.g. namespaces and so on across units. and actually, we have to do this, because containers can be types, and those cannot be unit-locked.
+//
+// [x] symbols only store their *partly-qualified name*, e.g. `x` for A::B::C::x
+// [x] default name maps look up *partly-qualified names*
+// [x] to match a *fully qualified name*, there needs to be a second kind of different lookup - instead of string-matching, we need to match against the *fully qualified names*. the maps must be built by hashing the *fully qualified name*, but redirecting to the symbol with the *partially qualified name*. this is to allow fully-qualified lookups, but avoid storing fully-qualified names.
+//
+// [x] option to turn off transient tabs altogether
+// [x] step out of scopes / loops
+// [x] asan pass
+// [x] codebase-internal barrier impl (win7/linux support)
+// [x] policy for closing debug info which is no longer relevant?
+// [x] killing/restarting thread performance (#780)
+//  [x] rd_frame has no type info, should be (void -> void) - type should be generated but it
+//      is not being hooked up correctly
+// [x] project/user file improvements
+//  [x] "default" -> "untitled"
+//  [x] should clear default project data every time the program starts
+//  [x] new project / user should not require picking a path; should just
+//      by default go to "untitled" in default user path
+//  [x] memory view mutation controls
+//  [x] step-over/step-into doesn't step successfully in many cases, just causes a continue
+// [x] eval space reads/writes -> needs staleness/badness info - replace ctrl layer, to apply to all spaces
+// [x] no selected thread -> causing evaluation failures, e.g. with go-to-definition
+// [x] single-line viz for pointers w/ bad (unmapped) addresses
+// [x] option to prefer addresses first with string ptrs
+// [x] external window focusing bugs
+// [x] "autos" collection, which can be evaluated
+// [x] show "autos" inline in source code near thread?
+// [x] switch off spoofs for step-over
+// [x] jeff stepping bug
+// [x] unwinding crash - f5 on bp in w32_http_status_callback to repro
+// [x] unwinding in jit page - fail
+// [x] test concepts -> base
+// [x] debugger, d2r, p2r exemplar / determinism testing
+// [x] halting during a spoof-ridden step leaves the spoofs in place!!!
+//     (repro via LOTS of code on one line & halting)
+// [x] unit / module name qualification
+// [x] step-out-of-loop
+// [x] symbol server
+
+////////////////////////////////
 //~ rjf: Build Options
 
 #define BUILD_TITLE "The RAD Debugger"
 #define OS_FEATURE_GRAPHICAL 1
 
 #define DMN_INIT_MANUAL 1
-#define CTRL_INIT_MANUAL 1
-#define OS_GFX_INIT_MANUAL 1
+#define D_INIT_MANUAL 1
+#define WM_INIT_MANUAL 1
 #define FP_INIT_MANUAL 1
 #define R_INIT_MANUAL 1
 #define FNT_INIT_MANUAL 1
-#define D_INIT_MANUAL 1
 #define RD_INIT_MANUAL 1
+
+#define ARENA_TABLE_DEBUG BUILD_DEBUG
 
 ////////////////////////////////
 //~ rjf: Includes
 
 //- rjf: [h]
 #include "base/base_inc.h"
+#include "x64/x64.h"
+#include "win32/win32_inc.h"
 #include "linker/hash_table.h"
-#include "os/os_inc.h"
+#include "linker/base_ext/base_bit_array.h"
 #include "artifact_cache/artifact_cache.h"
 #include "rdi/rdi_local.h"
 #include "rdi_make/rdi_make_local.h"
+#include "minidump/minidump.h"
+#include "minidump/minidump_parse.h"
 #include "mdesk/mdesk.h"
+#include "window_manager/window_manager_inc.h"
+#include "http/http_inc.h"
+#include "symbol_server/symbol_server_inc.h"
 #include "config/config_inc.h"
 #include "content/content.h"
 #include "file_stream/file_stream.h"
@@ -209,7 +389,10 @@
 #include "coff/coff_parse.h"
 #include "pe/pe.h"
 #include "elf/elf.h"
+#include "gnu/gnu.h"
+#include "gnu/gnu_parse.h"
 #include "elf/elf_parse.h"
+#include "elf/elf_dump.h"
 #include "codeview/codeview.h"
 #include "codeview/codeview_parse.h"
 #include "msf/msf.h"
@@ -217,37 +400,47 @@
 #include "pdb/pdb.h"
 #include "pdb/pdb_parse.h"
 #include "pdb/pdb_stringize.h"
-#include "eh/eh_frame.h"
 #include "dwarf/dwarf_inc.h"
+#include "eh_frame/eh_frame.h"
+#include "eh_frame/eh_frame_dump.h"
+#include "unwind/unwind_inc.h"
 #include "rdi_from_coff/rdi_from_coff.h"
 #include "rdi_from_elf/rdi_from_elf.h"
+#include "rdi_from_codeview/rdi_from_codeview.h"
 #include "rdi_from_pdb/rdi_from_pdb.h"
 #include "rdi_from_dwarf/rdi_from_dwarf.h"
 #include "radbin/radbin.h"
-#include "regs/regs.h"
-#include "regs/rdi/regs_rdi.h"
+#include "arch/arch_inc.h"
 #include "dbg_info/dbg_info.h"
-#include "disasm/disasm.h"
+#include "disasm/disasm_inc.h"
+#include "stap/stap_parse.h"
 #include "demon/demon_inc.h"
 #include "eval/eval_inc.h"
+#include "eval2/eval2.h"
+#include "dbg_engine/dbg_engine_inc.h"
 #include "eval_visualization/eval_visualization_inc.h"
-#include "ctrl/ctrl_inc.h"
 #include "font_provider/font_provider_inc.h"
 #include "render/render_inc.h"
 #include "font_cache/font_cache.h"
 #include "draw/draw.h"
 #include "ui/ui_inc.h"
-#include "dbg_engine/dbg_engine_inc.h"
 #include "raddbg/raddbg_inc.h"
 
 //- rjf: [c]
 #include "base/base_inc.c"
+#include "x64/x64.c"
+#include "win32/win32_inc.c"
 #include "linker/hash_table.c"
-#include "os/os_inc.c"
+#include "linker/base_ext/base_bit_array.c"
 #include "artifact_cache/artifact_cache.c"
 #include "rdi/rdi_local.c"
 #include "rdi_make/rdi_make_local.c"
+#include "minidump/minidump.c"
+#include "minidump/minidump_parse.c"
 #include "mdesk/mdesk.c"
+#include "window_manager/window_manager_inc.c"
+#include "http/http_inc.c"
+#include "symbol_server/symbol_server_inc.c"
 #include "config/config_inc.c"
 #include "content/content.c"
 #include "file_stream/file_stream.c"
@@ -257,7 +450,10 @@
 #include "coff/coff_parse.c"
 #include "pe/pe.c"
 #include "elf/elf.c"
+#include "gnu/gnu.c"
+#include "gnu/gnu_parse.c"
 #include "elf/elf_parse.c"
+#include "elf/elf_dump.c"
 #include "codeview/codeview.c"
 #include "codeview/codeview_parse.c"
 #include "msf/msf.c"
@@ -265,27 +461,30 @@
 #include "pdb/pdb.c"
 #include "pdb/pdb_parse.c"
 #include "pdb/pdb_stringize.c"
-#include "eh/eh_frame.c"
 #include "dwarf/dwarf_inc.c"
+#include "eh_frame/eh_frame.c"
+#include "eh_frame/eh_frame_dump.c"
+#include "unwind/unwind_inc.c"
 #include "rdi_from_coff/rdi_from_coff.c"
 #include "rdi_from_elf/rdi_from_elf.c"
+#include "rdi_from_codeview/rdi_from_codeview.c"
 #include "rdi_from_pdb/rdi_from_pdb.c"
 #include "rdi_from_dwarf/rdi_from_dwarf.c"
 #include "radbin/radbin.c"
-#include "regs/regs.c"
-#include "regs/rdi/regs_rdi.c"
+#include "arch/arch_inc.c"
 #include "dbg_info/dbg_info.c"
-#include "disasm/disasm.c"
+#include "disasm/disasm_inc.c"
+#include "stap/stap_parse.c"
 #include "demon/demon_inc.c"
 #include "eval/eval_inc.c"
+#include "eval2/eval2.c"
+#include "dbg_engine/dbg_engine_inc.c"
 #include "eval_visualization/eval_visualization_inc.c"
-#include "ctrl/ctrl_inc.c"
 #include "font_provider/font_provider_inc.c"
 #include "render/render_inc.c"
 #include "font_cache/font_cache.c"
 #include "draw/draw.c"
 #include "ui/ui_inc.c"
-#include "dbg_engine/dbg_engine_inc.c"
 #include "raddbg/raddbg_inc.c"
 
 ////////////////////////////////
@@ -310,7 +509,7 @@ struct IPCInfo
 //~ rjf: Globals
 
 //- rjf: IPC resources
-#define IPC_SHARED_MEMORY_BUFFER_SIZE MB(4)
+#define IPC_SHARED_MEMORY_BUFFER_SIZE KB(64)
 StaticAssert(IPC_SHARED_MEMORY_BUFFER_SIZE > sizeof(IPCInfo), ipc_buffer_size_requirement);
 global Semaphore ipc_sender2main_signal_semaphore = {0};
 global Semaphore ipc_sender2main_lock_semaphore = {0};
@@ -318,7 +517,7 @@ global U8 *ipc_sender2main_shared_memory_base = 0;
 global Semaphore ipc_main2sender_signal_semaphore = {0};
 global Semaphore ipc_main2sender_lock_semaphore = {0};
 global U8 *ipc_main2sender_shared_memory_base = 0;
-global U8  ipc_s2m_ring_buffer[MB(4)] = {0};
+global U8  ipc_s2m_ring_buffer[KB(64)] = {0};
 global U64 ipc_s2m_ring_write_pos = 0;
 global U64 ipc_s2m_ring_read_pos = 0;
 global Mutex ipc_s2m_ring_mutex = {0};
@@ -333,9 +532,9 @@ ipc_signaler_thread__entry_point(void *p)
   ThreadNameF("rd_ipc_signaler_thread");
   for(;;)
   {
-    if(os_semaphore_take(ipc_sender2main_signal_semaphore, max_U64))
+    if(semaphore_take(ipc_sender2main_signal_semaphore, max_U64))
     {
-      if(os_semaphore_take(ipc_sender2main_lock_semaphore, max_U64))
+      if(semaphore_take(ipc_sender2main_lock_semaphore, max_U64))
       {
         IPCInfo *ipc_info = (IPCInfo *)ipc_sender2main_shared_memory_base;
         String8 msg = str8((U8 *)(ipc_info+1), ipc_info->msg_size);
@@ -346,16 +545,16 @@ ipc_signaler_thread__entry_point(void *p)
           U64 available_size = (sizeof(ipc_s2m_ring_buffer) - unconsumed_size);
           if(available_size >= sizeof(U64)+sizeof(msg.size))
           {
-            ipc_s2m_ring_write_pos += ring_write_struct(ipc_s2m_ring_buffer, sizeof(ipc_s2m_ring_buffer), ipc_s2m_ring_write_pos, &msg.size);
-            ipc_s2m_ring_write_pos += ring_write(ipc_s2m_ring_buffer, sizeof(ipc_s2m_ring_buffer), ipc_s2m_ring_write_pos, msg.str, msg.size);
+            ipc_s2m_ring_write_pos += wrapped_write_struct(ipc_s2m_ring_buffer, sizeof(ipc_s2m_ring_buffer), ipc_s2m_ring_write_pos, &msg.size);
+            ipc_s2m_ring_write_pos += wrapped_write(ipc_s2m_ring_buffer, sizeof(ipc_s2m_ring_buffer), ipc_s2m_ring_write_pos, msg.str, msg.size);
             break;
           }
           cond_var_wait(ipc_s2m_ring_cv, ipc_s2m_ring_mutex, max_U64);
         }
         cond_var_broadcast(ipc_s2m_ring_cv);
-        os_send_wakeup_event();
+        wm_send_wakeup_event();
         ipc_info->msg_size = 0;
-        os_semaphore_drop(ipc_sender2main_lock_semaphore);
+        semaphore_drop(ipc_sender2main_lock_semaphore);
       }
     }
   }
@@ -364,9 +563,9 @@ ipc_signaler_thread__entry_point(void *p)
 ////////////////////////////////
 //~ rjf: Ctrl -> Main Thread Wakeup Hook
 
-internal CTRL_WAKEUP_FUNCTION_DEF(wakeup_hook_ctrl)
+internal D_WAKEUP_FUNCTION_DEF(wakeup_hook_ctrl)
 {
-  os_send_wakeup_event();
+  wm_send_wakeup_event();
 }
 
 ////////////////////////////////
@@ -386,6 +585,16 @@ internal void
 entry_point(CmdLine *cmd_line)
 {
   Temp scratch = scratch_begin(0, 0);
+  
+  //- rjf: re-open stdout handles if cli
+#if OS_WINDOWS
+  if(cmd_line_has_flag(cmd_line, s("cli")))
+  {
+    AttachConsole(ATTACH_PARENT_PROCESS);
+    freopen("CONOUT$", "wt", stdout);
+    freopen("CONOUT$", "wt", stderr);
+  }
+#endif
   
   //- rjf: unpack command line arguments
   ExecMode exec_mode = ExecMode_Normal;
@@ -419,6 +628,15 @@ entry_point(CmdLine *cmd_line)
     try_u64_from_str8_c_rules(jit_addr_string, &jit_addr);
     jit_attach = (jit_addr != 0);
   }
+  
+  // init log
+  g_logs_folder = cmd_line_string(cmd_line, str8_lit("logs"));
+  if(g_logs_folder.size == 0)
+  {
+    String8 user_program_logs_data_path = get_process_info()->user_program_logs_data_path;
+    g_logs_folder = push_str8f(scratch.arena, "%S/raddbg/logs", user_program_logs_data_path);
+  }
+  make_directory(g_logs_folder);
   
   //- rjf: dispatch to top-level codepath based on execution mode
   switch(exec_mode)
@@ -466,36 +684,35 @@ entry_point(CmdLine *cmd_line)
       //- rjf: manual layer initialization
       {
         dmn_init();
-        ctrl_init();
-        os_gfx_init();
+        d_init();
+        wm_init();
         fp_init();
         r_init(cmd_line);
         fnt_init();
-        d_init();
         rd_init(cmd_line);
-        ctrl_set_wakeup_hook(wakeup_hook_ctrl);
+        d_set_wakeup_hook(wakeup_hook_ctrl);
       }
       
       //- rjf: set up shared resources for ipc to this instance; launch IPC signaler thread
       {
         Temp scratch = scratch_begin(0, 0);
-        U32 instance_pid = os_get_process_info()->pid;
+        U32 instance_pid = get_process_info()->pid;
         
         // rjf: set up cross-process sender -> main ring buffer
-        String8 ipc_sender2main_shared_memory_name = push_str8f(scratch.arena, "_raddbg_ipc_sender2main_shared_memory_%i_", instance_pid);
-        String8 ipc_sender2main_signal_semaphore_name = push_str8f(scratch.arena, "_raddbg_ipc_sender2main_signal_semaphore_%i_", instance_pid);
-        String8 ipc_sender2main_lock_semaphore_name = push_str8f(scratch.arena, "_raddbg_ipc_sender2main_lock_semaphore_%i_", instance_pid);
-        OS_Handle ipc_sender2main_shared_memory = os_shared_memory_alloc(IPC_SHARED_MEMORY_BUFFER_SIZE, ipc_sender2main_shared_memory_name);
-        ipc_sender2main_shared_memory_base = (U8 *)os_shared_memory_view_open(ipc_sender2main_shared_memory, r1u64(0, IPC_SHARED_MEMORY_BUFFER_SIZE));
+        String8 ipc_sender2main_shared_memory_name = str8f(scratch.arena, "_raddbg_ipc_sender2main_shared_memory_%i_", instance_pid);
+        String8 ipc_sender2main_signal_semaphore_name = str8f(scratch.arena, "_raddbg_ipc_sender2main_signal_semaphore_%i_", instance_pid);
+        String8 ipc_sender2main_lock_semaphore_name = str8f(scratch.arena, "_raddbg_ipc_sender2main_lock_semaphore_%i_", instance_pid);
+        SharedMemory ipc_sender2main_shared_memory = shared_memory_alloc(IPC_SHARED_MEMORY_BUFFER_SIZE, ipc_sender2main_shared_memory_name);
+        ipc_sender2main_shared_memory_base = (U8 *)shared_memory_view_open(ipc_sender2main_shared_memory, r1u64(0, IPC_SHARED_MEMORY_BUFFER_SIZE));
         ipc_sender2main_signal_semaphore = semaphore_alloc(0, 1, ipc_sender2main_signal_semaphore_name);
         ipc_sender2main_lock_semaphore = semaphore_alloc(1, 1, ipc_sender2main_lock_semaphore_name);
         
         // rjf: set up cross-process main -> sender ring buffer
-        String8 ipc_main2sender_shared_memory_name = push_str8f(scratch.arena, "_raddbg_ipc_main2sender_shared_memory_%i_", instance_pid);
-        String8 ipc_main2sender_signal_semaphore_name = push_str8f(scratch.arena, "_raddbg_ipc_main2sender_signal_semaphore_%i_", instance_pid);
-        String8 ipc_main2sender_lock_semaphore_name = push_str8f(scratch.arena, "_raddbg_ipc_main2sender_lock_semaphore_%i_", instance_pid);
-        OS_Handle ipc_main2sender_shared_memory = os_shared_memory_alloc(IPC_SHARED_MEMORY_BUFFER_SIZE, ipc_main2sender_shared_memory_name);
-        ipc_main2sender_shared_memory_base = (U8 *)os_shared_memory_view_open(ipc_main2sender_shared_memory, r1u64(0, IPC_SHARED_MEMORY_BUFFER_SIZE));
+        String8 ipc_main2sender_shared_memory_name = str8f(scratch.arena, "_raddbg_ipc_main2sender_shared_memory_%i_", instance_pid);
+        String8 ipc_main2sender_signal_semaphore_name = str8f(scratch.arena, "_raddbg_ipc_main2sender_signal_semaphore_%i_", instance_pid);
+        String8 ipc_main2sender_lock_semaphore_name = str8f(scratch.arena, "_raddbg_ipc_main2sender_lock_semaphore_%i_", instance_pid);
+        SharedMemory ipc_main2sender_shared_memory = shared_memory_alloc(IPC_SHARED_MEMORY_BUFFER_SIZE, ipc_main2sender_shared_memory_name);
+        ipc_main2sender_shared_memory_base = (U8 *)shared_memory_view_open(ipc_main2sender_shared_memory, r1u64(0, IPC_SHARED_MEMORY_BUFFER_SIZE));
         ipc_main2sender_signal_semaphore = semaphore_alloc(0, 1, ipc_main2sender_signal_semaphore_name);
         ipc_main2sender_lock_semaphore = semaphore_alloc(1, 1, ipc_main2sender_lock_semaphore_name);
         
@@ -529,10 +746,10 @@ entry_point(CmdLine *cmd_line)
               {
                 consumed = 1;
                 ipc_command_frame = 1;
-                ipc_s2m_ring_read_pos += ring_read_struct(ipc_s2m_ring_buffer, sizeof(ipc_s2m_ring_buffer), ipc_s2m_ring_read_pos, &msg.size);
+                ipc_s2m_ring_read_pos += wrapped_read_struct(ipc_s2m_ring_buffer, sizeof(ipc_s2m_ring_buffer), ipc_s2m_ring_read_pos, &msg.size);
                 msg.size = Min(msg.size, unconsumed_size);
                 msg.str = push_array(scratch.arena, U8, msg.size);
-                ipc_s2m_ring_read_pos += ring_read(ipc_s2m_ring_buffer, sizeof(ipc_s2m_ring_buffer), ipc_s2m_ring_read_pos, msg.str, msg.size);
+                ipc_s2m_ring_read_pos += wrapped_read(ipc_s2m_ring_buffer, sizeof(ipc_s2m_ring_buffer), ipc_s2m_ring_read_pos, msg.str, msg.size);
               }
             }
             if(consumed)
@@ -542,10 +759,11 @@ entry_point(CmdLine *cmd_line)
             if(msg.size != 0)
             {
               log_infof("ipc_msg: \"%S\"", msg);
+              String8List cmd_parts_of_msg = str8_split(scratch.arena, msg, (U8 *)";", 1, 0);
               RD_WindowState *dst_ws = rd_state->first_window_state;
               for(RD_WindowState *ws = dst_ws; ws != &rd_nil_window_state; ws = ws->order_next)
               {
-                if(os_window_is_focused(ws->os))
+                if(wm_window_is_focused(ws->os))
                 {
                   dst_ws = ws;
                   break;
@@ -566,7 +784,10 @@ entry_point(CmdLine *cmd_line)
                     rd_regs()->view   = panel_tree.focused->selected_tab->id;
                     scratch_end(scratch);
                   }
-                  rd_cmd(RD_CmdKind_RunExternalDriverTextCommand, .string = msg);
+                  for EachNode(n, String8Node, cmd_parts_of_msg.first)
+                  {
+                    rd_cmd(RD_CmdKind_RunExternalDriverTextCommand, .string = n->string);
+                  }
                   rd_request_frame();
                 }
               }
@@ -602,7 +823,7 @@ entry_point(CmdLine *cmd_line)
           if(ipc_command_frame)
           {
             if(ipc_main2sender_shared_memory_base != 0 &&
-               os_semaphore_take(ipc_main2sender_lock_semaphore, os_now_microseconds()+5000000))
+               semaphore_take(ipc_main2sender_lock_semaphore, now_time_us()+5000000))
             {
               IPCInfo *ipc_info = (IPCInfo *)ipc_main2sender_shared_memory_base;
               U8 *buffer = (U8 *)(ipc_info+1);
@@ -611,8 +832,8 @@ entry_point(CmdLine *cmd_line)
               String8 msg = str8_list_join(scratch.arena, &rd_state->cmd_outputs, &join);
               ipc_info->msg_size = Min(buffer_max, msg.size);
               MemoryCopy(buffer, msg.str, ipc_info->msg_size);
-              os_semaphore_drop(ipc_main2sender_signal_semaphore);
-              os_semaphore_drop(ipc_main2sender_lock_semaphore);
+              semaphore_drop(ipc_main2sender_signal_semaphore);
+              semaphore_drop(ipc_main2sender_lock_semaphore);
             }
           }
         }
@@ -641,7 +862,7 @@ entry_point(CmdLine *cmd_line)
       //- rjf: no explicit PID? -> find PID to send message to, by looking for other raddbg instances
       if(dst_pid == 0)
       {
-        U32 this_pid = os_get_process_info()->pid;
+        U32 this_pid = get_process_info()->pid;
         DMN_ProcessIter it = {0};
         dmn_process_iter_begin(&it);
         for(DMN_ProcessInfo info = {0}; dmn_process_iter_next(scratch.arena, &it, &info);)
@@ -660,23 +881,23 @@ entry_point(CmdLine *cmd_line)
       String8 ipc_sender2main_shared_memory_name = push_str8f(scratch.arena, "_raddbg_ipc_sender2main_shared_memory_%i_", dst_pid);
       String8 ipc_sender2main_signal_semaphore_name = push_str8f(scratch.arena, "_raddbg_ipc_sender2main_signal_semaphore_%i_", dst_pid);
       String8 ipc_sender2main_lock_semaphore_name = push_str8f(scratch.arena, "_raddbg_ipc_sender2main_lock_semaphore_%i_", dst_pid);
-      OS_Handle ipc_sender2main_shared_memory = os_shared_memory_alloc(IPC_SHARED_MEMORY_BUFFER_SIZE, ipc_sender2main_shared_memory_name);
-      ipc_sender2main_shared_memory_base = (U8 *)os_shared_memory_view_open(ipc_sender2main_shared_memory, r1u64(0, IPC_SHARED_MEMORY_BUFFER_SIZE));
-      ipc_sender2main_signal_semaphore = os_semaphore_alloc(0, 1, ipc_sender2main_signal_semaphore_name);
-      ipc_sender2main_lock_semaphore = os_semaphore_alloc(1, 1, ipc_sender2main_lock_semaphore_name);
+      SharedMemory ipc_sender2main_shared_memory = shared_memory_alloc(IPC_SHARED_MEMORY_BUFFER_SIZE, ipc_sender2main_shared_memory_name);
+      ipc_sender2main_shared_memory_base = (U8 *)shared_memory_view_open(ipc_sender2main_shared_memory, r1u64(0, IPC_SHARED_MEMORY_BUFFER_SIZE));
+      ipc_sender2main_signal_semaphore = semaphore_alloc(0, 1, ipc_sender2main_signal_semaphore_name);
+      ipc_sender2main_lock_semaphore = semaphore_alloc(1, 1, ipc_sender2main_lock_semaphore_name);
       String8 ipc_main2sender_shared_memory_name = push_str8f(scratch.arena, "_raddbg_ipc_main2sender_shared_memory_%i_", dst_pid);
       String8 ipc_main2sender_signal_semaphore_name = push_str8f(scratch.arena, "_raddbg_ipc_main2sender_signal_semaphore_%i_", dst_pid);
       String8 ipc_main2sender_lock_semaphore_name = push_str8f(scratch.arena, "_raddbg_ipc_main2sender_lock_semaphore_%i_", dst_pid);
-      OS_Handle ipc_main2sender_shared_memory = os_shared_memory_alloc(IPC_SHARED_MEMORY_BUFFER_SIZE, ipc_main2sender_shared_memory_name);
-      ipc_main2sender_shared_memory_base = (U8 *)os_shared_memory_view_open(ipc_main2sender_shared_memory, r1u64(0, IPC_SHARED_MEMORY_BUFFER_SIZE));
-      ipc_main2sender_signal_semaphore = os_semaphore_alloc(0, 1, ipc_main2sender_signal_semaphore_name);
-      ipc_main2sender_lock_semaphore = os_semaphore_alloc(1, 1, ipc_main2sender_lock_semaphore_name);
+      SharedMemory ipc_main2sender_shared_memory = shared_memory_alloc(IPC_SHARED_MEMORY_BUFFER_SIZE, ipc_main2sender_shared_memory_name);
+      ipc_main2sender_shared_memory_base = (U8 *)shared_memory_view_open(ipc_main2sender_shared_memory, r1u64(0, IPC_SHARED_MEMORY_BUFFER_SIZE));
+      ipc_main2sender_signal_semaphore = semaphore_alloc(0, 1, ipc_main2sender_signal_semaphore_name);
+      ipc_main2sender_lock_semaphore = semaphore_alloc(1, 1, ipc_main2sender_lock_semaphore_name);
       
       //- rjf: got resources -> write message
       B32 wrote_message = 0;
       if(dst_pid != 0 &&
          ipc_sender2main_shared_memory_base != 0 &&
-         os_semaphore_take(ipc_sender2main_lock_semaphore, max_U64))
+         semaphore_take(ipc_sender2main_lock_semaphore, max_U64))
       {
         wrote_message = 1;
         IPCInfo *ipc_info = (IPCInfo *)ipc_sender2main_shared_memory_base;
@@ -693,24 +914,24 @@ entry_point(CmdLine *cmd_line)
         String8 msg = str8_list_join(scratch.arena, &parts, &join);
         ipc_info->msg_size = Min(buffer_max, msg.size);
         MemoryCopy(buffer, msg.str, ipc_info->msg_size);
-        os_semaphore_drop(ipc_sender2main_signal_semaphore);
-        os_semaphore_drop(ipc_sender2main_lock_semaphore);
+        semaphore_drop(ipc_sender2main_signal_semaphore);
+        semaphore_drop(ipc_sender2main_lock_semaphore);
       }
       
       //- rjf: wrote message -> wait for outputs, read outputs
       String8List outputs = {0};
       if(wrote_message &&
          ipc_main2sender_shared_memory_base != 0 &&
-         os_semaphore_take(ipc_main2sender_signal_semaphore, os_now_microseconds()+10000000))
+         semaphore_take(ipc_main2sender_signal_semaphore, now_time_us()+10000000))
       {
-        if(os_semaphore_take(ipc_main2sender_lock_semaphore, max_U64))
+        if(semaphore_take(ipc_main2sender_lock_semaphore, max_U64))
         {
           IPCInfo *ipc_info = (IPCInfo *)ipc_main2sender_shared_memory_base;
           String8 msg = str8((U8 *)(ipc_info+1), ipc_info->msg_size);
           msg.size = Min(msg.size, IPC_SHARED_MEMORY_BUFFER_SIZE - sizeof(IPCInfo));
           U8 split_char = 0;
           outputs = str8_split(scratch.arena, msg, &split_char, 1, 0);
-          os_semaphore_drop(ipc_main2sender_lock_semaphore);
+          semaphore_drop(ipc_main2sender_lock_semaphore);
         }
       }
       
@@ -734,7 +955,7 @@ entry_point(CmdLine *cmd_line)
     //- rjf: help message box
     case ExecMode_Help:
     {
-      os_graphical_message(0,
+      wm_graphical_message(0,
                            str8_lit("The RAD Debugger - Help"),
                            str8_lit("The following options may be used when starting the RAD Debugger from the command line:\n\n"
                                     "--user:<path>\n"
@@ -748,7 +969,12 @@ entry_point(CmdLine *cmd_line)
                                     "--quit_after_success (or -q)\n"
                                     "This will close the debugger automatically after all processes exit, if they all exited successfully (with code 0), and ran with no interruptions.\n\n"
                                     "--ipc <command>\n"
-                                    "This will launch the debugger in the non-graphical IPC mode, which is used to communicate with another running instance of the debugger. The debugger instance will launch, send the specified command, then immediately terminate. This may be used by editors or other programs to control the debugger.\n\n"));
+                                    "This will launch the debugger in the non-graphical IPC mode, which is used to communicate with another running instance of the debugger. The debugger instance will launch, send the specified command, then immediately terminate. This may be used by editors or other programs to control the debugger.\n\n"
+                                    "--gen_crash_dump\n"
+                                    "Generate mini dump on crash.\n\n"
+                                    "--logs:<path>\n"
+                                    "Overrides default path to the folder with logs.\n"
+                                    ));
     }break;
   }
   

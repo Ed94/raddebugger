@@ -103,7 +103,7 @@ struct R_Rect2DInst
   F32 border_thickness;
   F32 edge_softness;
   F32 white_texture_override;
-  F32 _unused_[1];
+  F32 shear;
 };
 
 typedef struct R_Mesh3DInst R_Mesh3DInst;
@@ -281,8 +281,8 @@ internal R_Pass *r_pass_from_kind(Arena *arena, R_PassList *list, R_PassKind kin
 r_hook void              r_init(CmdLine *cmdln);
 
 //- rjf: window setup/teardown
-r_hook R_Handle          r_window_equip(OS_Handle window);
-r_hook void              r_window_unequip(OS_Handle window, R_Handle window_equip);
+r_hook R_Handle          r_window_equip(WM_Window window);
+r_hook void              r_window_unequip(WM_Window window, R_Handle window_equip);
 
 //- rjf: textures
 r_hook R_Handle          r_tex2d_alloc(R_ResourceKind kind, Vec2S32 size, R_Tex2DFormat format, void *data);
@@ -299,10 +299,10 @@ r_hook void              r_buffer_release(R_Handle buffer);
 //- rjf: frame markers
 r_hook void              r_begin_frame(void);
 r_hook void              r_end_frame(void);
-r_hook void              r_window_begin_frame(OS_Handle window, R_Handle window_equip);
-r_hook void              r_window_end_frame(OS_Handle window, R_Handle window_equip);
+r_hook void              r_window_begin_frame(WM_Window window, R_Handle window_equip);
+r_hook void              r_window_end_frame(WM_Window window, R_Handle window_equip);
 
 //- rjf: render pass submission
-r_hook void              r_window_submit(OS_Handle window, R_Handle window_equip, R_PassList *passes);
+r_hook void              r_window_submit(WM_Window window, R_Handle window_equip, R_PassList *passes);
 
 #endif // RENDER_CORE_H

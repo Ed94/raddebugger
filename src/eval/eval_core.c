@@ -9,16 +9,10 @@
 ////////////////////////////////
 //~ rjf: Basic Helpers
 
-#if !defined(XXH_IMPLEMENTATION)
-# define XXH_IMPLEMENTATION
-# define XXH_STATIC_LINKING_ONLY
-# include "third_party/xxHash/xxhash.h"
-#endif
-
 internal U64
 e_hash_from_string(U64 seed, String8 string)
 {
-  U64 result = XXH3_64bits_withSeed(string.str, string.size, seed);
+  U64 result = u64_hash_from_seed_str8(seed, string);
   return result;
 }
 
@@ -213,25 +207,28 @@ e_string2num_map_make(Arena *arena, U64 slot_count)
 internal void
 e_string2num_map_insert(Arena *arena, E_String2NumMap *map, String8 string, U64 num)
 {
-  U64 hash = e_hash_from_string(5381, string);
-  U64 slot_idx = hash%map->slots_count;
-  E_String2NumMapNode *existing_node = 0;
-  for(E_String2NumMapNode *node = map->slots[slot_idx].first; node != 0; node = node->hash_next)
+  if(string.size != 0)
   {
-    if(str8_match(node->string, string, 0) && node->num == num)
+    U64 hash = e_hash_from_string(5381, string);
+    U64 slot_idx = hash%map->slots_count;
+    E_String2NumMapNode *existing_node = 0;
+    for(E_String2NumMapNode *node = map->slots[slot_idx].first; node != 0; node = node->hash_next)
     {
-      existing_node = node;
-      break;
+      if(str8_match(node->string, string, 0) && node->num == num)
+      {
+        existing_node = node;
+        break;
+      }
     }
-  }
-  if(existing_node == 0)
-  {
-    E_String2NumMapNode *node = push_array(arena, E_String2NumMapNode, 1);
-    SLLQueuePush_N(map->slots[slot_idx].first, map->slots[slot_idx].last, node, hash_next);
-    SLLQueuePush_N(map->first, map->last, node, order_next);
-    node->string = push_str8_copy(arena, string);
-    node->num = num;
-    map->node_count += 1;
+    if(existing_node == 0)
+    {
+      E_String2NumMapNode *node = push_array(arena, E_String2NumMapNode, 1);
+      SLLQueuePush_N(map->slots[slot_idx].first, map->slots[slot_idx].last, node, hash_next);
+      SLLQueuePush_N(map->first, map->last, node, order_next);
+      node->string = push_str8_copy(arena, string);
+      node->num = num;
+      map->node_count += 1;
+    }
   }
 }
 
@@ -590,7 +587,7 @@ e_push_locals_map_from_rdi_voff(Arena *arena, RDI_Parsed *rdi, U64 voff)
       U32 local_opl_idx = scope->local_first + scope->local_count;
       for(U32 local_idx = scope->local_first; local_idx < local_opl_idx; local_idx += 1)
       {
-        RDI_Local *local_var = rdi_element_from_name_idx(rdi, Locals, local_idx);
+        RDI_Symbol *local_var = rdi_element_from_name_idx(rdi, LocalVariables, local_idx);
         U64 local_name_size = 0;
         U8 *local_name_str = rdi_string_from_idx(rdi, local_var->name_string_idx, &local_name_size);
         String8 name = push_str8_copy(arena, str8(local_name_str, local_name_size));
@@ -612,10 +609,10 @@ e_push_member_map_from_rdi_voff(Arena *arena, RDI_Parsed *rdi, U64 voff)
   
   //- rjf: tightest scope -> procedure
   U32 proc_idx = tightest_scope->proc_idx;
-  RDI_Procedure *procedure = rdi_element_from_name_idx(rdi, Procedures, proc_idx);
+  RDI_Symbol *procedure = rdi_element_from_name_idx(rdi, Procedures, proc_idx);
   
   //- rjf: procedure -> udt
-  U32 udt_idx = procedure->container_idx;
+  U32 udt_idx = (procedure->container_flags & RDI_ContainerFlag_KindMask) == RDI_ContainerKind_Type ? procedure->container_idx : 0;
   RDI_UDT *udt = rdi_element_from_name_idx(rdi, UDTs, udt_idx);
   
   //- rjf: build blank map
@@ -642,6 +639,98 @@ e_push_member_map_from_rdi_voff(Arena *arena, RDI_Parsed *rdi, U64 voff)
   }
   
   return map;
+}
+
+////////////////////////////////
+//~ rjf: RDI Location Info -> Eval Op List
+
+internal E_OpList
+e_oplist_from_location(Arena *arena, RDI_Parsed *rdi, RDI_Location loc)
+{
+  E_OpList result = {0};
+  B32 need_extra_memread = 0;
+  switch((RDI_LocationKindEnum)rdi_kind_from_location(loc))
+  {
+    case RDI_LocationKind_NULL:
+    case RDI_LocationKind_Set:{}break;
+    
+    //- rjf: bytecode
+    case RDI_LocationKind_AddrBytecodeStream:
+    case RDI_LocationKind_ValBytecodeStream:
+    {
+      U64 all_bytecode_size = 0;
+      U8 *all_bytecode = rdi_table_from_name(rdi, LocationsBytecodeData, &all_bytecode_size);
+      U64 bytecode_first_idx = rdi_bytecode_data_off_from_location(loc);
+      bytecode_first_idx = Min(bytecode_first_idx, all_bytecode_size);
+      U64 bytecode_opl_idx = bytecode_first_idx;
+      for(U64 off = bytecode_first_idx, next_off = all_bytecode_size; off < all_bytecode_size; off  = next_off)
+      {
+        next_off = all_bytecode_size;
+        U8 opcode = all_bytecode[off];
+        if(opcode == 0)
+        {
+          break;
+        }
+        U16 ctrlbits = rdi_eval_op_ctrlbits_table[opcode];
+        U32 p_size = RDI_DECODEN_FROM_CTRLBITS(ctrlbits);
+        bytecode_opl_idx += (1 + p_size);
+        next_off = (off + 1 + p_size);
+      }
+      String8 bytecode = str8(all_bytecode + bytecode_first_idx, (bytecode_opl_idx - bytecode_first_idx));
+      e_oplist_push_bytecode(arena, &result, bytecode);
+    }break;
+    
+    //- rjf: reg + off
+    case RDI_LocationKind_AddrRegPlusOff: goto reg_plus_off;
+    case RDI_LocationKind_AddrAddrRegPlusOff: need_extra_memread = 1; goto reg_plus_off;
+    reg_plus_off:;
+    {
+      RDI_TopLevelInfo *tli = rdi_element_from_name_idx(rdi, TopLevelInfo, 0);
+      Arch arch = arch_from_rdi_arch(tli->arch);
+      U64 arch_addr_bytesize = byte_size_from_arch(arch);
+      RDI_RegCode regcode = rdi_regcode_from_location(loc);
+      S64 reg_off = rdi_regoff_from_location(loc);
+      e_oplist_push_op(arena, &result, RDI_EvalOp_RegRead, e_value_u64(RDI_EncodeRegReadParam(regcode, arch_addr_bytesize, 0)));
+      e_oplist_push_sconst(arena, &result, reg_off);
+      e_oplist_push_op(arena, &result, RDI_EvalOp_Add, e_value_u64(0));
+      if(need_extra_memread)
+      {
+        e_oplist_push_op(arena, &result, RDI_EvalOp_MemRead, e_value_u64(arch_addr_bytesize));
+      }
+    }break;
+    
+    //- rjf: reg
+    case RDI_LocationKind_ValReg:
+    {
+      RDI_TopLevelInfo *tli = rdi_element_from_name_idx(rdi, TopLevelInfo, 0);
+      Arch arch = arch_from_rdi_arch(tli->arch);
+      ARCH_Info *arch_info = arch_info_from_arch(arch);
+      RDI_RegCode rdi_regcode = rdi_regcode_from_location(loc);
+      ARCH_RegCode reg_code = arch_reg_code_from_rdi(arch, rdi_regcode);
+      Rng1U16 reg_rng = arch_info->reg_code_rng_table[reg_code];
+      U64 byte_size = (U64)dim_1u16(reg_rng);
+      U64 byte_pos = reg_rng.min;
+      e_oplist_push_op(arena, &result, RDI_EvalOp_RegRead, e_value_u64(RDI_EncodeRegReadParam(rdi_regcode, byte_size, byte_pos)));
+    }break;
+    
+    //- rjf: space offsets
+    case RDI_LocationKind_ModuleOff:
+    {
+      U64 voff = rdi_voff_from_location(loc);
+      e_oplist_push_op(arena, &result, RDI_EvalOp_ModuleOff, e_value_u64(voff));
+    }break;
+    case RDI_LocationKind_TLSOff:
+    {
+      U64 toff = rdi_toff_from_location(loc);
+      e_oplist_push_op(arena, &result, RDI_EvalOp_TLSOff, e_value_u64(toff));
+    }break;
+    case RDI_LocationKind_ConstantDataOff:
+    {
+      U64 constant_data_off = rdi_constant_data_off_from_location(loc);
+      e_oplist_push_uconst(arena, &result, constant_data_off);
+    }break;
+  }
+  return result;
 }
 
 ////////////////////////////////
@@ -739,7 +828,6 @@ internal void
 e_select_ir_ctx(E_IRCtx *ctx)
 {
   if(ctx->regs_map == 0)       { ctx->regs_map = &e_string2num_map_nil; }
-  if(ctx->reg_alias_map == 0)  { ctx->reg_alias_map = &e_string2num_map_nil; }
   if(ctx->locals_map == 0)     { ctx->locals_map = &e_string2num_map_nil; }
   if(ctx->member_map == 0)     { ctx->member_map = &e_string2num_map_nil; }
   if(ctx->macro_map == 0)      { ctx->macro_map = push_array(e_cache->arena, E_String2ExprMap, 1); ctx->macro_map[0] = e_string2expr_map_make(e_cache->arena, 512); }
@@ -774,6 +862,74 @@ e_dbg_info_from_type_key(E_TypeKey type_key)
 
 ////////////////////////////////
 //~ rjf: Cache Accessing Functions
+
+//- rjf: locals/members maps
+
+internal E_String2NumMap *
+e_locals_map_from_dbgi_key_voff(DI_Key dbgi_key, U64 voff)
+{
+  if(e_cache->locals_map_map_slots_count == 0)
+  {
+    e_cache->locals_map_map_slots_count = 8;
+    e_cache->locals_map_map_slots = push_array(e_cache->arena, E_LocalMapCacheSlot, e_cache->locals_map_map_slots_count);
+  }
+  U64 hash = u64_hash_from_seed_str8(voff, str8_struct(&dbgi_key));
+  U64 slot_idx = hash%e_cache->locals_map_map_slots_count;
+  E_LocalMapCacheSlot *slot = &e_cache->locals_map_map_slots[slot_idx];
+  E_LocalMapCacheNode *node = 0;
+  for(E_LocalMapCacheNode *n = slot->first; n != 0; n = n->next)
+  {
+    if(di_key_match(n->dbgi_key, dbgi_key) && n->voff == voff)
+    {
+      node = n;
+    }
+  }
+  if(node == 0)
+  {
+    Access *access = access_open();
+    RDI_Parsed *rdi = di_rdi_from_key(access, dbgi_key, 0, 0);
+    node = push_array(e_cache->arena, E_LocalMapCacheNode, 1);
+    SLLQueuePush(slot->first, slot->last, node);
+    node->dbgi_key = dbgi_key;
+    node->voff = voff;
+    node->map = e_push_locals_map_from_rdi_voff(e_cache->arena, rdi, voff);
+    access_close(access);
+  }
+  return node->map;
+}
+
+internal E_String2NumMap *
+e_member_map_from_dbgi_key_voff(DI_Key dbgi_key, U64 voff)
+{
+  if(e_cache->member_map_map_slots_count == 0)
+  {
+    e_cache->member_map_map_slots_count = 8;
+    e_cache->member_map_map_slots = push_array(e_cache->arena, E_LocalMapCacheSlot, e_cache->member_map_map_slots_count);
+  }
+  U64 hash = u64_hash_from_seed_str8(voff, str8_struct(&dbgi_key));
+  U64 slot_idx = hash%e_cache->member_map_map_slots_count;
+  E_LocalMapCacheSlot *slot = &e_cache->member_map_map_slots[slot_idx];
+  E_LocalMapCacheNode *node = 0;
+  for(E_LocalMapCacheNode *n = slot->first; n != 0; n = n->next)
+  {
+    if(di_key_match(n->dbgi_key, dbgi_key) && n->voff == voff)
+    {
+      node = n;
+    }
+  }
+  if(node == 0)
+  {
+    Access *access = access_open();
+    RDI_Parsed *rdi = di_rdi_from_key(access, dbgi_key, 0, 0);
+    node = push_array(e_cache->arena, E_LocalMapCacheNode, 1);
+    SLLQueuePush(slot->first, slot->last, node);
+    node->dbgi_key = dbgi_key;
+    node->voff = voff;
+    node->map = e_push_member_map_from_rdi_voff(e_cache->arena, rdi, voff);
+    access_close(access);
+  }
+  return node->map;
+}
 
 //- rjf: parent key stack
 
@@ -1073,7 +1229,7 @@ e_value_eval_from_eval(E_Eval eval)
       MemoryZeroStruct(&eval.value);
       if(!e_type_key_match(type_key, e_type_key_zero()) &&
          type_byte_size <= sizeof(E_Value) &&
-         e_space_read(eval.space, &eval.value, value_vaddr_range))
+         e_space_read(eval.space, &eval.value, 0, value_vaddr_range))
       {
         eval.irtree.mode = E_Mode_Value;
         
@@ -1094,7 +1250,7 @@ e_value_eval_from_eval(E_Eval eval)
         // rjf: manually sign-extend
         switch(type_kind)
         {
-          default: break;
+          default:{}break;
           case E_TypeKind_Char8:
           case E_TypeKind_S8:  {eval.value.s64 = (S64)*((S8 *)&eval.value.u64);}break;
           case E_TypeKind_Char16:

@@ -32,6 +32,32 @@ typedef enum TXT_TokenKind
 }
 TXT_TokenKind;
 
+typedef struct TXT_TokenizerRule TXT_TokenizerRule;
+struct TXT_TokenizerRule
+{
+  TXT_TokenKind token_kind;
+  String8 open_string;
+  String8 close_string;
+  U32 close_advance;
+  B32 nesting;
+  B32 escaping;
+  U32 parent_num;
+};
+
+typedef struct TXT_TokenizerRulePtrNode TXT_TokenizerRulePtrNode;
+struct TXT_TokenizerRulePtrNode
+{
+  TXT_TokenizerRulePtrNode *next;
+  TXT_TokenizerRule *v;
+};
+
+typedef struct TXT_TokenizerRuleArray TXT_TokenizerRuleArray;
+struct TXT_TokenizerRuleArray
+{
+  TXT_TokenizerRule *v;
+  U64 count;
+};
+
 typedef struct TXT_Token TXT_Token;
 struct TXT_Token
 {
@@ -138,20 +164,12 @@ struct TXT_LineTokensSlice
 };
 
 ////////////////////////////////
-//~ rjf: Language Kind Types
+//~ rjf: Generated Code
 
-typedef enum TXT_LangKind
-{
-  TXT_LangKind_Null,
-  TXT_LangKind_C,
-  TXT_LangKind_CPlusPlus,
-  TXT_LangKind_Odin,
-  TXT_LangKind_Jai,
-  TXT_LangKind_Zig,
-  TXT_LangKind_DisasmX64Intel,
-  TXT_LangKind_COUNT
-}
-TXT_LangKind;
+#include "generated/text.meta.h"
+
+////////////////////////////////
+//~ rjf: Language Kind Types
 
 typedef TXT_TokenArray TXT_LangLexFunctionType(Arena *arena, U64 *bytes_processed_counter, String8 string);
 
@@ -159,6 +177,14 @@ typedef TXT_TokenArray TXT_LangLexFunctionType(Arena *arena, U64 *bytes_processe
 //~ rjf: Globals
 
 read_only global TXT_ScopeNode txt_scope_node_nil = {0};
+read_only global Rng1U64 txt_info_line_range_nil = {0};
+read_only global TXT_TextInfo txt_info_nil =
+{
+  1,
+  &txt_info_line_range_nil,
+  0,
+  TXT_LineEndKind_Null,
+};
 
 ////////////////////////////////
 //~ rjf: Basic Helpers
@@ -179,10 +205,13 @@ internal TXT_TokenArray txt_token_array_from_list(Arena *arena, TXT_TokenList *l
 ////////////////////////////////
 //~ rjf: Lexing Functions
 
+internal TXT_TokenArray txt_token_array_from_lang_kind_string(Arena *arena, TXT_LangKind lang_kind, String8 string);
+
 internal TXT_TokenArray txt_token_array_from_string__c_cpp(Arena *arena, U64 *bytes_processed_counter, String8 string);
 internal TXT_TokenArray txt_token_array_from_string__odin(Arena *arena, U64 *bytes_processed_counter, String8 string);
 internal TXT_TokenArray txt_token_array_from_string__jai(Arena *arena, U64 *bytes_processed_counter, String8 string);
 internal TXT_TokenArray txt_token_array_from_string__zig(Arena *arena, U64 *bytes_processed_counter, String8 string);
+internal TXT_TokenArray txt_token_array_from_string__rust(Arena *arena, U64 *bytes_processed_counter, String8 string);
 internal TXT_TokenArray txt_token_array_from_string__disasm_x64_intel(Arena *arena, U64 *bytes_processed_counter, String8 string);
 
 ////////////////////////////////

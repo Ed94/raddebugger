@@ -13,12 +13,6 @@ EV_EXPAND_RULE_INFO_FUNCTION_DEF(nil)
 ////////////////////////////////
 //~ rjf: Key Functions
 
-#if !defined(XXH_IMPLEMENTATION)
-# define XXH_IMPLEMENTATION
-# define XXH_STATIC_LINKING_ONLY
-# include "third_party/xxHash/xxhash.h"
-#endif
-
 internal EV_Key
 ev_key_make(U64 parent_hash, U64 child_id)
 {
@@ -54,7 +48,7 @@ ev_key_match(EV_Key a, EV_Key b)
 internal U64
 ev_hash_from_seed_string(U64 seed, String8 string)
 {
-  U64 result = XXH3_64bits_withSeed(string.str, string.size, seed);
+  U64 result = u64_hash_from_seed_str8(seed, string);
   return result;
 }
 
@@ -1795,6 +1789,13 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
       case E_TypeKind_RRef:
       case E_TypeKind_Array:
       {
+        E_Type *type = e_type_from_key(type_key);
+        if(type->flags & E_TypeFlag_ArrayLikeExpansion)
+        {
+          expansion_opener_symbol = str8_lit("[");
+          expansion_closer_symbol = str8_lit("]");
+          goto arrays_and_sets_and_structs;
+        }
         if(type_kind == E_TypeKind_Array && it->top_task->redirect_to_sets_and_structs)
         {
           expansion_opener_symbol = str8_lit("[");
@@ -1812,6 +1813,8 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
           B32 did_prefix_content;
           B32 did_prefix_string;
           B32 did_redirect;
+          B32 did_pre_prefix_ptr;
+          B32 addr_is_good;
         };
         EV_StringPtrData *ptr_data = it->top_task->user_data;
         if(ptr_data == 0)
@@ -1824,6 +1827,17 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
           ptr_data->ptee_has_string  = ((E_TypeKind_Char8 <= ptr_data->direct_type->kind && ptr_data->direct_type->kind <= E_TypeKind_UChar32) ||
                                         ptr_data->direct_type->kind == E_TypeKind_S8 ||
                                         ptr_data->direct_type->kind == E_TypeKind_U8);
+          U8 byte = 0;
+          U64 byte_bad_flags = 0;
+          E_SpaceRangeInfo range_info = {.byte_bad_flags = &byte_bad_flags};
+          if(ptr_data->value_eval.space.kind == E_SpaceKind_Null)
+          {
+            ptr_data->addr_is_good = 1;
+          }
+          else if(e_space_read(ptr_data->value_eval.space, &byte, &range_info, r1u64(ptr_data->value_eval.value.u64, ptr_data->value_eval.value.u64+1)))
+          {
+            ptr_data->addr_is_good = !(byte_bad_flags & 1);
+          }
         }
         if(ptr_data->did_redirect)
         {
@@ -1833,10 +1847,36 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
         {
           default:{}break;
           
-          //- rjf: step 0 -> try "prefix content", which we want to print before the pointer value,
-          // like strings or symbol names
+          //- rjf: step 0: do pre-prefix pointer value if requested
           case 0:
           {
+            if(!(params->flags & EV_StringFlag_DisableAddresses) && params->flags & EV_StringFlag_AddressesBeforeContent)
+            {
+              Temp scratch = scratch_begin(&arena, 1);
+              String8 ptr_value_string = str8_from_u64(scratch.arena, ptr_data->value_eval.value.u64,
+                                                       ptr_data->value_eval.value.u64 != 0 ? 16 : 10, 0, 0);
+              if(params->flags & EV_StringFlag_DisplayAddressUnmappedStatus && ptr_data->value_eval.value.u64 != 0 && !ptr_data->addr_is_good && params->flags & EV_StringFlag_ReadOnlyDisplayRules)
+              {
+                ptr_value_string = str8f(scratch.arena, "%S (unmapped)", ptr_value_string);
+              }
+              *out_string = str8_copy(arena, ptr_value_string);
+              ptr_data->did_pre_prefix_ptr = 1;
+              scratch_end(scratch);
+            }
+            need_pop = 0;
+          }break;
+          
+          //- rjf: step 1 -> try "prefix content", which we want to print before the pointer value,
+          // like strings or symbol names
+          case 1:
+          {
+            // rjf: choose prefix
+            String8 pre_prefix = {0};
+            if(ptr_data->did_pre_prefix_ptr)
+            {
+              pre_prefix = str8_lit(" -> ");
+            }
+            
             // rjf: try strings
             if(!(ptr_data->type->flags & E_TypeFlag_IsNotText) &&
                !ptr_data->did_prefix_content && ptr_data->ptee_has_string &&
@@ -1860,7 +1900,7 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
                 U64 string_memory_addr = ptr_data->value_eval.value.u64;
                 for(U64 try_size = string_buffer_size; try_size >= 16; try_size /= 2)
                 {
-                  B32 read_good = e_space_read(eval.space, string_buffer, r1u64(string_memory_addr, string_memory_addr+try_size));
+                  B32 read_good = e_space_read(eval.space, string_buffer, 0, r1u64(string_memory_addr, string_memory_addr+try_size));
                   if(read_good)
                   {
                     break;
@@ -1899,7 +1939,7 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
               }
               
               // rjf: report
-              *out_string = push_str8_copy(arena, string__escaped_and_quoted);
+              *out_string = str8f(arena, "%S%S", pre_prefix, string__escaped_and_quoted);
               ptr_data->did_prefix_content = 1;
               ptr_data->did_prefix_string = 1;
               
@@ -1985,6 +2025,7 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
                     {
                       Temp scratch = scratch_begin(&arena, 1);
                       String8List list = {0};
+                      str8_list_push(scratch.arena, &list, pre_prefix);
                       str8_list_pushf(scratch.arena, &list, "[inlined] ");
                       e_type_lhs_string_from_key(scratch.arena, type, &list, 0, 0);
                       str8_list_push(scratch.arena, &list, name);
@@ -2006,22 +2047,22 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
                   Temp scratch = scratch_begin(&arena, 1);
                   RDI_Scope *scope = rdi_element_from_name_idx(rdi, Scopes, scope_idx);
                   U64 proc_idx = scope->proc_idx;
-                  RDI_Procedure *procedure = rdi_element_from_name_idx(rdi, Procedures, proc_idx);
+                  RDI_Symbol *procedure = rdi_element_from_name_idx(rdi, Procedures, proc_idx);
                   RDI_TypeNode *type_node = rdi_element_from_name_idx(rdi, TypeNodes, procedure->type_idx);
                   E_TypeKey type = e_type_key_ext(e_type_kind_from_rdi(type_node->kind), procedure->type_idx, dbg_info_num);
-                  String8 name = {0};
-                  name.str = rdi_string_from_idx(rdi, procedure->name_string_idx, &name.size);
+                  String8 name = fully_qualified_str8_from_rdi_symbol(scratch.arena, rdi, procedure);
                   if(procedure->type_idx != 0)
                   {
                     String8List list = {0};
                     e_type_lhs_string_from_key(scratch.arena, type, &list, 0, 0);
                     str8_list_push(scratch.arena, &list, name);
                     e_type_rhs_string_from_key(scratch.arena, type, &list, 0);
-                    *out_string = str8_list_join(arena, &list, 0);
+                    String8 joined = str8_list_join(scratch.arena, &list, 0);
+                    *out_string = str8f(arena, "%S%S", pre_prefix, joined);
                   }
-                  else
+                  else if(name.size != 0)
                   {
-                    *out_string = push_str8_copy(arena, name);
+                    *out_string = str8f(arena, "%S%S", pre_prefix, name);
                   }
                   
                   good_symbol_match = (out_string->size != 0);
@@ -2031,7 +2072,7 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
                 // rjf: if we have a function type, but we did not generate any name, then just put a ???
                 if(out_string->size == 0 && e_type_kind_from_key(ptr_data->type->direct_type_key) == E_TypeKind_Function)
                 {
-                  *out_string = str8_lit("???");
+                  *out_string = str8f(arena, "%S???", pre_prefix);
                   good_symbol_match = 1;
                 }
               }
@@ -2039,17 +2080,21 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
               // NOTE(rjf): non-read-only -> only generate thing which can be parsed, so just procedure name
               else
               {
+                Temp scratch = scratch_begin(&arena, 1);
+                
                 // rjf: voff -> scope
                 U64 scope_idx = rdi_vmap_idx_from_section_kind_voff(rdi, RDI_SectionKind_ScopeVMap, voff);
                 RDI_Scope *scope = rdi_scope_from_voff(rdi, voff);
                 
                 // rjf: scope -> procedure / string
-                RDI_Procedure *procedure = rdi_procedure_from_scope(rdi, scope);
-                String8 procedure_name = {0};
-                procedure_name.str = rdi_name_from_procedure(rdi, procedure, &procedure_name.size);
-                
-                *out_string = procedure_name;
+                RDI_Symbol *procedure = rdi_procedure_from_scope(rdi, scope);
+                String8 procedure_name = fully_qualified_str8_from_rdi_symbol(scratch.arena, rdi, procedure);
+                if(procedure_name.size != 0)
+                {
+                  *out_string = str8f(arena, "%S%S", pre_prefix, procedure_name);
+                }
                 good_symbol_match = (procedure_name.size != 0);
+                scratch_end(scratch);
               }
               
               ptr_data->did_prefix_content = good_symbol_match;
@@ -2081,11 +2126,15 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
             }
           }break;
           
-          //- rjf: step 1 -> do pointer value + descend if needed
-          case 1:
+          //- rjf: step 2 -> do pointer value + descend if needed
+          case 2:
           {
             Temp scratch = scratch_begin(&arena, 1);
-            String8 ptr_value_string = str8_from_u64(scratch.arena, ptr_data->value_eval.value.u64, 16, 0, 0);
+            String8 ptr_value_string = str8_from_u64(scratch.arena, ptr_data->value_eval.value.u64, ptr_data->value_eval.value.u64 != 0 ? 16 : 10, 0, 0);
+            if(params->flags & EV_StringFlag_DisplayAddressUnmappedStatus && params->flags & EV_StringFlag_ReadOnlyDisplayRules && ptr_data->value_eval.value.u64 != 0 && !ptr_data->addr_is_good)
+            {
+              ptr_value_string = str8f(scratch.arena, "%S (unmapped)", ptr_value_string);
+            }
             //
             // NOTE(rjf): currently, we are not using the string-generation radix parameter when
             // generating a pointer value - it is weird to want to change pointer value visualization
@@ -2093,7 +2142,8 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
             //
             
             // rjf: [read only] if we did prefix content, do a parenthesized pointer value
-            if(!(params->flags & EV_StringFlag_DisableAddresses) && params->flags & EV_StringFlag_ReadOnlyDisplayRules &&
+            if(!ptr_data->did_pre_prefix_ptr &&
+               !(params->flags & EV_StringFlag_DisableAddresses) && params->flags & EV_StringFlag_ReadOnlyDisplayRules &&
                ptr_data->did_prefix_content)
             {
               *out_string = push_str8f(arena, " (%S)", ptr_value_string);
@@ -2101,7 +2151,7 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
             
             // rjf: [read only] if we did *not* do any prefix content, but we have content,
             // do "<pointer value> -> " then descend
-            else if(params->flags & EV_StringFlag_ReadOnlyDisplayRules && !ptr_data->did_prefix_content && ptr_data->ptee_has_content)
+            else if(!ptr_data->did_pre_prefix_ptr && params->flags & EV_StringFlag_ReadOnlyDisplayRules && !ptr_data->did_prefix_content && ptr_data->ptee_has_content)
             {
               if(!(params->flags & EV_StringFlag_DisableAddresses))
               {
@@ -2126,7 +2176,7 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
             }
             
             // rjf: [writeable, catchall] if we did *not* do any prefix content, do "<pointer value>"
-            else if(!ptr_data->did_prefix_content)
+            else if(!ptr_data->did_pre_prefix_ptr && !ptr_data->did_prefix_content)
             {
               *out_string = push_str8_copy(arena, ptr_value_string);
             }
@@ -2244,5 +2294,29 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
     new_t->idx = 0;
   }
   
+  return result;
+}
+
+//- rjf: eval -> string path
+
+internal String8
+ev_value_string_from_eval(Arena *arena, EV_StringParams *params, E_Eval eval, U64 cap)
+{
+  Temp scratch = scratch_begin(&arena, 1);
+  String8List strs = {0};
+  EV_StringIter *iter = ev_string_iter_begin(scratch.arena, eval, params);
+  for(String8 string = {0}; ev_string_iter_next(scratch.arena, iter, &string);)
+  {
+    if(strs.total_size + string.size > cap)
+    {
+      String8 allowed_string = str8_chop(string, ((strs.total_size + string.size) - cap) + 3);
+      str8_list_push(scratch.arena, &strs, allowed_string);
+      str8_list_push(scratch.arena, &strs, str8_lit("..."));
+      break;
+    }
+    str8_list_push(scratch.arena, &strs, string);
+  }
+  String8 result = str8_list_join(arena, &strs, 0);
+  scratch_end(scratch);
   return result;
 }

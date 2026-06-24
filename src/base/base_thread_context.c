@@ -17,10 +17,19 @@ C_LINKAGE thread_static TCTX *tctx_thread_local = 0;
 internal TCTX *
 tctx_alloc(void)
 {
-  Arena *arena = arena_alloc();
-  TCTX *tctx = push_array(arena, TCTX, 1);
-  tctx->arenas[0] = arena;
-  tctx->arenas[1] = arena_alloc();
+#if PROFILE_TELEMETRY
+  thread_static static char name[2][1024];
+  raddbg_snprintf(name[0], sizeof(name[0]), "Scratch/0[TID:%u]", tid());
+  raddbg_snprintf(name[1], sizeof(name[1]), "Scratch/1[TID:%u]", tid());
+  Arena *arena_0 = arena_alloc(.name = name[0]);
+  Arena *arena_1 = arena_alloc(.name = name[1]);
+#else
+  Arena *arena_0 = arena_alloc();
+  Arena *arena_1 = arena_alloc();
+#endif
+  TCTX *tctx = push_array(arena_0, TCTX, 1);
+  tctx->arenas[0] = arena_0;
+  tctx->arenas[1] = arena_1;
   tctx->lane_ctx.lane_count = 1;
   return tctx;
 }
@@ -99,7 +108,7 @@ tctx_lane_barrier_wait(void *broadcast_ptr, U64 broadcast_size, U64 broadcast_sr
   }
   
   // rjf: all cases: barrier
-  os_barrier_wait(tctx->lane_ctx.barrier);
+  barrier_wait(tctx->lane_ctx.barrier);
   
   // rjf: doing broadcast -> copy from broadcast memory on destination lanes
   if(broadcast_ptr != 0 && lane_idx() != broadcast_src_lane_idx)
@@ -110,7 +119,7 @@ tctx_lane_barrier_wait(void *broadcast_ptr, U64 broadcast_size, U64 broadcast_sr
   // rjf: doing broadcast -> barrier on all lanes
   if(broadcast_ptr != 0)
   {
-    os_barrier_wait(tctx->lane_ctx.barrier);
+    barrier_wait(tctx->lane_ctx.barrier);
   }
   
   ProfEnd();
@@ -193,7 +202,7 @@ internal void
 access_touch(Access *access, AccessPt *pt, CondVar cv)
 {
   ins_atomic_u64_inc_eval(&pt->access_refcount);
-  ins_atomic_u64_eval_assign(&pt->last_time_touched_us, os_now_microseconds());
+  ins_atomic_u64_eval_assign(&pt->last_time_touched_us, now_time_us());
   ins_atomic_u64_eval_assign(&pt->last_update_idx_touched, update_tick_idx());
   Touch *touch = tctx_thread_local->free_touch;
   if(touch != 0)
@@ -219,7 +228,7 @@ access_pt_is_expired_(AccessPt *pt, AccessPtExpireParams *params)
   U64 last_time_touched_us = ins_atomic_u64_eval(&pt->last_time_touched_us);
   U64 last_update_idx_touched = ins_atomic_u64_eval(&pt->last_update_idx_touched);
   B32 result = (access_refcount == 0 &&
-                last_time_touched_us + params->time <= os_now_microseconds() &&
+                last_time_touched_us + params->time <= now_time_us() &&
                 last_update_idx_touched + params->update_idxs <= update_tick_idx());
   return result;
 }

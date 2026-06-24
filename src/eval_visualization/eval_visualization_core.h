@@ -227,12 +227,14 @@ struct EV_WindowedRowList
 typedef U32 EV_StringFlags;
 enum
 {
-  EV_StringFlag_ReadOnlyDisplayRules = (1<<0),
-  EV_StringFlag_PrettyNames          = (1<<1),
-  EV_StringFlag_DisableAddresses     = (1<<2),
-  EV_StringFlag_DisableStrings       = (1<<3),
-  EV_StringFlag_DisableChars         = (1<<4),
-  EV_StringFlag_DisableStringQuotes  = (1<<5),
+  EV_StringFlag_ReadOnlyDisplayRules         = (1<<0),
+  EV_StringFlag_DisablePrettyNames           = (1<<1),
+  EV_StringFlag_DisableAddresses             = (1<<2),
+  EV_StringFlag_DisableStrings               = (1<<3),
+  EV_StringFlag_DisableChars                 = (1<<4),
+  EV_StringFlag_DisableStringQuotes          = (1<<5),
+  EV_StringFlag_AddressesBeforeContent       = (1<<6),
+  EV_StringFlag_DisplayAddressUnmappedStatus = (1<<7),
 };
 
 typedef struct EV_StringParams EV_StringParams;
@@ -380,5 +382,8 @@ internal String8 ev_escaped_from_raw_string(Arena *arena, String8 raw);
 //- rjf: tree stringification iterator
 internal EV_StringIter *ev_string_iter_begin(Arena *arena, E_Eval eval, EV_StringParams *params);
 internal B32 ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string);
+
+//- rjf: eval -> string path
+internal String8 ev_value_string_from_eval(Arena *arena, EV_StringParams *params, E_Eval eval, U64 cap);
 
 #endif // EVAL_VISUALIZATION_CORE_H

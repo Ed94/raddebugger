@@ -163,6 +163,8 @@ fp_init(void)
 {
   ProfBeginFunction();
   HRESULT error = 0;
+  F32 default_gamma = 1.5f;
+  F32 default_enhanced_contrast = 1.f;
   
   //- rjf: initialize main state
   {
@@ -191,8 +193,9 @@ fp_init(void)
   //- rjf: make sharp-hinted rendering params
   {
     FLOAT gamma = IDWriteRenderingParams_GetGamma(fp_dwrite_state->base_rendering_params);
-    gamma = 1.f;
     FLOAT enhanced_contrast = IDWriteRenderingParams_GetEnhancedContrast(fp_dwrite_state->base_rendering_params);
+    gamma = default_gamma;
+    enhanced_contrast = default_enhanced_contrast;
     if(fp_dwrite_state->dwrite2_is_supported)
     {
       error = IDWriteFactory2_CreateCustomRenderingParams2((IDWriteFactory2 *)fp_dwrite_state->factory,
@@ -220,8 +223,9 @@ fp_init(void)
   //- rjf: make sharp-unhinted rendering params
   {
     FLOAT gamma = IDWriteRenderingParams_GetGamma(fp_dwrite_state->base_rendering_params);
-    gamma = 1.f;
     FLOAT enhanced_contrast = IDWriteRenderingParams_GetEnhancedContrast(fp_dwrite_state->base_rendering_params);
+    gamma = default_gamma;
+    enhanced_contrast = default_enhanced_contrast;
     if(fp_dwrite_state->dwrite2_is_supported)
     {
       error = IDWriteFactory2_CreateCustomRenderingParams2((IDWriteFactory2 *)fp_dwrite_state->factory,
@@ -249,8 +253,9 @@ fp_init(void)
   //- rjf: make smooth-hinted rendering params
   {
     FLOAT gamma = IDWriteRenderingParams_GetGamma(fp_dwrite_state->base_rendering_params);
-    gamma = 1.f;
     FLOAT enhanced_contrast = IDWriteRenderingParams_GetEnhancedContrast(fp_dwrite_state->base_rendering_params);
+    gamma = default_gamma;
+    enhanced_contrast = default_enhanced_contrast;
     if(fp_dwrite_state->dwrite2_is_supported)
     {
       error = IDWriteFactory2_CreateCustomRenderingParams2((IDWriteFactory2 *)fp_dwrite_state->factory,
@@ -277,7 +282,7 @@ fp_init(void)
   
   //- rjf: make smooth rendering params
   {
-    FLOAT gamma = 1.f;
+    FLOAT gamma = default_gamma;
     FLOAT enhanced_contrast = 0.f;
     if(fp_dwrite_state->dwrite2_is_supported)
     {
@@ -335,7 +340,7 @@ fp_font_open(String8 path)
   //- rjf: try to open font
   for(PathTask *t = first_task; t != 0 && font.file == 0; t = t->next)
   {
-    B32 file_exists = (os_properties_from_file_path(t->path).created != 0);
+    B32 file_exists = (properties_from_file_path(t->path).created != 0);
     String16 path16 = str16_from_8(scratch.arena, t->path);
     if(file_exists)
     {
@@ -447,7 +452,7 @@ fp_metrics_from_font(FP_Handle handle)
   return result;
 }
 
-fp_hook NO_ASAN FP_RasterResult
+fp_hook ASAN_NO_ADDR FP_RasterResult
 fp_raster(Arena *arena, FP_Handle font_handle, F32 size, FP_RasterFlags flags, String8 string)
 {
   ProfBeginFunction();
@@ -583,7 +588,7 @@ fp_raster(Arena *arena, FP_Handle font_handle, F32 size, FP_RasterFlags flags, S
     // rjf: fill basics
     result.atlas_dim    = atlas_dim;
     result.atlas        = push_array_no_zero(arena, U8, atlas_dim.x*atlas_dim.y*4);
-    result.advance      = floor_f32(advance);
+    result.advance      = round_f32(advance);
     
     // rjf: fill atlas
     {

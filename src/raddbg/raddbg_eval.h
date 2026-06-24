@@ -19,6 +19,13 @@ E_TYPE_EXPAND_INFO_FUNCTION_DEF(themes);
 E_TYPE_EXPAND_RANGE_FUNCTION_DEF(themes);
 
 ////////////////////////////////
+//~ rjf: `views` Type Hooks
+
+E_TYPE_ACCESS_FUNCTION_DEF(views);
+E_TYPE_EXPAND_INFO_FUNCTION_DEF(views);
+E_TYPE_EXPAND_RANGE_FUNCTION_DEF(views);
+
+////////////////////////////////
 //~ rjf: `locals` Type Hooks
 
 E_TYPE_EXPAND_INFO_FUNCTION_DEF(locals);
@@ -29,6 +36,13 @@ E_TYPE_EXPAND_RANGE_FUNCTION_DEF(locals);
 
 E_TYPE_EXPAND_INFO_FUNCTION_DEF(registers);
 E_TYPE_EXPAND_RANGE_FUNCTION_DEF(registers);
+
+////////////////////////////////
+//~ rjf: `autos` Type Hooks
+
+E_TYPE_IREXT_FUNCTION_DEF(autos);
+E_TYPE_EXPAND_INFO_FUNCTION_DEF(autos);
+E_TYPE_EXPAND_RANGE_FUNCTION_DEF(autos);
 
 ////////////////////////////////
 //~ rjf: Schema Type Hooks
@@ -60,6 +74,14 @@ E_TYPE_EXPAND_ID_FROM_NUM_FUNCTION_DEF(cfgs_slice);
 E_TYPE_EXPAND_NUM_FROM_ID_FUNCTION_DEF(cfgs_slice);
 
 ////////////////////////////////
+//~ rjf: `call_stack_frame` Type Hooks
+
+E_TYPE_IREXT_FUNCTION_DEF(call_stack_frame);
+E_TYPE_ACCESS_FUNCTION_DEF(call_stack_frame);
+E_TYPE_EXPAND_INFO_FUNCTION_DEF(call_stack_frame);
+E_TYPE_EXPAND_RANGE_FUNCTION_DEF(call_stack_frame);
+
+////////////////////////////////
 //~ rjf: `call_stack` Type Hooks
 
 E_TYPE_IREXT_FUNCTION_DEF(call_stack);
@@ -85,6 +107,16 @@ E_TYPE_EXPAND_INFO_FUNCTION_DEF(watches);
 E_TYPE_EXPAND_RANGE_FUNCTION_DEF(watches);
 E_TYPE_EXPAND_ID_FROM_NUM_FUNCTION_DEF(watches);
 E_TYPE_EXPAND_NUM_FROM_ID_FUNCTION_DEF(watches);
+
+////////////////////////////////
+//~ rjf: `peek_types` Type Hooks
+
+E_TYPE_IREXT_FUNCTION_DEF(peek_types);
+E_TYPE_ACCESS_FUNCTION_DEF(peek_types);
+E_TYPE_EXPAND_INFO_FUNCTION_DEF(peek_types);
+E_TYPE_EXPAND_RANGE_FUNCTION_DEF(peek_types);
+E_TYPE_EXPAND_ID_FROM_NUM_FUNCTION_DEF(peek_types);
+E_TYPE_EXPAND_NUM_FROM_ID_FUNCTION_DEF(peek_types);
 
 ////////////////////////////////
 //~ rjf: `unattached_processes` Type Hooks

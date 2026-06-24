@@ -177,6 +177,28 @@ struct Mat4x4F32
 
 //- rjf: 1-range
 
+typedef union Rng1U8 Rng1U8;
+union Rng1U8
+{
+  struct
+  {
+    U8 min;
+    U8 max;
+  };
+  U8 v[2];
+};
+
+typedef union Rng1U16 Rng1U16;
+union Rng1U16
+{
+  struct
+  {
+    U16 min;
+    U16 max;
+  };
+  U16 v[2];
+};
+
 typedef union Rng1U32 Rng1U32;
 union Rng1U32
 {
@@ -339,9 +361,9 @@ struct Rng1U64Node
 typedef struct Rng1U64List Rng1U64List;
 struct Rng1U64List
 {
-  U64 count;
   Rng1U64Node *first;
   Rng1U64Node *last;
+  U64 count;
 };
 
 typedef struct Rng1U64Array Rng1U64Array;
@@ -546,7 +568,32 @@ internal Mat4x4F32 transpose_4x4f32(Mat4x4F32 mat);
 ////////////////////////////////
 //~ rjf: Range Ops
 
+#define r1u8(min, max) rng_1u8((min), (max))
+#define r1u8s(min, size) rng_1u8((min), (min)+(size))
+internal Rng1U8 rng_1u8(U8 min, U8 max);
+internal Rng1U8 shift_1u8(Rng1U8 r, U8 x);
+internal Rng1U8 pad_1u8(Rng1U8 r, U8 x);
+internal U8 center_1u8(Rng1U8 r);
+internal B32 contains_1u8(Rng1U8 r, U8 x);
+internal U8 dim_1u8(Rng1U8 r);
+internal Rng1U8 union_1u8(Rng1U8 a, Rng1U8 b);
+internal Rng1U8 intersect_1u8(Rng1U8 a, Rng1U8 b);
+internal U8 clamp_1u8(Rng1U8 r, U8 v);
+
+#define r1u16(min, max) rng_1u16((min), (max))
+#define r1u16s(min, size) rng_1u16((min), (min)+(size))
+internal Rng1U16 rng_1u16(U16 min, U16 max);
+internal Rng1U16 shift_1u16(Rng1U16 r, U16 x);
+internal Rng1U16 pad_1u16(Rng1U16 r, U16 x);
+internal U16 center_1u16(Rng1U16 r);
+internal B32 contains_1u16(Rng1U16 r, U16 x);
+internal U16 dim_1u16(Rng1U16 r);
+internal Rng1U16 union_1u16(Rng1U16 a, Rng1U16 b);
+internal Rng1U16 intersect_1u16(Rng1U16 a, Rng1U16 b);
+internal U16 clamp_1u16(Rng1U16 r, U16 v);
+
 #define r1u32(min, max) rng_1u32((min), (max))
+#define r1u32s(min, size) rng_1u32((min), (min)+(size))
 internal Rng1U32 rng_1u32(U32 min, U32 max);
 internal Rng1U32 shift_1u32(Rng1U32 r, U32 x);
 internal Rng1U32 pad_1u32(Rng1U32 r, U32 x);
@@ -558,6 +605,7 @@ internal Rng1U32 intersect_1u32(Rng1U32 a, Rng1U32 b);
 internal U32 clamp_1u32(Rng1U32 r, U32 v);
 
 #define r1s32(min, max) rng_1s32((min), (max))
+#define r1s32s(min,size) rng_1s32((min), (min)+(size))
 internal Rng1S32 rng_1s32(S32 min, S32 max);
 internal Rng1S32 shift_1s32(Rng1S32 r, S32 x);
 internal Rng1S32 pad_1s32(Rng1S32 r, S32 x);
@@ -569,6 +617,7 @@ internal Rng1S32 intersect_1s32(Rng1S32 a, Rng1S32 b);
 internal S32 clamp_1s32(Rng1S32 r, S32 v);
 
 #define r1u64(min, max) rng_1u64((min), (max))
+#define r1u64s(min, size) rng_1u64((min), (min)+(size))
 internal Rng1U64 rng_1u64(U64 min, U64 max);
 internal Rng1U64 shift_1u64(Rng1U64 r, U64 x);
 internal Rng1U64 pad_1u64(Rng1U64 r, U64 x);
@@ -580,6 +629,7 @@ internal Rng1U64 intersect_1u64(Rng1U64 a, Rng1U64 b);
 internal U64 clamp_1u64(Rng1U64 r, U64 v);
 
 #define r1s64(min, max) rng_1s64((min), (max))
+#define r1s64s(min, size) rng_1s64((min), (min)+(size))
 internal Rng1S64 rng_1s64(S64 min, S64 max);
 internal Rng1S64 shift_1s64(Rng1S64 r, S64 x);
 internal Rng1S64 pad_1s64(Rng1S64 r, S64 x);
@@ -591,6 +641,7 @@ internal Rng1S64 intersect_1s64(Rng1S64 a, Rng1S64 b);
 internal S64 clamp_1s64(Rng1S64 r, S64 v);
 
 #define r1f32(min, max) rng_1f32((min), (max))
+#define r1f32s(min, size) rng_1f32((min), (min)+(size))
 internal Rng1F32 rng_1f32(F32 min, F32 max);
 internal Rng1F32 shift_1f32(Rng1F32 r, F32 x);
 internal Rng1F32 pad_1f32(Rng1F32 r, F32 x);
@@ -602,6 +653,7 @@ internal Rng1F32 intersect_1f32(Rng1F32 a, Rng1F32 b);
 internal F32 clamp_1f32(Rng1F32 r, F32 v);
 
 #define r2s16(min, max) rng_2s16((min), (max))
+#define r2s16s(min, size) r2s16((min), (min)+(size))
 #define r2s16p(x, y, z, w) r2s16(v2s16((x), (y)), v2s16((z), (w)))
 internal Rng2S16 rng_2s16(Vec2S16 min, Vec2S16 max);
 internal Rng2S16 shift_2s16(Rng2S16 r, Vec2S16 x);
@@ -614,6 +666,7 @@ internal Rng2S16 intersect_2s16(Rng2S16 a, Rng2S16 b);
 internal Vec2S16 clamp_2s16(Rng2S16 r, Vec2S16 v);
 
 #define r2s32(min, max) rng_2s32((min), (max))
+#define r2s32s(min, size) r2s32((min), (min)+(size))
 #define r2s32p(x, y, z, w) r2s32(v2s32((x), (y)), v2s32((z), (w)))
 internal Rng2S32 rng_2s32(Vec2S32 min, Vec2S32 max);
 internal Rng2S32 shift_2s32(Rng2S32 r, Vec2S32 x);
@@ -626,6 +679,7 @@ internal Rng2S32 intersect_2s32(Rng2S32 a, Rng2S32 b);
 internal Vec2S32 clamp_2s32(Rng2S32 r, Vec2S32 v);
 
 #define r2s64(min, max) rng_2s64((min), (max))
+#define r2s64s(min, size) r2s64((min), (min)+(size))
 #define r2s64p(x, y, z, w) r2s64(v2s64((x), (y)), v2s64((z), (w)))
 internal Rng2S64 rng_2s64(Vec2S64 min, Vec2S64 max);
 internal Rng2S64 shift_2s64(Rng2S64 r, Vec2S64 x);
@@ -638,6 +692,7 @@ internal Rng2S64 intersect_2s64(Rng2S64 a, Rng2S64 b);
 internal Vec2S64 clamp_2s64(Rng2S64 r, Vec2S64 v);
 
 #define r2f32(min, max) rng_2f32((min), (max))
+#define r2f32s(min, size) r2f32((min), (min)+(size))
 #define r2f32p(x, y, z, w) r2f32(v2f32((x), (y)), v2f32((z), (w)))
 internal Rng2F32 rng_2f32(Vec2F32 min, Vec2F32 max);
 internal Rng2F32 shift_2f32(Rng2F32 r, Vec2F32 x);
@@ -682,7 +737,7 @@ internal void rng1u64_list_push_node(Rng1U64List *list, Rng1U64Node *n);
 internal Rng1U64Node * rng1u64_list_push(Arena *arena, Rng1U64List *list, Rng1U64 rng);
 internal void rng1u64_list_concat(Rng1U64List *list, Rng1U64List *to_concat);
 internal Rng1U64Array rng1u64_array_from_list(Arena *arena, Rng1U64List *list);
-internal U64 rng_1u64_array_bsearch(Rng1U64Array arr, U64 value);
+internal U64 rng1u64_array_num_from_value__binary_search(Rng1U64Array *array, U64 value);
 
 internal void rng1s64_list_push(Arena *arena, Rng1S64List *list, Rng1S64 rng);
 internal Rng1S64Array rng1s64_array_from_list(Arena *arena, Rng1S64List *list);

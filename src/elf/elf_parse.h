@@ -10,15 +10,15 @@
 typedef struct ELF_Shdr64Array ELF_Shdr64Array;
 struct ELF_Shdr64Array
 {
-  ELF_Shdr64 *v;
   U64 count;
+  ELF_Shdr64 *v;
 };
 
 typedef struct ELF_Phdr64Array ELF_Phdr64Array;
 struct ELF_Phdr64Array
 {
-  ELF_Phdr64 *v;
   U64 count;
+  ELF_Phdr64 *v;
 };
 
 typedef struct ELF_Bin ELF_Bin;
@@ -37,6 +37,29 @@ struct ELF_GnuDebugLink
   U32 checksum;
 };
 
+typedef struct ELF_Note ELF_Note;
+struct ELF_Note
+{
+  String8 owner;
+  ELF_NoteType type;
+  String8 desc;
+};
+
+typedef struct ELF_NoteNode ELF_NoteNode;
+struct ELF_NoteNode
+{
+  ELF_NoteNode *next;
+  ELF_Note v;
+};
+
+typedef struct ELF_NoteList ELF_NoteList;
+struct ELF_NoteList
+{
+  ELF_NoteNode *first;
+  ELF_NoteNode *last;
+  U64 count;
+};
+
 ////////////////////////////////
 //~ rjf: Parsing Functions
 
@@ -48,5 +71,7 @@ internal B32 elf_is_dwarf_present_from_bin(String8 data, ELF_Bin *bin);
 internal String8 elf_name_from_shdr64(String8 raw_data, ELF_Bin *bin, ELF_Shdr64 *shdr);
 internal U64 elf_base_addr_from_bin(ELF_Bin *bin);
 internal ELF_GnuDebugLink elf_gnu_debug_link_from_bin(String8 raw_data, ELF_Bin *bin);
+
+internal ELF_NoteList elf_parse_note(Arena *arena, String8 raw_note, ELF_Class elf_class, ELF_MachineKind e_machine);
 
 #endif // ELF_PARSE_H

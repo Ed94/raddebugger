@@ -141,7 +141,6 @@ lnk_lib_from_data(Arena *arena, String8 data, String8 path, U64 input_idx, LNK_L
   lib_out->symbol_count      = Min(symbol_count, symbol_names.count); // TODO: warn about mismatched number of symbol names and symbol count in the header
   lib_out->member_offsets    = member_offsets;
   lib_out->symbol_indices    = symbol_indices;
-  lib_out->member_links      = push_array(arena, LNK_Symbol *, member_count);
   lib_out->symbol_names      = symbol_names;
   lib_out->long_names        = parse.long_names;
   lib_out->input_idx         = input_idx;
@@ -219,40 +218,6 @@ lnk_lib_list_push_parallel(TP_Context *tp, TP_Arena *arena, LNK_LibList *list, U
 
   scratch_end(scratch);
   return result;
-}
-
-internal B32
-lnk_lib_set_link_symbol(LNK_Lib *lib, U32 member_idx, LNK_Symbol *link_symbol)
-{
-  local_persist LNK_Symbol null_symbol;
-
-  LNK_Symbol *slot = ins_atomic_ptr_eval_assign(&lib->member_links[member_idx], &null_symbol);
-
-  B32 was_linked = (slot == 0);
-
-  for (LNK_Symbol *leader = link_symbol;;) {
-    // update slot symbol if it is empty or link symbol comes before symbol in the slot
-    if (slot && slot != &null_symbol) {
-      if (lnk_symbol_is_before(slot, leader)) {
-        leader = slot;
-      }
-    } else {
-      leader = link_symbol;
-    }
-
-    // try to insert back updated slot symbol
-    LNK_Symbol *swap = ins_atomic_ptr_eval_cond_assign(&lib->member_links[member_idx], leader, &null_symbol);
-
-    // exit if slot symbol was null
-    if (swap == &null_symbol) {
-      break;
-    }
-
-    // reload slot symbol
-    slot = ins_atomic_ptr_eval_assign(&lib->member_links[member_idx], &null_symbol);
-  }
-
-  return was_linked;
 }
 
 internal force_inline B32

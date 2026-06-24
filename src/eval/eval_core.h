@@ -73,6 +73,8 @@ enum
 {
   E_IRExtKind_Bytecode = RDI_EvalOp_COUNT,
   E_IRExtKind_SetSpace,
+  E_IRExtKind_SetBaseOff,
+  E_IRExtKind_SetTLSOff,
   E_IRExtKind_COUNT
 };
 
@@ -136,6 +138,7 @@ enum
   E_SpaceKind_File,
   E_SpaceKind_FileSystem,
   E_SpaceKind_HashStoreKey,
+  E_SpaceKind_DebugConstantData,
   E_SpaceKind_FirstUserDefined,
 };
 
@@ -164,7 +167,6 @@ typedef enum E_TypeKeyKind
   E_TypeKeyKind_Ext,
   E_TypeKeyKind_Cons,
   E_TypeKeyKind_Reg,
-  E_TypeKeyKind_RegAlias,
 }
 E_TypeKeyKind;
 
@@ -263,6 +265,7 @@ struct E_Expr
   E_Value value;
   String8 string;
   String8 qualifier;
+  String8 disambiguator;
   String8 bytecode;
 };
 
@@ -573,6 +576,7 @@ struct E_DbgInfo
 {
   DI_Key dbgi_key;
   RDI_Parsed *rdi;
+  String8 name;
 };
 
 ////////////////////////////////
@@ -585,6 +589,7 @@ struct E_Module
   U32 dbg_info_num;
   Arch arch;
   E_Space space;
+  String8 name;
 };
 
 ////////////////////////////////
@@ -755,8 +760,25 @@ struct E_AutoHookParams
 ////////////////////////////////
 //~ rjf: Evaluation Context
 
+typedef U32 E_SpaceRangeFlags;
+enum
+{
+  E_SpaceRangeFlag_AnyByteBad     = (1<<0),
+  E_SpaceRangeFlag_AnyByteChanged = (1<<1),
+  E_SpaceRangeFlag_Stale          = (1<<2),
+};
+
+typedef struct E_SpaceRangeInfo E_SpaceRangeInfo;
+struct E_SpaceRangeInfo
+{
+  U64 *byte_bad_flags;
+  U64 *byte_changed_flags;
+  E_SpaceRangeFlags flags;
+};
+
 typedef U64 E_SpaceGenFunction(E_Space space);
-typedef B32 E_SpaceRWFunction(E_Space space, void *out, Rng1U64 offset_range);
+typedef B32 E_SpaceReadFunction(E_Space space, void *out, E_SpaceRangeInfo *out_range_info, Rng1U64 offset_range);
+typedef B32 E_SpaceWriteFunction(E_Space space, void *out, Rng1U64 offset_range);
 
 //- rjf: base context
 
@@ -764,9 +786,9 @@ typedef struct E_BaseCtx E_BaseCtx;
 struct E_BaseCtx
 {
   // rjf: instruction pointer info
-  U64 thread_ip_vaddr;
   U64 thread_ip_voff;
   E_Space thread_reg_space;
+  E_Space thread_process_space;
   Arch thread_arch;
   U64 thread_unwind_count;
   
@@ -774,16 +796,18 @@ struct E_BaseCtx
   E_DbgInfo *dbg_infos;
   U64 dbg_infos_count;
   E_DbgInfo *primary_dbg_info;
+  E_String2NumMap *dbg_info_from_name_map;
   
   // rjf: modules
   E_Module *modules;
   U64 modules_count;
   E_Module *primary_module;
+  E_String2NumMap *module_from_name_map;
   
   // rjf: space hooks
   E_SpaceGenFunction *space_gen;
-  E_SpaceRWFunction *space_read;
-  E_SpaceRWFunction *space_write;
+  E_SpaceReadFunction *space_read;
+  E_SpaceWriteFunction *space_write;
 };
 
 //- rjf: ir generation context
@@ -792,7 +816,6 @@ typedef struct E_IRCtx E_IRCtx;
 struct E_IRCtx
 {
   E_String2NumMap *regs_map;
-  E_String2NumMap *reg_alias_map;
   E_String2NumMap *locals_map; // (within `primary_module`)
   E_String2NumMap *member_map; // (within `primary_module`)
   E_String2ExprMap *macro_map;
@@ -1027,18 +1050,29 @@ struct E_CacheNode
   E_CacheBundle bundle;
 };
 
-typedef struct E_CacheLookup E_CacheLookup;
-struct E_CacheLookup
-{
-  E_CacheNode *node;
-  U64 hash;
-};
-
 typedef struct E_CacheSlot E_CacheSlot;
 struct E_CacheSlot
 {
   E_CacheNode *first;
   E_CacheNode *last;
+};
+
+//- rjf: locals/members cache types
+
+typedef struct E_LocalMapCacheNode E_LocalMapCacheNode;
+struct E_LocalMapCacheNode
+{
+  E_LocalMapCacheNode *next;
+  DI_Key dbgi_key;
+  U64 voff;
+  E_String2NumMap *map;
+};
+
+typedef struct E_LocalMapCacheSlot E_LocalMapCacheSlot;
+struct E_LocalMapCacheSlot
+{
+  E_LocalMapCacheNode *first;
+  E_LocalMapCacheNode *last;
 };
 
 //- rjf: parent stack
@@ -1073,7 +1107,7 @@ struct E_Cache
   E_CacheParentNode *free_parent_node;
   
   //- rjf: unpacked context
-  RDI_Procedure *thread_ip_procedure;
+  RDI_Symbol *thread_ip_procedure;
   
   //- rjf: [types] JIT-constructed types tables
   U64 cons_id_gen;
@@ -1097,6 +1131,12 @@ struct E_Cache
   //- rjf: [types] unpacked type cache
   U64 type_cache_slots_count;
   E_TypeCacheSlot *type_cache_slots;
+  
+  //- rjf: [locals / members] locals/members map maps
+  E_LocalMapCacheSlot *locals_map_map_slots;
+  U64 locals_map_map_slots_count;
+  E_LocalMapCacheSlot *member_map_map_slots;
+  U64 member_map_map_slots_count;
   
   //- rjf: [ir] ir gen options
   B32 disallow_autohooks;
@@ -1207,6 +1247,11 @@ internal E_String2NumMap *e_push_locals_map_from_rdi_voff(Arena *arena, RDI_Pars
 internal E_String2NumMap *e_push_member_map_from_rdi_voff(Arena *arena, RDI_Parsed *rdi, U64 voff);
 
 ////////////////////////////////
+//~ rjf: RDI Location Info -> Eval Op List
+
+internal E_OpList e_oplist_from_location(Arena *arena, RDI_Parsed *rdi, RDI_Location loc);
+
+////////////////////////////////
 //~ rjf: Cache Creation & Selection
 
 internal E_Cache *e_cache_alloc(void);
@@ -1248,6 +1293,10 @@ internal E_DbgInfo *e_dbg_info_from_type_key(E_TypeKey type_key);
 // So even though the primary API shape is based around singular keys, the
 // "parent key stack" also implicitly parameterizes all of these (partly
 // because it is not relevant in 99% of cases).
+
+//- rjf: locals/members maps
+internal E_String2NumMap *e_locals_map_from_dbgi_key_voff(DI_Key dbgi_key, U64 voff);
+internal E_String2NumMap *e_member_map_from_dbgi_key_voff(DI_Key dbgi_key, U64 voff);
 
 //- rjf: parent key stack
 internal E_Key e_parent_key_push(E_Key key);

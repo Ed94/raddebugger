@@ -11,10 +11,16 @@ ui_divider(UI_Size size)
   ui_set_next_pref_size(parent->child_layout_axis, size);
   ui_set_next_child_layout_axis(parent->child_layout_axis);
   UI_Box *box = ui_build_box_from_key(0, ui_key_zero());
-  UI_Parent(box) UI_PrefSize(parent->child_layout_axis, ui_pct(1, 0))
+  UI_Parent(box) UI_Padding(ui_pct(0.5f, 0.5f))
+    UI_PrefSize(parent->child_layout_axis, ui_em(0.1f, 1.f))
+    UI_BackgroundColor(ui_color_from_name(str8_lit("border")))
   {
-    ui_build_box_from_key(UI_BoxFlag_DrawSideBottom, ui_key_zero());
-    ui_build_box_from_key(0, ui_key_zero());
+    ui_set_next_child_layout_axis(axis2_flip(parent->child_layout_axis));
+    UI_Box *spacing_parent = ui_build_box_from_key(0, ui_key_zero());
+    UI_Parent(spacing_parent) UI_Padding(ui_em(1.f, 1.f)) UI_PrefSize(axis2_flip(parent->child_layout_axis), ui_pct(1, 0))
+    {
+      ui_build_box_from_key(UI_BoxFlag_DrawBackground, ui_key_zero());
+    }
   }
 }
 
@@ -125,6 +131,7 @@ struct UI_LineEditDrawData
   String8 edited_string;
   TxtPt cursor;
   TxtPt mark;
+  B32 trail;
 };
 
 internal UI_BOX_CUSTOM_DRAW(ui_line_edit_draw)
@@ -137,11 +144,14 @@ internal UI_BOX_CUSTOM_DRAW(ui_line_edit_draw)
   cursor_color.w *= box->parent->parent->focus_active_t;
   Vec4F32 select_color = ui_color_from_tags_key_name(box->tags_key, str8_lit("selection"));
   select_color.w *= (box->parent->parent->focus_active_t*0.2f + 0.8f);
+  Vec4F32 trail_color = cursor_color;
+  trail_color.w *= 0.25f;
   Vec2F32 text_position = ui_box_text_position(box);
   String8 edited_string = draw_data->edited_string;
   TxtPt cursor = draw_data->cursor;
   TxtPt mark = draw_data->mark;
   F32 cursor_pixel_off = fnt_dim_from_tag_size_string(font, font_size, 0, tab_size, str8_prefix(edited_string, cursor.column-1)).x;
+  F32 cursor_pixel_off__animated = ui_anim(ui_key_from_stringf(box->key, "cursor_off_px"), cursor_pixel_off);
   F32 mark_pixel_off   = fnt_dim_from_tag_size_string(font, font_size, 0, tab_size, str8_prefix(edited_string, mark.column-1)).x;
   F32 cursor_thickness = ClampBot(1.f, floor_f32(font_size/10.f));
   Rng2F32 cursor_rect =
@@ -150,6 +160,14 @@ internal UI_BOX_CUSTOM_DRAW(ui_line_edit_draw)
     box->parent->parent->rect.y0+ui_top_font_size()*0.5f,
     text_position.x + cursor_pixel_off + cursor_thickness,
     box->parent->parent->rect.y1-ui_top_font_size()*0.5f,
+  };
+  Rng1F32 trail_off_span = r1f32(cursor_pixel_off, cursor_pixel_off__animated);
+  Rng2F32 trail_rect =
+  {
+    text_position.x + trail_off_span.min,
+    cursor_rect.y0,
+    text_position.x + trail_off_span.max,
+    cursor_rect.y1,
   };
   Rng2F32 mark_rect =
   {
@@ -161,6 +179,20 @@ internal UI_BOX_CUSTOM_DRAW(ui_line_edit_draw)
   Rng2F32 select_rect = union_2f32(cursor_rect, mark_rect);
   dr_rect(select_rect, select_color, font_size/2.f, 0, 1.f);
   dr_rect(cursor_rect, cursor_color, 0.f, 0, 0.f);
+  if(draw_data->trail)
+  {
+    R_Rect2DInst *trail_inst = dr_rect(trail_rect, trail_color, ui_top_font_size()*0.2f, 0, 1.f);
+    if(cursor_pixel_off > cursor_pixel_off__animated)
+    {
+      trail_inst->colors[Corner_00].w *= 0.1f;
+      trail_inst->colors[Corner_01].w *= 0.1f;
+    }
+    else
+    {
+      trail_inst->colors[Corner_10].w *= 0.1f;
+      trail_inst->colors[Corner_11].w *= 0.1f;
+    }
+  }
 }
 
 internal UI_Signal
@@ -180,7 +212,7 @@ ui_line_edit(TxtPt *cursor, TxtPt *mark, U8 *edit_buffer, U64 edit_buffer_size, 
   B32 is_focus_active_disabled = (!is_focus_active && ui_top_focus_active() == UI_FocusKind_On);
   
   //- rjf: build top-level box
-  ui_set_next_hover_cursor(is_focus_active ? OS_Cursor_IBar : OS_Cursor_Pointer);
+  ui_set_next_hover_cursor(is_focus_active ? WM_Cursor_IBar : WM_Cursor_Pointer);
   UI_Box *box = ui_build_box_from_key(UI_BoxFlag_DrawBackground|
                                       UI_BoxFlag_DrawBorder|
                                       UI_BoxFlag_MouseClickable|
@@ -220,7 +252,7 @@ ui_line_edit(TxtPt *cursor, TxtPt *mark, U8 *edit_buffer, U64 edit_buffer_size, 
       // rjf: perform copy
       if(op.flags & UI_TxtOpFlag_Copy)
       {
-        os_set_clipboard_text(op.copy);
+        wm_set_clipboard_text(op.copy);
       }
       
       // rjf: commit op's changed cursor & mark to caller-provided state
@@ -260,6 +292,7 @@ ui_line_edit(TxtPt *cursor, TxtPt *mark, U8 *edit_buffer, U64 edit_buffer_size, 
       draw_data->edited_string = push_str8_copy(ui_build_arena(), edit_string);
       draw_data->cursor = *cursor;
       draw_data->mark = *mark;
+      draw_data->trail = 1;
       ui_box_equip_display_string(editstr_box, edit_string);
       ui_box_equip_custom_draw(editstr_box, ui_line_edit_draw, draw_data);
       mouse_pt = txt_pt(1, 1+ui_box_char_pos_from_xy(editstr_box, ui_mouse()));
@@ -403,7 +436,7 @@ ui_imagef(R_Handle texture, R_Tex2DSampleKind sample_kind, Rng2F32 region, Vec4F
 internal UI_Signal
 ui_expander(B32 is_expanded, String8 string)
 {
-  ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+  ui_set_next_hover_cursor(WM_Cursor_HandPoint);
   ui_set_next_text_alignment(UI_TextAlign_Center);
   ui_set_next_font(ui_icon_font());
   UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clickable|UI_BoxFlag_DrawText, string);
@@ -429,7 +462,7 @@ internal UI_Signal
 ui_sort_header(B32 sorting, B32 ascending, String8 string)
 {
   ui_set_next_child_layout_axis(Axis2_X);
-  ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+  ui_set_next_hover_cursor(WM_Cursor_HandPoint);
   UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clickable|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawActiveEffects, string);
   ui_push_parent(box);
   
@@ -616,7 +649,7 @@ internal UI_Signal
 ui_sat_val_picker(F32 hue, F32 *out_sat, F32 *out_val, String8 string)
 {
   // rjf: build & interact
-  ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+  ui_set_next_hover_cursor(WM_Cursor_HandPoint);
   UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clickable, string);
   UI_SatValDrawData *user = push_array(ui_build_arena(), UI_SatValDrawData, 1);
   ui_box_equip_custom_draw(box, ui_sat_val_picker_draw, user);
@@ -725,7 +758,7 @@ internal UI_Signal
 ui_hue_picker(F32 *out_hue, F32 sat, F32 val, String8 string)
 {
   // rjf: build & interact
-  ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+  ui_set_next_hover_cursor(WM_Cursor_HandPoint);
   UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clickable, string);
   UI_HueDrawData *user = push_array(ui_build_arena(), UI_HueDrawData, 1);
   ui_box_equip_custom_draw(box, ui_hue_picker_draw, user);
@@ -812,7 +845,7 @@ internal UI_Signal
 ui_alpha_picker(F32 *out_alpha, String8 string)
 {
   // rjf: build & interact
-  ui_set_next_hover_cursor(OS_Cursor_HandPoint);
+  ui_set_next_hover_cursor(WM_Cursor_HandPoint);
   UI_Box *box = ui_build_box_from_string(UI_BoxFlag_Clickable, string);
   UI_AlphaDrawData *user = push_array(ui_build_arena(), UI_AlphaDrawData, 1);
   ui_box_equip_custom_draw(box, ui_alpha_picker_draw, user);
@@ -973,7 +1006,7 @@ ui_table_begin(U64 column_pct_count, F32 **column_pcts, String8 string)
     // rjf: make column boundary widget
     UI_Rect(rect)
     {
-      ui_set_next_hover_cursor(OS_Cursor_LeftRight);
+      ui_set_next_hover_cursor(WM_Cursor_LeftRight);
       UI_Box *box = ui_build_box_from_stringf(UI_BoxFlag_Clickable, "###%S_boundary_%I64u", table->string, column_idx);
       
       F32 *left_pct_ptr  = column_idx < ui_ts_col_pct_count ? column_pcts[column_idx-1] : 0;
@@ -1256,6 +1289,8 @@ ui_scroll_bar(Axis2 axis, UI_Size off_axis_size, UI_ScrollPt pt, Rng1S64 idx_ran
     UI_Flags(UI_BoxFlag_DrawBorder|disabled_flags)
     UI_TextAlignment(UI_TextAlign_Center)
     UI_Font(ui_icon_font())
+    UI_TextRasterFlags(FNT_RasterFlag_Smooth)
+    UI_TagF("weak")
   {
     String8 arrow_string = ui_icon_string_from_kind(axis == Axis2_X ? UI_IconKind_LeftArrow : UI_IconKind_UpArrow);
     min_scroll_sig = ui_buttonf("%S##_min_scroll_%i", arrow_string, axis);
@@ -1306,6 +1341,8 @@ ui_scroll_bar(Axis2 axis, UI_Size off_axis_size, UI_ScrollPt pt, Rng1S64 idx_ran
     UI_Flags(UI_BoxFlag_DrawBorder|disabled_flags)
     UI_TextAlignment(UI_TextAlign_Center)
     UI_Font(ui_icon_font())
+    UI_TextRasterFlags(FNT_RasterFlag_Smooth)
+    UI_TagF("weak")
   {
     String8 arrow_string = ui_icon_string_from_kind(axis == Axis2_X ? UI_IconKind_RightArrow : UI_IconKind_DownArrow);
     max_scroll_sig = ui_buttonf("%S##_max_scroll_%i", arrow_string, axis);
@@ -1364,8 +1401,8 @@ internal void
 ui_scroll_list_begin(UI_ScrollListParams *params, UI_ScrollPt *scroll_pt, Vec2S64 *cursor_out, Vec2S64 *mark_out, Rng1S64 *visible_row_range_out, UI_ScrollListSignal *signal_out)
 {
   //- rjf: unpack arguments
-  Rng1S64 scroll_row_idx_range = r1s64(params->item_range.min, ClampBot(params->item_range.min, params->item_range.max-1));
   S64 num_possible_visible_rows = (S64)(params->dim_px.y/params->row_height_px);
+  Rng1S64 scroll_row_idx_range = r1s64(params->item_range.min, ClampBot(params->item_range.min, params->item_range.max-1));
   
   //- rjf: do keyboard navigation
   B32 moved = 0;
@@ -1493,7 +1530,16 @@ ui_scroll_list_begin(UI_ScrollListParams *params, UI_ScrollPt *scroll_pt, Vec2S6
   UI_Box *scrollable_container_box = &ui_nil_box;
   UI_Parent(container_box) UI_ChildLayoutAxis(Axis2_Y) UI_FixedWidth(params->dim_px.x-ui_scroll_list_scroll_bar_dim_px) UI_FixedHeight(params->dim_px.y)
   {
-    scrollable_container_box = ui_build_box_from_stringf(UI_BoxFlag_Clip|UI_BoxFlag_AllowOverflowY|UI_BoxFlag_Scroll, "###sp");
+    UI_BoxFlags fade_flags = 0;
+    if(scroll_pt->idx > params->item_range.min)
+    {
+      fade_flags |= UI_BoxFlag_DrawFadeTop;
+    }
+    if(scroll_pt->idx + num_possible_visible_rows < params->item_range.max)
+    {
+      fade_flags |= UI_BoxFlag_DrawFadeBottom;
+    }
+    scrollable_container_box = ui_build_box_from_stringf(fade_flags|UI_BoxFlag_Clip|UI_BoxFlag_AllowOverflowY|UI_BoxFlag_Scroll, "###sp");
     scrollable_container_box->view_off.y = scrollable_container_box->view_off_target.y = params->row_height_px*mod_f32(scroll_pt->off, 1.f) + params->row_height_px*(scroll_pt->off < 0) - params->row_height_px*(scroll_pt->off == -1.f && scroll_pt->idx == 1);
   }
   

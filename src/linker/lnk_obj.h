@@ -7,20 +7,50 @@
 
 typedef struct LNK_Obj
 {
-  String8                  path;
-  String8                  data;
-  U32                      input_idx;
-  COFF_FileHeaderInfo      header;
-  U32                     *comdats;
-  B8                       hotpatch;
-  B8                       exclude_from_debug_info;
-  U32Node                **associated_sections;
-  LNK_SymbolHashTrie     **symlinks;
+  String8 path;
+  String8 data;
 
+  COFF_FileHeaderInfo header;
+  COFF_SectionFlags  *section_flags;
+
+  // flags
+  B8 hotpatch;
+  B8 exclude_from_debug_info;
+
+  U32 input_idx;
+
+  // COMDAT
+  U32                 *comdats;
+  U32Node            **associated_sections;
+  LNK_SymbolHashTrie **symlinks;
+
+  // link
   struct LNK_LibMemberRef *link_member;
+  struct LNK_ObjNode      *self;
 
-  struct LNK_ObjNode *node;
+  // type info
+  U32 debug_t_sect_idx;
+  U32 debug_p_sect_idx;
+  U32 debug_h_sect_idx;
+
+  // @type_server
+  Rng1U64         ti_range;
+  CV_TypeIndex   *ti_map;
+  Rng1U64         pch_ti_range;
+  U64             pch_obj_idx;
 } LNK_Obj;
+
+typedef struct LNK_ObjSection
+{
+  LNK_Obj            *obj;
+  U64                 sect_idx;
+  U64                 section_number;
+  COFF_SectionHeader *header;
+  COFF_SectionFlags  *flags;
+  Rng1U64             vrange;
+  Rng1U64             frange;
+  U32                 reloc_count;
+} LNK_ObjSection;
 
 typedef struct LNK_ObjNode
 {
@@ -113,11 +143,15 @@ internal LNK_Symbol *     lnk_obj_get_comdat_symlink(LNK_Obj *obj, U64 section_n
 
 // --- Symbol & Section Helpers ------------------------------------------------
 
-internal COFF_ParsedSymbol    lnk_parsed_symbol_from_coff(LNK_Obj *obj, void *coff_symbol);
-internal COFF_ParsedSymbol    lnk_parsed_symbol_from_coff_symbol_idx(LNK_Obj *obj, U64 symbol_idx);
 internal COFF_SectionHeader * lnk_coff_section_header_from_section_number(LNK_Obj *obj, U64 section_number);
+internal COFF_ParsedSymbol    lnk_parsed_symbol_from_coff_symbol_idx(LNK_Obj *obj, U64 symbol_idx);
+internal U64                  lnk_obj_sect_idx_from_section_number(LNK_Obj *obj, U64 section_number);
+internal U64                  lnk_obj_section_number_from_sect_idx(LNK_Obj *obj, U64 sect_idx);
+internal String8              lnk_obj_section_name_from_section_number(LNK_Obj *obj, U64 section_number);
+internal String8              lnk_obj_section_name_from_sect_idx(LNK_Obj *obj, U64 sect_idx);
+internal LNK_ObjSection       lnk_obj_section_from_sect_idx(LNK_Obj *obj, U64 sect_idx);
+internal LNK_ObjSection       lnk_obj_section_from_section_number(LNK_Obj *obj, U64 section_number);
 internal COFF_RelocArray      lnk_coff_relocs_from_section_header(LNK_Obj *obj, COFF_SectionHeader *section_header);
-internal COFF_SectionHeader * lnk_coff_section_table_from_obj(LNK_Obj *obj);
 internal String8              lnk_coff_string_table_from_obj(LNK_Obj *obj);
 internal String8              lnk_coff_symbol_table_from_obj(LNK_Obj *obj);
 internal B32                  lnk_try_comdat_props_from_section_number(LNK_Obj *obj, U32 section_number, COFF_ComdatSelectType *select_out, U32 *section_number_out, U32 *section_length_out, U32 *check_sum_out);
@@ -136,4 +170,3 @@ internal LNK_DirectiveInfo lnk_directive_info_from_raw_directives(Arena *arena, 
 // --- Debug Info --------------------------------------------------------------
 
 internal CV_DebugS lnk_debug_s_from_obj(Arena *arena, LNK_Obj *obj);
-

@@ -119,64 +119,6 @@ dmn_event_list_push(Arena *arena, DMN_EventList *list)
   SLLQueuePush(list->first, list->last, n);
   list->count += 1;
   DMN_Event *result = &n->v;
-  return result;
-}
-
-////////////////////////////////
-//~ rjf: Thread Reading Helper Functions (Helpers, Implemented Once)
-
-internal U64
-dmn_rip_from_thread(DMN_Handle thread)
-{
-  U64 result = 0;
-  Temp scratch = scratch_begin(0, 0);
-  {
-    Arch arch = dmn_arch_from_thread(thread);
-    U64 reg_block_size = regs_block_size_from_arch(arch);
-    void *reg_block = push_array(scratch.arena, U8, reg_block_size);
-    dmn_thread_read_reg_block(thread, reg_block);
-    result = regs_rip_from_arch_block(arch, reg_block);
-  }
-  scratch_end(scratch);
-  return result;
-}
-
-internal U64
-dmn_rsp_from_thread(DMN_Handle thread)
-{
-  U64 result = 0;
-  Temp scratch = scratch_begin(0, 0);
-  {
-    Arch arch = dmn_arch_from_thread(thread);
-    U64 reg_block_size = regs_block_size_from_arch(arch);
-    void *reg_block = push_array(scratch.arena, U8, reg_block_size);
-    dmn_thread_read_reg_block(thread, reg_block);
-    result = regs_rsp_from_arch_block(arch, reg_block);
-  }
-  scratch_end(scratch);
-  return result;
-}
-
-////////////////////////////////
-//~ rjf: Process Reading Helper Functions (Helpers, Implemented Once)
-
-internal String8
-dmn_process_read_cstring(Arena *arena, DMN_Handle process, U64 addr)
-{
-  Temp scratch = scratch_begin(&arena, 1);
-  String8List block_list = {0};
-  for(U64 cursor = addr, stride = 256; ; cursor += stride)
-  {
-    U8      *raw_block = push_array_no_zero(scratch.arena, U8, stride);
-    U64      read_size = dmn_process_read(process, r1u64(cursor, cursor + stride), raw_block);
-    String8  block     = str8_cstring_capped(raw_block, raw_block + read_size);
-    str8_list_push(scratch.arena, &block_list, block);
-    if(read_size != stride || (block.size+1 <= read_size && block.str[block.size] == 0))
-    {
-      break;
-    }
-  }
-  String8 result = str8_list_join(arena, &block_list, 0);
-  scratch_end(scratch);
+  result->module_info = &dmn_module_info_nil;
   return result;
 }

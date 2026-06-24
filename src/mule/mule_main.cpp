@@ -6,6 +6,15 @@
 ** stepping, breakpoints, evaluation, cross-module calls.
 */
 
+#if defined(__clang__)
+#define _ALLOW_COMPILER_AND_STL_VERSION_MISMATCH 1
+#endif
+
+#if _WIN32 && _DEBUG
+#pragma comment(linker, "/nodefaultlib:libcmt")
+#pragma comment(lib, "libcmtd")
+#endif
+
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -399,6 +408,21 @@ few_params1(Pair *pairs, int count, Function_No_Params_Type *no_params_type){
   
 }
 
+//
+// NOTE(rjf): this doesn't work because MSVC - despite GENERATING DEBUG INFO
+// FOR THE MyByte TYPEDEF - does not actually *reference* this typedef
+// anywhere, and instead treats all `MyByte *`s as `char *`s, thus completely
+// eliminating the point of the typedef and view. :(
+//
+typedef char MyByte;
+raddbg_type_view(MyByte *, no_string($));
+
+static void
+variadic_params(char *fmt, ...)
+{
+  int x = 0;
+}
+
 static void
 type_coverage_eval_tests(void)
 {
@@ -407,6 +431,9 @@ type_coverage_eval_tests(void)
   
   uint32_t a = (1<<31);
   int32_t  b = (1<<31);
+  
+  uint32_t abcd = 0xaabbccdd;
+  int64_t abcd64 = (int64_t)abcd;
   
   char string[] = "Hello World!";
   char longer_text[] =
@@ -426,10 +453,13 @@ type_coverage_eval_tests(void)
     char data[4];
   };
   SomeDataStructured *some_data = (SomeDataStructured *)&some_data_with_a_string[0];
+  char *string_ptr = &string[0];
   
   const char *const_string = "Hello, World!";
   const char const_string_array[] = "Hello, World!";
   const char *const const_ptr_const_string = "Hello, World!";
+  
+  MyByte *non_string_byte_ptr = "Hello, World!";
   
   void *pointer = &basics;
   Basics *pointer_to_basics = &basics;
@@ -650,6 +680,14 @@ type_coverage_eval_tests(void)
     OutputDebugStringA("\n");
   }
   
+  if(1)
+  {
+    OutputDebugStringA("this is inside a branch!\n");
+    OutputDebugStringA("foo");
+    OutputDebugStringA("bar");
+    OutputDebugStringA("baz");
+  }
+  
   const int32_t x1 = 3;
   const int32_t y1 = -10;
   const int32_t z1 = x1 + y1;
@@ -666,12 +704,14 @@ type_coverage_eval_tests(void)
   int_vector.push_back(6);
   int_vector.push_back(7);
   
+#if 0
   std::unordered_map<std::string, int> people =
   {
     {"Peter", 1},
     {"Oliver", 2},
     {"Jack", 3},
   };
+#endif
   
   std::vector<int> *pint_vector = &int_vector;
   std::vector<int> &rint_vector =  int_vector;
@@ -685,6 +725,8 @@ type_coverage_eval_tests(void)
   SizedKind sized_kind = SizedKind_C;
   
   int x = (int)(Anonymous_D);
+  
+  variadic_params("foo", 123, 456);
 }
 
 ////////////////////////////////
@@ -905,8 +947,6 @@ static int g_abc = 100;
 static float g_xyz = 21.f;
 static Alias1 g_kind = Kind_First;
 
-// TODO(allen): more global test types
-
 static void
 complicated_global_mutation(int *x){
   *x = (int)g_xyz;
@@ -917,8 +957,19 @@ cross_unit_global_mutation(void){
   fixed_frac_bits = 10;
 }
 
+static int
+function_with_duplicate_local_statics(void)
+{
+  static char *l_abc = "foobar";
+  static int l_xyz = 123;
+  static Kind l_kind = Kind_First;
+  int x = l_xyz + (int)(int64_t)(l_abc);
+  return x;
+}
+
 static void
-global_eval_tests(void){
+global_eval_tests(void)
+{
   g_abc = 11*11;
   g_xyz = (float)g_abc - 21.f;
   
@@ -941,6 +992,8 @@ global_eval_tests(void){
   l_abc = g_abc*2;
   l_xyz = g_xyz*2;
   l_kind = (Alias1)(g_kind + 1);
+  
+  function_with_duplicate_local_statics();
 }
 
 ////////////////////////////////
@@ -2314,7 +2367,8 @@ overloaded_function(int x){
 // NOTE(allen): Control Flow Stepping
 
 static void
-control_flow_stepping_tests(void){
+control_flow_stepping_tests(void)
+{
   {
     int a = 1;
     if (a < 1){
@@ -2482,6 +2536,15 @@ control_flow_stepping_tests(void){
       i += 1;
     } while (i < 10);
   }
+  
+#if defined(__clang__)
+  for (int i = 0; i < 1;
+       ++i, ({ goto exit; }))
+  {
+    int x = 0;
+  }
+  exit:;
+#endif
   
   {
     int i = 17;
@@ -3151,7 +3214,6 @@ mule_main(int argc, char** argv)
   
   mule_init();
   
-  // NOTE(allen): Eval Tests
   type_coverage_eval_tests();
   
   mutating_variables_eval_tests();
@@ -3184,9 +3246,6 @@ mule_main(int argc, char** argv)
   
   exception_filter_test();
   
-  markup_tests();
-  
-  // NOTE(allen): Stepping Tests
   control_flow_stepping_tests();
   
   indirect_call_jump_stepping_tests();
@@ -3216,6 +3275,8 @@ mule_main(int argc, char** argv)
   jit_stepping_tests();
   
   interrupt_stepping_tests();
+  
+  markup_tests();
   
   exception_stepping_tests();
   
