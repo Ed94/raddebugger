@@ -161,6 +161,9 @@ internal HTTP_StatusKind http_status_kind_from_code(HTTP_StatusCode code);
 ////////////////////////////////////////////////////////////////
 //~ rjf: @per_os_impl Top-Level Layer Calls
 
+#if !defined(NEED_ASYNC)
+# define NEED_ASYNC 1
+#endif
 internal void http_init(void);
 internal void http_async_tick(void);
 

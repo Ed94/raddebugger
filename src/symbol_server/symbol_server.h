@@ -11,6 +11,10 @@ typedef enum SMSV_Status
 }
 SMSV_Status;
 
+#if !defined(NEED_ASYNC)
+# define NEED_ASYNC 1
+#endif
+
 internal void smsv_init(void);
 internal void smsv_async_tick(void);
 internal String8 smsv_cache_path(void);

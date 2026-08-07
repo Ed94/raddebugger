@@ -1213,7 +1213,7 @@ RDI_EvalOpTable:
   {ConstU128       15     16 0 1}
   {ConstU256       16     32 0 1}
   {ConstU512       17     64 0 1}
-  {ConstString     18      1 0 1}
+  {ConstString     18      8 0 1}
   {Abs             19      2 1 1}
   {Neg             20      2 1 1}
   {Add             21      2 2 1}
@@ -1227,15 +1227,15 @@ RDI_EvalOpTable:
   {BitOr           29      2 2 1}
   {BitXor          30      2 2 1}
   {BitNot          31      2 1 1}
-  {LogAnd          32      1 2 1 FirstLogical}
-  {LogOr           33      1 2 1}
-  {LogNot          34      1 1 1}
-  {EqEq            35      1 2 1}
-  {NtEq            36      1 2 1}
-  {LsEq            37      1 2 1}
-  {GrEq            38      1 2 1}
-  {Less            39      1 2 1}
-  {Grtr            40      1 2 1 LastLogical}
+  {LogAnd          32      2 2 1 FirstLogical}
+  {LogOr           33      2 2 1}
+  {LogNot          34      2 1 1}
+  {EqEq            35      2 2 1}
+  {NtEq            36      2 2 1}
+  {LsEq            37      2 2 1}
+  {GrEq            38      2 2 1}
+  {Less            39      2 2 1}
+  {Grtr            40      2 2 1 LastLogical}
   {Trunc           41      1 1 1}
   {TruncSigned     42      1 1 1}
   {Convert         43      2 1 1}

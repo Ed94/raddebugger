@@ -6,42 +6,63 @@
 #ifndef EVAL2_META_H
 #define EVAL2_META_H
 
-typedef enum E2_OpKind
+typedef enum E2_ExprKind
 {
-E2_OpKind_Null,
-E2_OpKind_Dot,
-E2_OpKind_Index,
-E2_OpKind_Call,
-E2_OpKind_DerefAsm,
-E2_OpKind_SizeOf,
-E2_OpKind_Deref,
-E2_OpKind_Address,
-E2_OpKind_Pos,
-E2_OpKind_Neg,
-E2_OpKind_LogNot,
-E2_OpKind_BitNot,
-E2_OpKind_Mul,
-E2_OpKind_Div,
-E2_OpKind_Mod,
-E2_OpKind_Add,
-E2_OpKind_Sub,
-E2_OpKind_LShift,
-E2_OpKind_RShift,
-E2_OpKind_Less,
-E2_OpKind_LtEq,
-E2_OpKind_Grtr,
-E2_OpKind_GrEq,
-E2_OpKind_EqEq,
-E2_OpKind_NtEq,
-E2_OpKind_BitAnd,
-E2_OpKind_BitXor,
-E2_OpKind_BitOr,
-E2_OpKind_LogAnd,
-E2_OpKind_LogOr,
-E2_OpKind_Define,
-E2_OpKind_Cond,
-E2_OpKind_COUNT,
-} E2_OpKind;
+E2_ExprKind_Null,
+E2_ExprKind_Identifier,
+E2_ExprKind_MacroArg,
+E2_ExprKind_TypeIdentifier,
+E2_ExprKind_Numeric,
+E2_ExprKind_StringLiteral,
+E2_ExprKind_CharLiteral,
+E2_ExprKind_Ptr,
+E2_ExprKind_Array,
+E2_ExprKind_Function,
+E2_ExprKind_Const,
+E2_ExprKind_Volatile,
+E2_ExprKind_Unsigned,
+E2_ExprKind_Signed,
+E2_ExprKind_Dot,
+E2_ExprKind_Index,
+E2_ExprKind_Call,
+E2_ExprKind_DerefAsm,
+E2_ExprKind_SizeOf,
+E2_ExprKind_TypeOf,
+E2_ExprKind_Cast,
+E2_ExprKind_Deref,
+E2_ExprKind_Address,
+E2_ExprKind_Pos,
+E2_ExprKind_Neg,
+E2_ExprKind_LogNot,
+E2_ExprKind_BitNot,
+E2_ExprKind_Mul,
+E2_ExprKind_Div,
+E2_ExprKind_Mod,
+E2_ExprKind_Add,
+E2_ExprKind_Sub,
+E2_ExprKind_LShift,
+E2_ExprKind_RShift,
+E2_ExprKind_Less,
+E2_ExprKind_LtEq,
+E2_ExprKind_Grtr,
+E2_ExprKind_GrEq,
+E2_ExprKind_EqEq,
+E2_ExprKind_NtEq,
+E2_ExprKind_BitAnd,
+E2_ExprKind_BitXor,
+E2_ExprKind_BitOr,
+E2_ExprKind_LogAnd,
+E2_ExprKind_LogOr,
+E2_ExprKind_Define,
+E2_ExprKind_Macro,
+E2_ExprKind_Cond,
+E2_ExprKind_COUNT,
+} E2_ExprKind;
+
+typedef enum E2_LangKind
+{
+E2_LangKind_CLike,
+} E2_LangKind;
 
 typedef enum E2_TypeKind
 {
@@ -121,8 +142,33 @@ E2_TypeKind_FirstMeta       = E2_TypeKind_MetaExpr,
 E2_TypeKind_LastMeta        = E2_TypeKind_MetaDescription,
 } E2_TypeKind;
 
+typedef struct E2_ExprKindParseInfo E2_ExprKindParseInfo;
+struct E2_ExprKindParseInfo
+{
+E2_ExprKind expr_kind;
+E2_ExprParseKind parse_kind;
+S64 precedence;
+B8 reverse_children;
+String8 pre;
+String8 sep;
+String8 post;
+String8 chain;
+};
+
+typedef struct E2_LangInfo E2_LangInfo;
+struct E2_LangInfo
+{
+U64 expr_kind_parse_infos_count;
+E2_ExprKindParseInfo *expr_kind_parse_infos;
+};
+
 C_LINKAGE_BEGIN
-extern E2_OpInfo e2_op_kind_info_table[32];
+extern B8 e2_expr_kind_allow_type_operands_table[48];
+extern B8 e2_expr_kind_is_type_expr_table[48];
+extern B8 e2_expr_kind_is_first_operand_type_maybe_table[48];
+extern U64 e2_expr_kind_target_operand_count_table[48];
+extern E2_LangInfo e2_lang_kind_info_table[1];
+extern E2_ExprKindParseInfo e2_expr_kind_parse_info_table__clike[43];
 extern U8 e2_type_kind_basic_byte_size_table[61];
 extern String8 e2_type_kind_basic_string_table[61];
 

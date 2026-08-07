@@ -45,6 +45,7 @@ struct D2R_UnitDedupedTagNode
   D2R_UnitDedupedTagNode *next;
   U64 src_info_off;
   U64 dst_hash;
+  U64 dependency_count;
 };
 
 typedef struct D2R_UnitDedupedTagMap D2R_UnitDedupedTagMap;

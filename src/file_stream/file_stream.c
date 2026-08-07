@@ -32,7 +32,7 @@ fs_change_gen(void)
 //~ rjf: Cache Interaction
 
 internal AC_Artifact
-fs_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *gen_out)
+fs_artifact_create(String8 key, B32 *cancel_signal, AC_Status *status_out, U64 *gen_out)
 {
   ProfBeginFunction();
   Temp scratch = scratch_begin(0, 0);
@@ -146,7 +146,7 @@ fs_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *gen_out
                    (file_handle_is_valid || pre_props.flags & FilePropertyFlag_IsFolder));
       if(!read_good)
       {
-        retry_out[0] = 1;
+        status_out[0] = AC_Status_NeedRetry;
         ProfScope("abort")
         {
           arena_release(data_arena);

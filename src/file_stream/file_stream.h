@@ -55,7 +55,7 @@ internal U64 fs_change_gen(void);
 ////////////////////////////////
 //~ rjf: Artifact Cache Hooks / Accessing API
 
-internal AC_Artifact fs_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *gen_out);
+internal AC_Artifact fs_artifact_create(String8 key, B32 *cancel_signal, AC_Status *status_out, U64 *gen_out);
 internal void fs_artifact_destroy(AC_Artifact artifact);
 
 internal C_Key fs_key_from_path_range(String8 path, Rng1U64 range, U64 endt_us);
@@ -66,6 +66,9 @@ internal U128 fs_hash_from_path_range(String8 path, Rng1U64 range, U64 endt_us);
 ////////////////////////////////
 //~ rjf: Asynchronous Tick
 
+#if !defined(NEED_ASYNC)
+# define NEED_ASYNC 1
+#endif
 internal void fs_async_tick(void);
 
 #endif // FILE_STREAM_H

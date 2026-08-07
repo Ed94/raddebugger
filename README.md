@@ -5,7 +5,7 @@ debugger itself, and is intended as a technical overview of the project. The
 debugger's README, which includes usage instructions and tips, can be found
 packaged along with debugger releases, or within the `build` folder after a
 local copy has been built. You can find pre-built release binaries
-[here](https://github.com/EpicGamesExt/raddebugger/releases)._
+[here](https://github.com/EpicGames/raddebugger/releases)._
 
 The RAD Debugger is a native, user-mode, multi-process, graphical debugger. It
 currently only supports local-machine Windows x64 debugging with PDBs, with
@@ -14,7 +14,7 @@ support native Linux debugging and DWARF debug info.
 
 The debugger is currently in *ALPHA*. In order to get the debugger
 bullet-proof, it'd greatly help out if you submitted the issues you find
-[here](https://github.com/EpicGamesExt/raddebugger/issues), along with any
+[here](https://github.com/EpicGames/raddebugger/issues), along with any
 information you can gather, like dump files (along with the build you used),
 instructions to reproduce, test executables, and so on.
 

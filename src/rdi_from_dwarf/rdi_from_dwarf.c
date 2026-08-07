@@ -1623,6 +1623,7 @@ d2r_convert(Arena *arena, D2R_ConvertParams *params)
             {
               //- rjf: try to find an already-computed hash for this task
               U64 already_computed_hash = 0;
+              U64 already_computed_dependency_count = 0;
               B32 found_already_computed_hash = 0;
               {
                 U64 off_hash = u64_hash_from_str8(str8_struct(&top_task->start_off));
@@ -1634,6 +1635,7 @@ d2r_convert(Arena *arena, D2R_ConvertParams *params)
                   {
                     found_already_computed_hash = 1;
                     already_computed_hash = n->dst_hash;
+                    already_computed_dependency_count = n->dependency_count;
                     break;
                   }
                 }
@@ -1643,6 +1645,7 @@ d2r_convert(Arena *arena, D2R_ConvertParams *params)
               if(found_already_computed_hash)
               {
                 top_task->hash = already_computed_hash;
+                top_task->dependency_count = already_computed_dependency_count;
               }
               
               //- rjf: determine if we're done with this hash
@@ -1791,8 +1794,9 @@ d2r_convert(Arena *arena, D2R_ConvertParams *params)
                 U64 info_off_hash = u64_hash_from_str8(str8_struct(&top_task->start_off));
                 U64 info_off_slot_idx = info_off_hash%unit_deduped_tag_maps[top_task->unit_idx].slots_count;
                 D2R_UnitDedupedTagNode *n = push_array(scratch.arena, D2R_UnitDedupedTagNode, 1);
-                n->src_info_off = top_task->start_off;
-                n->dst_hash = top_task->hash;
+                n->src_info_off     = top_task->start_off;
+                n->dst_hash         = top_task->hash;
+                n->dependency_count = top_task->dependency_count;
                 for(B32 inserted = 0; !inserted;)
                 {
                   U64 slot_head_val = ins_atomic_u64_eval(&unit_deduped_tag_maps[origin_unit_idx].slots[info_off_slot_idx]);

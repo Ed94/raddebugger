@@ -76,6 +76,15 @@ fully_qualified_from_rdi_string_and_container(Arena *arena, RDI_Parsed *rdi, U32
   Temp scratch = scratch_begin(&arena, 1);
   String8List parts = {0};
   {
+    typedef struct VisitedNode VisitedNode;
+    struct VisitedNode
+    {
+      VisitedNode *next;
+      U32 idx;
+      RDI_ContainerFlags flags;
+    };
+    U64 visited_slots_count = 6;
+    VisitedNode **visited_slots = push_array(scratch.arena, VisitedNode *, visited_slots_count);
     str8_list_push(scratch.arena, &parts, str8_from_rdi_string_idx(rdi, name_string_idx));
     RDI_ContainerFlags container_flags = start_container_flags;
     RDI_ContainerFlags next_container_flags = 0;
@@ -83,6 +92,36 @@ fully_qualified_from_rdi_string_and_container(Arena *arena, RDI_Parsed *rdi, U32
         container_idx != 0;
         container_idx = next_container_idx, container_flags = next_container_flags)
     {
+      // rjf: determine if we visited this container already - add this container if not
+      B32 visited_already = 0;
+      {
+        U64 hash = u64_hash_from_seed_str8(0, str8_struct(&container_idx));
+        hash = u64_hash_from_seed_str8(hash, str8_struct(&container_flags));
+        U64 slot_idx = hash%visited_slots_count;
+        for EachNode(n, VisitedNode, visited_slots[slot_idx])
+        {
+          if(n->idx == container_idx && n->flags == container_flags)
+          {
+            visited_already = 1;
+            break;
+          }
+        }
+        if(!visited_already)
+        {
+          VisitedNode *n = push_array(scratch.arena, VisitedNode, 1);
+          SLLStackPush(visited_slots[slot_idx], n);
+          n->idx = container_idx;
+          n->flags = container_flags;
+        }
+      }
+      
+      // rjf: early-out if we found a cycle
+      if(visited_already)
+      {
+        break;
+      }
+      
+      // rjf: push this container's string
       next_container_idx = 0;
       next_container_flags = 0;
       switch(container_flags & RDI_ContainerFlag_KindMask)

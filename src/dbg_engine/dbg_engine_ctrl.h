@@ -519,6 +519,7 @@ internal void d_entity_equip_string(D_EntityCtxRWStore *store, D_Entity *entity,
 internal D_EntityCtxLookupAccel *d_thread_entity_ctx_lookup_accel(void);
 internal D_EntityArray d_entity_array_from_kind(D_EntityKind kind);
 internal D_EntityList d_modules_from_dbgi_key(Arena *arena, DI_Key dbgi_key);
+internal D_Entity *d_process_from_id(U64 id);
 internal D_Entity *d_thread_from_id(U64 id);
 
 //- rjf: applying events to entity caches
@@ -640,7 +641,7 @@ internal String8 d_data_from_process_vaddr_range(Arena *arena, D_Handle process,
 #define d_process_write_struct(process, vaddr, ptr) d_process_write((process), r1u64((vaddr), (vaddr)+(sizeof(*ptr))), (ptr))
 
 //- rjf: process memory artifact cache
-internal AC_Artifact d_memory_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *gen_out);
+internal AC_Artifact d_memory_artifact_create(String8 key, B32 *cancel_signal, AC_Status *status_out, U64 *gen_out);
 internal void d_memory_artifact_destroy(AC_Artifact artifact);
 internal C_Key d_key_from_process_vaddr_range(D_Handle process, Rng1U64 vaddr_range, B32 zero_terminated, B32 wait_for_fresh, U64 endt_us, B32 *out_is_stale);
 
@@ -652,21 +653,20 @@ internal B32 d_process_memory_read(D_Handle process, Rng1U64 range, B32 *is_stal
 ////////////////////////////////
 //~ rjf: TLS Address Artifact Cache Hooks / Lookups
 
-internal AC_Artifact d_tls_vaddr_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *gen_out);
-internal void d_tls_vaddr_artifact_destroy(AC_Artifact artifact);
+internal AC_Artifact d_tls_vaddr_artifact_create(String8 key, B32 *cancel_signal, AC_Status *status_out, U64 *gen_out);
 internal U64 d_cached_tls_vaddr_from_thread_module(D_Handle thread_handle, D_Handle module_handle, U64 endt_us, B32 *stale_out);
 
 ////////////////////////////////
 //~ rjf: Call Stack Artifact Cache Hooks / Lookups
 
-internal AC_Artifact d_call_stack_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *gen_out);
+internal AC_Artifact d_call_stack_artifact_create(String8 key, B32 *cancel_signal, AC_Status *status_out, U64 *gen_out);
 internal void d_call_stack_artifact_destroy(AC_Artifact artifact);
 internal D_CallStack d_call_stack_from_thread(Access *access, D_Handle thread_handle, B32 high_priority, U64 endt_us);
 
 ////////////////////////////////
 //~ rjf: Call Stack Tree Artifact Cache Hooks / Lookups
 
-internal AC_Artifact d_call_stack_tree_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *gen_out);
+internal AC_Artifact d_call_stack_tree_artifact_create(String8 key, B32 *cancel_signal, AC_Status *status_out, U64 *gen_out);
 internal void d_call_stack_tree_artifact_destroy(AC_Artifact artifact);
 internal D_CallStackTree d_call_stack_tree(Access *access, U64 endt_us);
 

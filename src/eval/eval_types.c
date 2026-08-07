@@ -2579,7 +2579,7 @@ E_TYPE_EXPAND_RANGE_FUNCTION_DEF(array)
 //~ rjf: (Built-In Type Hooks) `list` lens
 
 internal AC_Artifact
-e_list_gather_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *gen_out)
+e_list_gather_artifact_create(String8 key, B32 *cancel_signal, AC_Status *status_out, U64 *gen_out)
 {
   Temp scratch = scratch_begin(0, 0);
   
@@ -2684,7 +2684,7 @@ e_list_gather_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U
   //- rjf: retry
   if(retry)
   {
-    retry_out[0] = 1;
+    status_out[0] = AC_Status_NeedRetry;
   }
   
   //- rjf: flatten

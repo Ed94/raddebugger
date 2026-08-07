@@ -25,7 +25,7 @@ target:
 {
   executable: "build/torture.exe"
   working_directory: build
-  arguments: "raddbg/*"
+  arguments: "eval2/*"
 }
 target:
 {
@@ -47,13 +47,29 @@ target:
 {
   executable: "build/radbin.exe"
   working_directory: build
-  arguments: "--breakpad fat.so --capture"
+  arguments: "--rdi fat.so --capture"
+}
+target:
+{
+  executable: "build/radbin.exe"
+  working_directory: build
+  arguments: "--rdi fat.debug --capture"
 }
 target:
 {
   executable: "build/radbin.exe"
   working_directory: build
   arguments: "--rdi raddbg"
-  enabled: 1
 }
 watch_pin: expression: tag_hash_slots
+target:
+{
+  executable: "build/ryan_scratch.exe"
+  working_directory: build
+  enabled: 1
+}
+target:
+{
+  executable: "../../Program Files/SuperTux/bin/supertux2.exe"
+  working_directory: "../../Program Files/SuperTux/bin"
+}

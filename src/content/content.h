@@ -238,6 +238,9 @@ internal String8 c_data_from_hash(Access *access, U128 hash);
 ////////////////////////////////
 //~ rjf: Asynchronous Tick
 
+#if !defined(NEED_ASYNC)
+# define NEED_ASYNC 1
+#endif
 internal void c_async_tick(void);
 
 #endif // CONTENT_H

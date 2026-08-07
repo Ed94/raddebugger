@@ -391,12 +391,12 @@ ac_async_tick(void)
         }
         
         // rjf: compute val
-        B32 retry = 0;
+        AC_Status status = AC_Status_Good;
         U64 gen = r->gen;
-        AC_Artifact val = r->create(r->key, r->cancel_signal, &retry, &gen);
+        AC_Artifact val = r->create(r->key, r->cancel_signal, &status, &gen);
         
         // rjf: retry? -> resubmit request
-        if(retry && lane_idx() == 0 && !ins_atomic_u32_eval(r->cancel_signal))
+        if(status == AC_Status_NeedRetry && lane_idx() == 0 && !ins_atomic_u32_eval(r->cancel_signal))
         {
           AC_RequestBatch *batch = &ac_shared->req_batches[task_idx];
           MutexScope(batch->mutex)
@@ -412,7 +412,7 @@ ac_async_tick(void)
         
         // rjf: create function -> cache
         AC_Cache *cache = 0;
-        if(!retry && lane_idx() == 0)
+        if(status != AC_Status_NeedRetry && lane_idx() == 0)
         {
           U64 cache_hash = u64_hash_from_str8(str8_struct(&r->create));
           U64 cache_slot_idx = cache_hash%ac_shared->cache_slots_count;
@@ -431,7 +431,7 @@ ac_async_tick(void)
         }
         
         // rjf: write value into cache
-        if(!retry && lane_idx() == 0)
+        if(status != AC_Status_NeedRetry && lane_idx() == 0)
         {
           U64 hash = u64_hash_from_str8(r->key);
           U64 slot_idx = hash%cache->slots_count;
@@ -443,8 +443,10 @@ ac_async_tick(void)
             {
               if(str8_match(n->key, r->key, 0))
               {
+                B32 got_new_value = (status == AC_Status_Good);
+                
                 // rjf: eliminate existing values, if any, if they do not match the current
-                if(cache->destroy != 0 && !MemoryMatchStruct(&n->val, &val) && ins_atomic_u64_eval(&n->completion_count) > 0) for(;;)
+                if(got_new_value && cache->destroy != 0 && !MemoryMatchStruct(&n->val, &val) && ins_atomic_u64_eval(&n->completion_count) > 0) for(;;)
                 {
                   if(access_pt_is_expired(&n->access_pt, .time = 0, .update_idxs = 0))
                   {
@@ -456,8 +458,11 @@ ac_async_tick(void)
                 }
                 
                 // rjf: write new value
+                if(got_new_value)
+                {
+                  n->val = val;
+                }
                 n->last_completed_gen = gen;
-                n->val = val;
                 ins_atomic_u64_dec_eval(&n->working_count);
                 ins_atomic_u64_inc_eval(&n->completion_count);
               }
@@ -510,15 +515,15 @@ ac_async_tick(void)
         LaneCtx lane_ctx_restore = lane_ctx(thin_lane_ctx);
         
         // rjf: compute val
-        B32 retry = 0;
+        AC_Status status = AC_Status_Good;
         U64 gen = r->gen;
-        AC_Artifact val = r->create(r->key, r->cancel_signal, &retry, &gen);
+        AC_Artifact val = r->create(r->key, r->cancel_signal, &status, &gen);
         
         // rjf: restore wide lane ctx
         lane_ctx(lane_ctx_restore);
         
         // rjf: retry? -> resubmit request
-        if(retry && !ins_atomic_u32_eval(r->cancel_signal))
+        if(status == AC_Status_NeedRetry && !ins_atomic_u32_eval(r->cancel_signal))
         {
           AC_RequestBatch *batch = &ac_shared->req_batches[task_idx];
           MutexScope(batch->mutex)
@@ -534,7 +539,7 @@ ac_async_tick(void)
         
         // rjf: create function -> cache
         AC_Cache *cache = 0;
-        if(!retry)
+        if(status != AC_Status_NeedRetry)
         {
           U64 cache_hash = u64_hash_from_str8(str8_struct(&r->create));
           U64 cache_slot_idx = cache_hash%ac_shared->cache_slots_count;
@@ -553,7 +558,7 @@ ac_async_tick(void)
         }
         
         // rjf: write value into cache
-        if(!retry)
+        if(status != AC_Status_NeedRetry)
         {
           U64 hash = u64_hash_from_str8(r->key);
           U64 slot_idx = hash%cache->slots_count;
@@ -565,8 +570,10 @@ ac_async_tick(void)
             {
               if(str8_match(n->key, r->key, 0))
               {
+                B32 got_new_value = (status == AC_Status_Good);
+                
                 // rjf: eliminate existing values, if any, if they do not match the current
-                if(cache->destroy != 0 && !MemoryMatchStruct(&n->val, &val) && ins_atomic_u64_eval(&n->completion_count) > 0) for(;;)
+                if(got_new_value && cache->destroy != 0 && !MemoryMatchStruct(&n->val, &val) && ins_atomic_u64_eval(&n->completion_count) > 0) for(;;)
                 {
                   if(access_pt_is_expired(&n->access_pt, .time = 0, .update_idxs = 0))
                   {
@@ -578,8 +585,11 @@ ac_async_tick(void)
                 }
                 
                 // rjf: store
+                if(got_new_value)
+                {
+                  n->val = val;
+                }
                 n->last_completed_gen = gen;
-                n->val = val;
                 ins_atomic_u64_dec_eval(&n->working_count);
                 ins_atomic_u64_inc_eval(&n->completion_count);
               }

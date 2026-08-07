@@ -506,12 +506,16 @@ w32_wm_wnd_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
       case WM_CHAR:
       {
         U32 character = wParam;
-        if(character >= 32 && character != 127)
+        if((character >= 32 && character != 127) || character == '\n' || character == '\r')
         {
           WM_Event *event = w32_wm_push_event(WM_EventKind_Text, window);
           if(lParam & bit29)
           {
             event->modifiers |= WM_Modifier_Alt;
+          }
+          if(character == '\r')
+          {
+            character = '\n';
           }
           event->character = character;
         }
@@ -1629,7 +1633,7 @@ wm_graphical_message(B32 error, String8 title, String8 message)
 }
 
 internal String8
-wm_graphical_pick_file(Arena *arena, String8 initial_path)
+wm_graphical_pick_file(Arena *arena, String8 title, String8 initial_path)
 {
   String8 result = {0};
   {
@@ -1638,6 +1642,7 @@ wm_graphical_pick_file(Arena *arena, String8 initial_path)
     U16 *buffer = push_array(scratch.arena, U16, buffer_size);
     OPENFILENAMEW params = {sizeof(params)};
     {
+      params.lpstrTitle = (WCHAR *)str16_from_8(scratch.arena, title).str;
       params.lpstrFile = (WCHAR *)buffer;
       params.nMaxFile = buffer_size;
       params.lpstrInitialDir = (WCHAR *)str16_from_8(scratch.arena, initial_path).str;

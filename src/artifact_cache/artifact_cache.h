@@ -5,6 +5,17 @@
 #define ARTIFACT_CACHE_H
 
 ////////////////////////////////
+//~ rjf: Artifact Computation Statuses
+
+typedef enum AC_Status
+{
+  AC_Status_Good,
+  AC_Status_NeedRetry,
+  AC_Status_Failed,
+}
+AC_Status;
+
+////////////////////////////////
 //~ rjf: Artifact Handle Type
 
 typedef struct AC_Artifact AC_Artifact;
@@ -16,7 +27,7 @@ struct AC_Artifact
 ////////////////////////////////
 //~ rjf: Artifact Computation Function Types
 
-typedef AC_Artifact AC_CreateFunctionType(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *gen_out);
+typedef AC_Artifact AC_CreateFunctionType(String8 key, B32 *cancel_signal, AC_Status *status_out, U64 *gen_out);
 typedef void AC_DestroyFunctionType(AC_Artifact artifact);
 
 typedef U32 AC_Flags;
@@ -168,6 +179,9 @@ internal AC_Artifact ac_artifact_from_key_(Access *access, String8 key, AC_Artif
 ////////////////////////////////
 //~ rjf: Asynchronous Tick
 
+#if !defined(NEED_ASYNC)
+# define NEED_ASYNC 1
+#endif
 internal void ac_async_tick(void);
 
 ////////////////////////////////

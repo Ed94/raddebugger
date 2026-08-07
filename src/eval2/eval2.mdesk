@@ -1,53 +1,179 @@
 // Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
-@table(name parse_kind precedence pre sep pos chain)
-E2_OpTable:
+@table(name  allow_type_operands  is_type_expression  is_first_operand_type_maybe  target_operand_count)
+E2_ExprKindTable:
 {
-  {Dot      Binary        1 ""        "."  ""  "" }
-  {Index    Binary        1 ""        "["  "]" "" }
-  {Call     Call          1 ""        "("  ")" ","}
-  {DerefAsm UnaryPrefix   1 "["       ""   "]" "" }
-  {SizeOf   UnaryPrefix   1 "sizeof " ""   ""  "" }
-  {Deref    UnaryPrefix   2 "*"       ""   ""  "" }
-  {Address  UnaryPrefix   2 "&"       ""   ""  "" }
-  {Pos      UnaryPrefix   2 "+"       ""   ""  "" }
-  {Neg      UnaryPrefix   2 "-"       ""   ""  "" }
-  {LogNot   UnaryPrefix   2 "!"       ""   ""  "" }
-  {BitNot   UnaryPrefix   2 "~"       ""   ""  "" }
-  {Mul      Binary        3 ""        "*"  ""  "" }
-  {Div      Binary        3 ""        "/"  ""  "" }
-  {Mod      Binary        3 ""        "%"  ""  "" }
-  {Add      Binary        4 ""        "+"  ""  "" }
-  {Sub      Binary        4 ""        "-"  ""  "" }
-  {LShift   Binary        5 ""        "<<" ""  "" }
-  {RShift   Binary        5 ""        ">>" ""  "" }
-  {Less     Binary        6 ""        "<"  ""  "" }
-  {LtEq     Binary        6 ""        "<=" ""  "" }
-  {Grtr     Binary        6 ""        ">"  ""  "" }
-  {GrEq     Binary        6 ""        ">=" ""  "" }
-  {EqEq     Binary        7 ""        "==" ""  "" }
-  {NtEq     Binary        7 ""        "!=" ""  "" }
-  {BitAnd   Binary        8 ""        "&"  ""  "" }
-  {BitXor   Binary        9 ""        "^"  ""  "" }
-  {BitOr    Binary       10 ""        "|"  ""  "" }
-  {LogAnd   Binary       11 ""        "&&" ""  "" }
-  {LogOr    Binary       12 ""        "||" ""  "" }
-  {Define   Binary       13 ""        "="  ""  "" }
-  {Cond     Ternary      14 ""        "?"  ""  ":"}
+  //- rjf: leaves
+  {Identifier                0   0   0   0                    }
+  {MacroArg                  0   0   0   0                    }
+  {TypeIdentifier            0   1   0   0                    }
+  {Numeric                   0   0   0   0                    }
+  {StringLiteral             0   0   0   0                    }
+  {CharLiteral               0   0   0   0                    }
+  
+  //- rjf: type operators
+  {Ptr                       1   1   1   1                    }
+  {Array                     1   1   1   2                    }
+  {Function                  1   1   1   0xffffffffffffffffull}
+  {Const                     1   1   1   1                    }
+  {Volatile                  1   1   1   1                    }
+  {Unsigned                  1   1   1   1                    }
+  {Signed                    1   1   1   1                    }
+  
+  //- rjf: operators
+  {Dot                       1   0   0   1                    }
+  {Index                     0   0   0   2                    }
+  {Call                      0   0   0   0xffffffffffffffffull}
+  {DerefAsm                  1   0   0   1                    }
+  {SizeOf                    1   0   1   1                    }
+  {TypeOf                    1   1   1   1                    }
+  {Cast                      1   0   1   2                    }
+  {Deref                     1   0   0   1                    }
+  {Address                   1   0   0   1                    }
+  {Pos                       1   0   0   1                    }
+  {Neg                       1   0   0   1                    }
+  {LogNot                    1   0   0   1                    }
+  {BitNot                    1   0   0   1                    }
+  {Mul                       0   0   0   2                    }
+  {Div                       1   0   0   2                    }
+  {Mod                       1   0   0   2                    }
+  {Add                       1   0   0   2                    }
+  {Sub                       1   0   0   2                    }
+  {LShift                    1   0   0   2                    }
+  {RShift                    1   0   0   2                    }
+  {Less                      1   0   0   2                    }
+  {LtEq                      1   0   0   2                    }
+  {Grtr                      1   0   0   2                    }
+  {GrEq                      1   0   0   2                    }
+  {EqEq                      1   0   0   2                    }
+  {NtEq                      1   0   0   2                    }
+  {BitAnd                    1   0   0   2                    }
+  {BitXor                    1   0   0   2                    }
+  {BitOr                     1   0   0   2                    }
+  {LogAnd                    1   0   0   2                    }
+  {LogOr                     1   0   0   2                    }
+  {Define                    1   0   0   1                    }
+  {Macro                     1   0   0   1                    }
+  {Cond                      1   0   0   3                    }
 }
 
-@enum E2_OpKind:
+@enum E2_ExprKind:
 {
   Null,
-  @expand(E2_OpTable a) `$(a.name)`,
+  @expand(E2_ExprKindTable a) `$(a.name)`,
   COUNT,
 }
 
-@data(E2_OpInfo) e2_op_kind_info_table:
+@data(B8) e2_expr_kind_allow_type_operands_table:
 {
-  `{0}`,
-  @expand(E2_OpTable a) `{E2_OpParseKind_$(a.parse_kind), $(a.precedence), str8_lit_comp("$(a.pre)"), str8_lit_comp("$(a.sep)"), str8_lit_comp("$(a.pos)"), str8_lit_comp("$(a.chain)")}`
+  0,
+  @expand(E2_ExprKindTable a) `$(a.allow_type_operands)`
+}
+
+@data(B8) e2_expr_kind_is_type_expr_table:
+{
+  0,
+  @expand(E2_ExprKindTable a) `$(a.is_type_expression)`
+}
+
+@data(B8) e2_expr_kind_is_first_operand_type_maybe_table:
+{
+  0,
+  @expand(E2_ExprKindTable a) `$(a.is_first_operand_type_maybe)`
+}
+
+@data(U64) e2_expr_kind_target_operand_count_table:
+{
+  0,
+  @expand(E2_ExprKindTable a) `$(a.target_operand_count)`
+}
+
+@struct E2_ExprKindParseInfo:
+{
+  `E2_ExprKind expr_kind`;
+  `E2_ExprParseKind parse_kind`;
+  `S64 precedence`;
+  `B8 reverse_children`;
+  `String8 pre`;
+  `String8 sep`;
+  `String8 post`;
+  `String8 chain`;
+}
+
+@table(name name_lower)
+E2_LangKindTable:
+{
+  {CLike clike}
+}
+
+@enum E2_LangKind:
+{
+  @expand(E2_LangKindTable a) `$(a.name)`
+}
+
+@struct E2_LangInfo:
+{
+  `U64 expr_kind_parse_infos_count`;
+  `E2_ExprKindParseInfo *expr_kind_parse_infos`;
+}
+
+@data(E2_LangInfo) e2_lang_kind_info_table:
+{
+  @expand(E2_LangKindTable a) `{ArrayCount(e2_expr_kind_parse_info_table__$(a.name_lower)), (e2_expr_kind_parse_info_table__$(a.name_lower))}`
+}
+
+@table(name parse_kind precedence pre sep pos chain reverse_children)
+E2_ExprKindParseInfoTable_CLike:
+{
+  {Dot            Postfix                 1 ""          "."  ""  ""   0}
+  {Index          Postfix                 1 ""          "["  "]" ""   0}
+  {Call           Postfix                 1 ""          "("  ")" ","  0}
+  {Function       Postfix                 1 ""          "("  ")" ","  0}
+  {DerefAsm       Prefix                  1 "["         ""   "]" ""   0}
+  {Unsigned       Prefix                  1 "unsigned " ""   ""  ""   0}
+  {Signed         Prefix                  1 "signed "   ""   ""  ""   0}
+  {Volatile       Prefix                  1 "volatile " ""   ""  ""   0}
+  {Const          Prefix                  1 "const "    ""   ""  ""   0}
+  {SizeOf         Prefix                  1 "sizeof "   ""   ""  ""   0}
+  {TypeOf         Prefix                  1 "typeof "   ""   ""  ""   0}
+  {SizeOf         Prefix                  1 "size_of "  ""   ""  ""   0}
+  {TypeOf         Prefix                  1 "type_of "  ""   ""  ""   0}
+  {Cast           Prefix                  1 ""          ""   ""  ""   0}
+  {Deref          Prefix                  2 "*"         ""   ""  ""   0}
+  {Address        Prefix                  2 "&"         ""   ""  ""   0}
+  {Pos            Prefix                  2 "+"         ""   ""  ""   0}
+  {Neg            Prefix                  2 "-"         ""   ""  ""   0}
+  {LogNot         Prefix                  2 "!"         ""   ""  ""   0}
+  {BitNot         Prefix                  2 "~"         ""   ""  ""   0}
+  {Cast           Prefix                  1 "cast "     ""   ""  ""   0}
+  {Cast           Postfix                 1 ""          "as" ""  ""   1}
+  {Ptr            Postfix                 1 ""          ""   "*" ""   0}
+  {Array          Postfix                 1 ""          "["  "]" ""   0}
+  {Mul            Postfix                 3 ""          "*"  ""  ""   0}
+  {Div            Postfix                 3 ""          "/"  ""  ""   0}
+  {Mod            Postfix                 3 ""          "%"  ""  ""   0}
+  {Add            Postfix                 4 ""          "+"  ""  ""   0}
+  {Sub            Postfix                 4 ""          "-"  ""  ""   0}
+  {LShift         Postfix                 5 ""          "<<" ""  ""   0}
+  {RShift         Postfix                 5 ""          ">>" ""  ""   0}
+  {Less           Postfix                 6 ""          "<"  ""  ""   0}
+  {LtEq           Postfix                 6 ""          "<=" ""  ""   0}
+  {Grtr           Postfix                 6 ""          ">"  ""  ""   0}
+  {GrEq           Postfix                 6 ""          ">=" ""  ""   0}
+  {EqEq           Postfix                 7 ""          "==" ""  ""   0}
+  {NtEq           Postfix                 7 ""          "!=" ""  ""   0}
+  {BitAnd         Postfix                 8 ""          "&"  ""  ""   0}
+  {BitXor         Postfix                 9 ""          "^"  ""  ""   0}
+  {BitOr          Postfix                10 ""          "|"  ""  ""   0}
+  {LogAnd         Postfix                11 ""          "&&" ""  ""   0}
+  {LogOr          Postfix                12 ""          "||" ""  ""   0}
+  {Cond           Postfix                14 ""          "?"  ""  ":"  0}
+}
+
+@data(E2_ExprKindParseInfo) e2_expr_kind_parse_info_table__clike:
+{
+  @expand(E2_ExprKindParseInfoTable_CLike a) `{E2_ExprKind_$(a.name), E2_ExprParseKind_$(a.parse_kind), $(a.precedence), $(a.reverse_children), str8_lit_comp("$(a.pre)"), str8_lit_comp("$(a.sep)"), str8_lit_comp("$(a.pos)"), str8_lit_comp("$(a.chain)")}`
 }
 
 @table(name                 basic_string          basic_byte_size)

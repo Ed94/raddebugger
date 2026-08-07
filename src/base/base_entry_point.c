@@ -101,8 +101,8 @@ main_thread_base_entry_point(int arguments_count, char **arguments)
   rd_init(&cmdline);
 #endif
   
-#if !NO_ASYNC
   //- rjf: launch async threads
+#if NEED_ASYNC
   Thread *async_threads = 0;
   U64 lane_broadcast_val = 0;
   {
@@ -137,9 +137,10 @@ main_thread_base_entry_point(int arguments_count, char **arguments)
   //- rjf: call into entry point
   entry_point(&cmdline);
   
-#if !NO_ASYNC
   //- rjf: join async threads
+#if NEED_ASYNC
   ins_atomic_u32_inc_eval(&global_async_exit);
+  ins_atomic_u32_inc_eval(&async_loop_again);
   cond_var_broadcast(async_tick_start_cond_var);
   for EachIndex(idx, async_threads_count)
   {

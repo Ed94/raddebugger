@@ -1152,7 +1152,7 @@ di_conversion_completion_signal_receiver_thread_entry_point(void *p)
 //~ rjf: Search Artifact Cache Hooks / Lookups
 
 internal AC_Artifact
-di_search_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *gen_out)
+di_search_artifact_create(String8 key, B32 *cancel_signal, AC_Status *status_out, U64 *gen_out)
 {
   ProfBeginFunction();
   Access *access = access_open();
@@ -1569,7 +1569,7 @@ di_search_item_array_from_target_query(Access *access, RDI_SectionKind target, S
 //~ rjf: Match Artifact Cache Hooks / Lookups
 
 internal AC_Artifact
-di_match_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *gen_out)
+di_match_artifact_create(String8 key, B32 *cancel_signal, AC_Status *status_out, U64 *gen_out)
 {
   ProfBeginFunction();
   Temp scratch = scratch_begin(0, 0);

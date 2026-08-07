@@ -152,8 +152,8 @@ struct RD_ViewState
   
   // rjf: query state
   B32 query_is_open;
-  TxtPt query_cursor;
-  TxtPt query_mark;
+  U64 query_cursor;
+  U64 query_mark;
   U8 query_buffer[KB(1)];
   U64 query_string_size;
   
@@ -496,6 +496,7 @@ struct RD_State
   
   // rjf: text editing mode state
   B32 text_edit_mode;
+  B32 text_edit_mode_multiline;
   
   // rjf: contextual hover info
   RD_Regs *hover_regs;
@@ -794,9 +795,9 @@ internal DR_FStrList rd_stop_explanation_fstrs_from_ctrl_event(Arena *arena, D_E
 ////////////////////////////////
 //~ rjf: Source File Checksum Calculations
 
-internal AC_Artifact rd_md5_artifact_create(String8 key, B32 *cancel_out, B32 *retry_out, U64 *gen_out);
-internal AC_Artifact rd_sha1_artifact_create(String8 key, B32 *cancel_out, B32 *retry_out, U64 *gen_out);
-internal AC_Artifact rd_sha256_artifact_create(String8 key, B32 *cancel_out, B32 *retry_out, U64 *gen_out);
+internal AC_Artifact rd_md5_artifact_create(String8 key, B32 *cancel_out, AC_Status *status_out, U64 *gen_out);
+internal AC_Artifact rd_sha1_artifact_create(String8 key, B32 *cancel_out, AC_Status *status_out, U64 *gen_out);
+internal AC_Artifact rd_sha256_artifact_create(String8 key, B32 *cancel_out, AC_Status *status_out, U64 *gen_out);
 internal MD5 rd_md5_from_hash(U128 hash);
 internal SHA1 rd_sha1_from_hash(U128 hash);
 internal SHA256 rd_sha256_from_hash(U128 hash);

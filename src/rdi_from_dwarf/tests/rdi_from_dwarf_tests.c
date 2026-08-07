@@ -64,7 +64,7 @@ SkippedTest(d2r_regressions)
   }
 }
 
-SkippedTest(d2r_determinism)
+Test(d2r_determinism)
 {
   U64 num_repeats_per_bin = 16;
   String8 radbin_path = test_build_exe_path(arena, s("radbin"));

@@ -1226,8 +1226,25 @@ d_modules_from_dbgi_key(Arena *arena, DI_Key dbgi_key)
 }
 
 internal D_Entity *
+d_process_from_id(U64 id)
+{
+  // TODO(rjf): @multimachine need machine ID here?
+  D_Entity *process = &d_entity_nil;
+  D_EntityArray processes = d_entity_array_from_kind(D_EntityKind_Process);
+  for EachIndex(idx, processes.count)
+  {
+    if(processes.v[idx]->id == id)
+    {
+      process = processes.v[idx];
+    }
+  }
+  return process;
+}
+
+internal D_Entity *
 d_thread_from_id(U64 id)
 {
+  // TODO(rjf): @multimachine need machine ID here?
   D_Entity *thread = &d_entity_nil;
   D_EntityArray threads = d_entity_array_from_kind(D_EntityKind_Thread);
   for EachIndex(idx, threads.count)
@@ -1781,9 +1798,10 @@ d_unwind_from_thread(Arena *arena, D_Handle thread, U64 endt_us)
   D_Unwind unwind = { .flags = D_UnwindFlag_Error };
   
   //////////////////////////////
-  //- rjf: grab run state pre-unwind computing
+  //- rjf: grab generations pre-unwind computing
   //
-  U64 run_gen = d_run_gen();
+  U64 mem_gen = d_mem_gen();
+  U64 reg_gen = d_reg_gen();
   
   //////////////////////////////
   //- rjf: unpack args
@@ -1889,19 +1907,16 @@ d_unwind_from_thread(Arena *arena, D_Handle thread, U64 endt_us)
         // stale. if it can't be read, the unwind fails.
         if(step.status == UWND_StepStatus_FailedMemoryRead)
         {
-          D_ProcessMemorySlice slice = d_process_memory_slice_from_vaddr_range(scratch.arena, process_entity->handle, step.missed_read_vaddr_range, 1, endt_us);
-          String8 data = slice.data;
-          if(slice.stale)
+          U64 size_desired = dim_1u64(step.missed_read_vaddr_range);
+          U8 *data = push_array(scratch.arena, U8, size_desired);
+          U64 size = d_process_read(process_entity->handle, step.missed_read_vaddr_range, data);
+          if(size == size_desired)
           {
-            unwind.flags |= D_UnwindFlag_Stale;
-          }
-          else if(data.size < dim_1u64(step.missed_read_vaddr_range))
-          {
-            unwind.flags |= D_UnwindFlag_Error;
+            memory_map_push(scratch.arena, &memory_map, step.missed_read_vaddr_range, data);
           }
           else
           {
-            memory_map_push(scratch.arena, &memory_map, step.missed_read_vaddr_range, data.str);
+            unwind.flags |= D_UnwindFlag_Error;
           }
         }
         
@@ -1946,6 +1961,18 @@ d_unwind_from_thread(Arena *arena, D_Handle thread, U64 endt_us)
       {
         break;
       }
+    }
+  }
+  
+  //- rjf: if we failed, but our generations changed, mark the 'stale' bit
+  if(unwind.flags & D_UnwindFlag_Error)
+  {
+    U64 post_reg_gen = d_reg_gen();
+    U64 post_mem_gen = d_mem_gen();
+    if(post_reg_gen != reg_gen ||
+       post_mem_gen != mem_gen)
+    {
+      unwind.flags |= D_UnwindFlag_Stale;
     }
   }
   
@@ -2806,7 +2833,14 @@ d_ctrl_thread__module_close(D_Handle process, D_Handle module, U64 base_vaddr)
         arena_release(node->arena);
         break;
       }
-      cond_var_wait_rw_w(stripe->cv, stripe->rw_mutex, max_U64);
+      if(node)
+      {
+        cond_var_wait_rw_w(stripe->cv, stripe->rw_mutex, max_U64);
+      }
+      else
+      {
+        break;
+      }
     }
   }
   
@@ -5626,7 +5660,7 @@ d_data_from_process_vaddr_range(Arena *arena, D_Handle process, Rng1U64 vaddr_ra
 //- rjf: process memory artifact cache
 
 internal AC_Artifact
-d_memory_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *gen_out)
+d_memory_artifact_create(String8 key, B32 *cancel_signal, AC_Status *status_out, U64 *gen_out)
 {
   AC_Artifact artifact = {0};
   {
@@ -5768,7 +5802,7 @@ d_memory_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *g
     //- rjf: retry on mem gen "tearing", and if the range is non-empty
     if(pre_read_mem_gen != post_read_mem_gen && range_size != 0)
     {
-      retry_out[0] = 1;
+      status_out[0] = AC_Status_NeedRetry;
     }
     
     //- rjf: bundle content key as artifact
@@ -5981,7 +6015,7 @@ d_process_memory_read(D_Handle process, Rng1U64 range, B32 *is_stale_out, void *
 //~ rjf: TLS Address Artifact Cache Hooks / Lookups
 
 internal AC_Artifact
-d_tls_vaddr_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *gen_out)
+d_tls_vaddr_artifact_create(String8 key, B32 *cancel_signal, AC_Status *status_out, U64 *gen_out)
 {
   // rjf: unpack key
   D_Handle thread = {0};
@@ -6008,18 +6042,13 @@ d_tls_vaddr_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64
   // rjf: if not successful -> retry
   if(!success)
   {
-    retry_out[0] = 1;
+    status_out[0] = AC_Status_NeedRetry;
   }
   
   // rjf: package as artifact
   AC_Artifact artifact = {0};
   artifact.u64[0] = tls_vaddr;
   return artifact;
-}
-
-internal void d_tls_vaddr_artifact_destroy(AC_Artifact artifact)
-{
-  // NOTE(rjf): no-op
 }
 
 internal U64
@@ -6029,7 +6058,7 @@ d_cached_tls_vaddr_from_thread_module(D_Handle thread_handle, D_Handle module_ha
   Access *access = access_open();
   D_Handle key_data[] = {thread_handle, module_handle};
   String8 key = str8((U8 *)&key_data[0], sizeof(key_data));
-  AC_Artifact artifact = ac_artifact_from_key(access, key, d_tls_vaddr_artifact_create, d_tls_vaddr_artifact_destroy, endt_us, .stale_out = stale_out);
+  AC_Artifact artifact = ac_artifact_from_key(access, key, d_tls_vaddr_artifact_create, 0, endt_us, .stale_out = stale_out);
   result = artifact.u64[0];
   access_close(access);
   return result;
@@ -6039,7 +6068,7 @@ d_cached_tls_vaddr_from_thread_module(D_Handle thread_handle, D_Handle module_ha
 //~ rjf: Call Stack Artifact Cache Hooks / Lookups
 
 internal AC_Artifact
-d_call_stack_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *gen_out)
+d_call_stack_artifact_create(String8 key, B32 *cancel_signal, AC_Status *status_out, U64 *gen_out)
 {
   AC_Artifact artifact = {0};
   {
@@ -6168,14 +6197,19 @@ d_call_stack_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U6
         pre_reg_gen = d_reg_gen();
         pre_mem_gen = d_mem_gen();
         unwind = d_unwind_from_thread(arena, thread_handle, now_time_us()+100);
-        if(!(unwind.flags & D_UnwindFlag_Stale))
+        if(unwind.flags & D_UnwindFlag_Stale)
         {
-          good = 1;
-          call_stack[0] = d_call_stack_from_unwind(arena, process, &unwind);
+          retry = 1;
+        }
+        else if(unwind.flags & D_UnwindFlag_Error)
+        {
+          good = 0;
+          retry = 0;
         }
         else
         {
-          retry = 1;
+          good = 1;
+          call_stack[0] = d_call_stack_from_unwind(arena, process, &unwind);
         }
         post_reg_gen = d_reg_gen();
         post_mem_gen = d_mem_gen();
@@ -6204,8 +6238,19 @@ d_call_stack_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U6
       artifact.u64[1] = (U64)call_stack;
     }
     
-    //- rjf: mark retry
-    retry_out[0] = retry;
+    //- rjf: mark status
+    if(retry)
+    {
+      status_out[0] = AC_Status_NeedRetry;
+    }
+    else if(good)
+    {
+      status_out[0] = AC_Status_Good;
+    }
+    else
+    {
+      status_out[0] = AC_Status_Failed;
+    }
     
     scratch_end(scratch);
   }
@@ -6243,7 +6288,7 @@ d_call_stack_from_thread(Access *access, D_Handle thread_handle, B32 high_priori
 //~ rjf: Call Stack Tree Artifact Cache Hooks / Lookups
 
 internal AC_Artifact
-d_call_stack_tree_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *gen_out)
+d_call_stack_tree_artifact_create(String8 key, B32 *cancel_signal, AC_Status *status_out, U64 *gen_out)
 {
   Temp scratch = scratch_begin(0, 0);
   Access *access = access_open();
@@ -6354,7 +6399,7 @@ d_call_stack_tree_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_ou
   //- rjf: retry on stale
   if(stale)
   {
-    retry_out[0] = 1;
+    status_out[0] = AC_Status_NeedRetry;
   }
   
   access_close(access);

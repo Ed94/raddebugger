@@ -1,7 +1,6 @@
 // Copyright (c) Epic Games Tools
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
-#define NO_ASYNC 1
 #define BUILD_CONSOLE_INTERFACE 1
 #define BUILD_TITLE "The RAD Debugger (Command Line Launcher)"
 #include "base/base_inc.h"

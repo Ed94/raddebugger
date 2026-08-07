@@ -68,6 +68,15 @@
 ////////////////////////////////
 //~ rjf: post-0.9.27 TODO notes
 //
+// [ ] beginning usage UI notes (cakezzz)
+//  [ ] rebinding a hotkey should be much more visually obvious, & add tooltips to '+' button - very ambiguous
+//  [ ] pass over default layouts - remove tabs that are secondary/tertiary features, like pins/locals/etc.
+//  [ ] undo/redo for panel layout changes
+//  [ ] 'are you sure?' step for closing panel
+//  [ ] show breakpoint trails from any location - very confusing if they are off-screen but resolve to a line
+//  [ ] we probably want to just cap the breakpoint 'trailing' too? if it's more than like 100 lines away seems dumb...
+//  [ ] after above, show breakpoint resolution status - if it can't resolve anywhere, suggest as much in the UI (? icon or whatever)
+//
 // [ ] debug info loading retry mechanism, in cases where the load failed, but settings/filesystem state changes -
 //     e.g. turn on automatic downloads, already tried to load symbol server cache file that doesn't exist ->
 //     need to retry

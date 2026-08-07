@@ -259,7 +259,7 @@ wm_graphical_message(B32 error, String8 title, String8 message)
 }
 
 internal String8
-wm_graphical_pick_file(Arena *arena, String8 initial_path)
+wm_graphical_pick_file(Arena *arena, String8 title, String8 initial_path)
 {
   return str8_zero();
 }

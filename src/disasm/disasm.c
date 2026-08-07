@@ -146,7 +146,7 @@ struct DASM_Artifact
 };
 
 internal AC_Artifact
-dasm_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *gen_out)
+dasm_artifact_create(String8 key, B32 *cancel_signal, AC_Status *status_out, U64 *gen_out)
 {
   DASM_Artifact *artifact = 0;
   if(lane_idx() == 0)
@@ -338,7 +338,7 @@ dasm_artifact_create(String8 key, B32 *cancel_signal, B32 *retry_out, U64 *gen_o
     //- rjf: if stale, retry
     if(stale)
     {
-      retry_out[0] = 1;
+      status_out[0] = AC_Status_NeedRetry;
     }
     
     //- rjf: mark dependency on data hash
