@@ -1766,7 +1766,7 @@ ev_string_iter_next(Arena *arena, EV_StringIter *it, String8 *out_string)
           }
           else if(e_space_read(ptr_data->value_eval.space, &byte, &range_info, r1u64(ptr_data->value_eval.value.u64, ptr_data->value_eval.value.u64+1)))
           {
-            ptr_data->addr_is_good = !(byte_bad_flags & 1);
+            ptr_data->addr_is_good = (range_info.flags & E_SpaceRangeFlag_Stale) || !(byte_bad_flags & 1);
           }
         }
         if(ptr_data->did_redirect)

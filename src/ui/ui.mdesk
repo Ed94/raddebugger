@@ -58,6 +58,10 @@ UI_StackTable:
   { CornerRadius10                     corner_radius_10              F32                   0                                  }
   { CornerRadius11                     corner_radius_11              F32                   0                                  }
   
+  //- rjf: visual margin
+  { VisualMarginX                      visual_margin_x               F32                   0                                  }
+  { VisualMarginY                      visual_margin_y               F32                   0                                  }
+
   //- rjf: blur size
   { BlurSize                           blur_size                     F32                   0                                  }
   

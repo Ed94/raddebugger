@@ -2,6 +2,43 @@
 // Licensed under the MIT license (https://opensource.org/license/mit/)
 
 ////////////////////////////////
+//~ rjf: remote TODO notes
+//
+// [ ] ui -> ui?
+// [ ] ui (w/ debug info) -> ui (w/out debug info)?
+// [ ] ctrl -> slim server?
+
+////////////////////////////////
+//~ rjf: linux TODO notes
+//
+// post initial alpha:
+// [ ] 0x1b (SIGPROF) - need to ignore by default
+// [ ] line stepping over function epilogue seems to end up just resuming in some cases
+// [ ] function breakpoint resolution racing
+// [ ] conditional breakpoint evaluation bug
+//
+// [ ] windowing
+//  [ ] wayland
+// [ ] support
+//  [ ] .eh_frame unwinding without .eh_frame_hdr
+// [ ] geometry rendering
+//
+// [x] recycling semaphore files - or alt strat?
+// [x] clipboard
+// [x] jai exes - busted call stacks / unwind info / paths?
+// [x] statically linked EXEs - busted unwinding
+// [x] statically linked EXEs, not parsing maps file correctly
+// [x] asan
+// [x] multithreaded stepping - trap hits reported on other threads.
+// [x] .so loading/debugging - missing debug info
+// [x] missing disasm
+// [x] control
+// [x] stale memory - things evaluating to stale values that are definitely not zero
+// [x] thread names
+// [x] rendering
+//  [x] bitmaps
+
+////////////////////////////////
 //~ rjf: evaluation system pass TODO notes
 //
 // The first pass of the debugger's evaluation engine has some significant
@@ -87,12 +124,12 @@
 // [ ] memory_size(...) view for quickly evaluating memory sizes
 // [ ] value coloring view in watch window, so you can quickly scroll & see values outside of a threshold
 //
-// [ ] more things should move to user data, but project-tagged - like
+// [x] more things should move to user data, but project-tagged - like
 //     recent files, watches?, etc.
 //
 // [ ] linux/dwarf fixes
-//  [ ] excessive CPU usage on async threads - barrier impl?
 //  [ ] type views for `MyByte *` example do not match correctly
+//  [x] excessive CPU usage on async threads - barrier impl?
 //
 // [ ] many threads hitting conditional breakpoints -> causes 0x8000003 exception!
 // [ ] string conditional breakpoints -> size != 0 check seems to fail, can test w/ "rd_init" subprogram type gen in d2r2
@@ -376,9 +413,9 @@
 
 //- rjf: [h]
 #include "base/base_inc.h"
-#include "x64/x64.h"
+#include "x64/x64_inc.h"
 #include "win32/win32_inc.h"
-#include "linker/hash_table.h"
+#include "linux/linux_inc.h"
 #include "linker/base_ext/base_bit_array.h"
 #include "artifact_cache/artifact_cache.h"
 #include "rdi/rdi_local.h"
@@ -387,6 +424,8 @@
 #include "minidump/minidump_parse.h"
 #include "mdesk/mdesk.h"
 #include "window_manager/window_manager_inc.h"
+#include "shell/shell_inc.h"
+#include "socket/socket_inc.h"
 #include "http/http_inc.h"
 #include "symbol_server/symbol_server_inc.h"
 #include "config/config_inc.h"
@@ -424,6 +463,7 @@
 #include "disasm/disasm_inc.h"
 #include "stap/stap_parse.h"
 #include "demon/demon_inc.h"
+#include "dbg_server/dbg_server.h"
 #include "eval/eval_inc.h"
 #include "eval2/eval2.h"
 #include "dbg_engine/dbg_engine_inc.h"
@@ -439,7 +479,7 @@
 #include "base/base_inc.c"
 #include "x64/x64.c"
 #include "win32/win32_inc.c"
-#include "linker/hash_table.c"
+#include "linux/linux_inc.c"
 #include "linker/base_ext/base_bit_array.c"
 #include "artifact_cache/artifact_cache.c"
 #include "rdi/rdi_local.c"
@@ -448,6 +488,8 @@
 #include "minidump/minidump_parse.c"
 #include "mdesk/mdesk.c"
 #include "window_manager/window_manager_inc.c"
+#include "shell/shell_inc.c"
+#include "socket/socket_inc.c"
 #include "http/http_inc.c"
 #include "symbol_server/symbol_server_inc.c"
 #include "config/config_inc.c"
@@ -485,6 +527,7 @@
 #include "disasm/disasm_inc.c"
 #include "stap/stap_parse.c"
 #include "demon/demon_inc.c"
+#include "dbg_server/dbg_server.c"
 #include "eval/eval_inc.c"
 #include "eval2/eval2.c"
 #include "dbg_engine/dbg_engine_inc.c"
@@ -507,67 +550,6 @@ typedef enum ExecMode
   ExecMode_Help,
 }
 ExecMode;
-
-typedef struct IPCInfo IPCInfo;
-struct IPCInfo
-{
-  U64 msg_size;
-};
-
-////////////////////////////////
-//~ rjf: Globals
-
-//- rjf: IPC resources
-#define IPC_SHARED_MEMORY_BUFFER_SIZE KB(64)
-StaticAssert(IPC_SHARED_MEMORY_BUFFER_SIZE > sizeof(IPCInfo), ipc_buffer_size_requirement);
-global Semaphore ipc_sender2main_signal_semaphore = {0};
-global Semaphore ipc_sender2main_lock_semaphore = {0};
-global U8 *ipc_sender2main_shared_memory_base = 0;
-global Semaphore ipc_main2sender_signal_semaphore = {0};
-global Semaphore ipc_main2sender_lock_semaphore = {0};
-global U8 *ipc_main2sender_shared_memory_base = 0;
-global U8  ipc_s2m_ring_buffer[KB(64)] = {0};
-global U64 ipc_s2m_ring_write_pos = 0;
-global U64 ipc_s2m_ring_read_pos = 0;
-global Mutex ipc_s2m_ring_mutex = {0};
-global CondVar ipc_s2m_ring_cv = {0};
-
-////////////////////////////////
-//~ rjf: IPC Signaler Thread
-
-internal void
-ipc_signaler_thread__entry_point(void *p)
-{
-  ThreadNameF("rd_ipc_signaler_thread");
-  for(;;)
-  {
-    if(semaphore_take(ipc_sender2main_signal_semaphore, max_U64))
-    {
-      if(semaphore_take(ipc_sender2main_lock_semaphore, max_U64))
-      {
-        IPCInfo *ipc_info = (IPCInfo *)ipc_sender2main_shared_memory_base;
-        String8 msg = str8((U8 *)(ipc_info+1), ipc_info->msg_size);
-        msg.size = Min(msg.size, IPC_SHARED_MEMORY_BUFFER_SIZE - sizeof(IPCInfo));
-        MutexScope(ipc_s2m_ring_mutex) for(;;)
-        {
-          U64 unconsumed_size = ipc_s2m_ring_write_pos - ipc_s2m_ring_read_pos;
-          U64 available_size = (sizeof(ipc_s2m_ring_buffer) - unconsumed_size);
-          if(available_size >= sizeof(U64)+sizeof(msg.size))
-          {
-            ipc_s2m_ring_write_pos += wrapped_write_struct(ipc_s2m_ring_buffer, sizeof(ipc_s2m_ring_buffer), ipc_s2m_ring_write_pos, &msg.size);
-            ipc_s2m_ring_write_pos += wrapped_write(ipc_s2m_ring_buffer, sizeof(ipc_s2m_ring_buffer), ipc_s2m_ring_write_pos, msg.str, msg.size);
-            break;
-          }
-          cond_var_wait(ipc_s2m_ring_cv, ipc_s2m_ring_mutex, max_U64);
-        }
-        cond_var_broadcast(ipc_s2m_ring_cv);
-        wm_send_wakeup_event();
-        ipc_info->msg_size = 0;
-        semaphore_drop(ipc_sender2main_lock_semaphore);
-      }
-    }
-  }
-}
 
 ////////////////////////////////
 //~ rjf: Ctrl -> Main Thread Wakeup Hook
@@ -613,33 +595,40 @@ entry_point(CmdLine *cmd_line)
   U64 jit_pid = 0;
   U64 jit_code = 0;
   U64 jit_addr = 0;
+  U64 ipc_port = 7423;
   {
-    if(cmd_line_has_flag(cmd_line, str8_lit("ipc")))
+    if(cmd_line_has_flag(cmd_line, s("ipc")))
     {
       exec_mode = ExecMode_IPCSender;
     }
-    else if(cmd_line_has_flag(cmd_line, str8_lit("bin")))
+    else if(cmd_line_has_flag(cmd_line, s("bin")))
     {
       exec_mode = ExecMode_BinaryUtility;
     }
-    else if(cmd_line_has_flag(cmd_line, str8_lit("?")) ||
-            cmd_line_has_flag(cmd_line, str8_lit("help")))
+    else if(cmd_line_has_flag(cmd_line, s("?")) ||
+            cmd_line_has_flag(cmd_line, s("help")))
     {
       exec_mode = ExecMode_Help;
     }
-    auto_run = cmd_line_has_flag(cmd_line, str8_lit("auto_run"));
-    auto_step = cmd_line_has_flag(cmd_line, str8_lit("auto_step"));
-    String8 jit_pid_string = cmd_line_string(cmd_line, str8_lit("jit_pid"));
-    String8 jit_code_string = cmd_line_string(cmd_line, str8_lit("jit_code"));
-    String8 jit_addr_string = cmd_line_string(cmd_line, str8_lit("jit_addr"));
+    auto_run = cmd_line_has_flag(cmd_line, s("auto_run"));
+    auto_step = cmd_line_has_flag(cmd_line, s("auto_step"));
+    String8 jit_pid_string = cmd_line_string(cmd_line, s("jit_pid"));
+    String8 jit_code_string = cmd_line_string(cmd_line, s("jit_code"));
+    String8 jit_addr_string = cmd_line_string(cmd_line, s("jit_addr"));
     try_u64_from_str8_c_rules(jit_pid_string, &jit_pid);
     try_u64_from_str8_c_rules(jit_code_string, &jit_code);
     try_u64_from_str8_c_rules(jit_addr_string, &jit_addr);
+    String8 ipc_port_string = cmd_line_string(cmd_line, s("ipc_port"));
+    U64 ipc_port_try = 0;
+    if(try_u64_from_str8_c_rules(ipc_port_string, &ipc_port_try))
+    {
+      ipc_port = ipc_port_try;
+    }
     jit_attach = (jit_addr != 0);
   }
   
   // init log
-  g_logs_folder = cmd_line_string(cmd_line, str8_lit("logs"));
+  g_logs_folder = cmd_line_string(cmd_line, s("logs"));
   if(g_logs_folder.size == 0)
   {
     String8 user_program_logs_data_path = get_process_info()->user_program_logs_data_path;
@@ -648,6 +637,7 @@ entry_point(CmdLine *cmd_line)
   make_directory(g_logs_folder);
   
   //- rjf: dispatch to top-level codepath based on execution mode
+  U32 ipc_packet_magic_start = 0x72726300;
   switch(exec_mode)
   {
     //- rjf: normal execution
@@ -702,73 +692,41 @@ entry_point(CmdLine *cmd_line)
         d_set_wakeup_hook(wakeup_hook_ctrl);
       }
       
-      //- rjf: set up shared resources for ipc to this instance; launch IPC signaler thread
-      {
-        Temp scratch = scratch_begin(0, 0);
-        U32 instance_pid = get_process_info()->pid;
-        
-        // rjf: set up cross-process sender -> main ring buffer
-        String8 ipc_sender2main_shared_memory_name = str8f(scratch.arena, "_raddbg_ipc_sender2main_shared_memory_%i_", instance_pid);
-        String8 ipc_sender2main_signal_semaphore_name = str8f(scratch.arena, "_raddbg_ipc_sender2main_signal_semaphore_%i_", instance_pid);
-        String8 ipc_sender2main_lock_semaphore_name = str8f(scratch.arena, "_raddbg_ipc_sender2main_lock_semaphore_%i_", instance_pid);
-        SharedMemory ipc_sender2main_shared_memory = shared_memory_alloc(IPC_SHARED_MEMORY_BUFFER_SIZE, ipc_sender2main_shared_memory_name);
-        ipc_sender2main_shared_memory_base = (U8 *)shared_memory_view_open(ipc_sender2main_shared_memory, r1u64(0, IPC_SHARED_MEMORY_BUFFER_SIZE));
-        ipc_sender2main_signal_semaphore = semaphore_alloc(0, 1, ipc_sender2main_signal_semaphore_name);
-        ipc_sender2main_lock_semaphore = semaphore_alloc(1, 1, ipc_sender2main_lock_semaphore_name);
-        
-        // rjf: set up cross-process main -> sender ring buffer
-        String8 ipc_main2sender_shared_memory_name = str8f(scratch.arena, "_raddbg_ipc_main2sender_shared_memory_%i_", instance_pid);
-        String8 ipc_main2sender_signal_semaphore_name = str8f(scratch.arena, "_raddbg_ipc_main2sender_signal_semaphore_%i_", instance_pid);
-        String8 ipc_main2sender_lock_semaphore_name = str8f(scratch.arena, "_raddbg_ipc_main2sender_lock_semaphore_%i_", instance_pid);
-        SharedMemory ipc_main2sender_shared_memory = shared_memory_alloc(IPC_SHARED_MEMORY_BUFFER_SIZE, ipc_main2sender_shared_memory_name);
-        ipc_main2sender_shared_memory_base = (U8 *)shared_memory_view_open(ipc_main2sender_shared_memory, r1u64(0, IPC_SHARED_MEMORY_BUFFER_SIZE));
-        ipc_main2sender_signal_semaphore = semaphore_alloc(0, 1, ipc_main2sender_signal_semaphore_name);
-        ipc_main2sender_lock_semaphore = semaphore_alloc(1, 1, ipc_main2sender_lock_semaphore_name);
-        
-        // rjf: set up ipc-receiver -> main thread ring buffer; launch signaler thread
-        ipc_s2m_ring_mutex = mutex_alloc();
-        ipc_s2m_ring_cv = cond_var_alloc();
-        IPCInfo *ipc_info = (IPCInfo *)ipc_sender2main_shared_memory_base;
-        if(ipc_sender2main_shared_memory_base != 0)
-        {
-          MemoryZeroStruct(ipc_info);
-          thread_launch(ipc_signaler_thread__entry_point, 0);
-        }
-        
-        scratch_end(scratch);
-      }
+      //- rjf: set up socket session for IPC
+      SOCK_Session ipc_sock_session = sock_session_open((U16)ipc_port, wakeup_hook_ctrl);
       
       //- rjf: main application loop
       {
         for(B32 quit = 0; !quit;)
         {
-          //- rjf: consume IPC messages, dispatch UI commands
+          //- rjf: receive packets, run as IPC messages
           B32 ipc_command_frame = 0;
+          SOCK_Protocol ipc_protocol = SOCK_Protocol_TCP;
+          SOCK_Endpoint ipc_endpoint = {0};
           {
             Temp scratch = scratch_begin(0, 0);
-            B32 consumed = 0;
-            String8 msg = {0};
-            MutexScope(ipc_s2m_ring_mutex)
+            String8 packet = {0};
+            if(sock_recv(scratch.arena, ipc_sock_session, &ipc_protocol, &ipc_endpoint, &packet, 0))
             {
-              U64 unconsumed_size = ipc_s2m_ring_write_pos - ipc_s2m_ring_read_pos;
-              if(unconsumed_size >= sizeof(U64))
+              // rjf: use header to determine message portion
+              String8 msg = {0};
               {
-                consumed = 1;
-                ipc_command_frame = 1;
-                ipc_s2m_ring_read_pos += wrapped_read_struct(ipc_s2m_ring_buffer, sizeof(ipc_s2m_ring_buffer), ipc_s2m_ring_read_pos, &msg.size);
-                msg.size = Min(msg.size, unconsumed_size);
-                msg.str = push_array(scratch.arena, U8, msg.size);
-                ipc_s2m_ring_read_pos += wrapped_read(ipc_s2m_ring_buffer, sizeof(ipc_s2m_ring_buffer), ipc_s2m_ring_read_pos, msg.str, msg.size);
+                U64 msg_size = 0;
+                U64 header_size = sizeof(ipc_packet_magic_start) + sizeof(U64);
+                if(str8_match(packet, str8_struct(&ipc_packet_magic_start), StringMatchFlag_RightSideSloppy) &&
+                   packet.size >= header_size)
+                {
+                  U64 msg_size_cap = packet.size - header_size;
+                  msg_size = *(U64 *)(packet.str + sizeof(ipc_packet_magic_start));
+                  msg_size = Min(msg_size, msg_size_cap);
+                  msg = str8_substr(packet, r1u64(header_size, header_size+msg_size));
+                }
               }
-            }
-            if(consumed)
-            {
-              cond_var_broadcast(ipc_s2m_ring_cv);
-            }
-            if(msg.size != 0)
-            {
-              log_infof("ipc_msg: \"%S\"", msg);
+              
+              // rjf: split command by ;s
               String8List cmd_parts_of_msg = str8_split(scratch.arena, msg, (U8 *)";", 1, 0);
+              
+              // rjf: pick target window
               RD_WindowState *dst_ws = rd_state->first_window_state;
               for(RD_WindowState *ws = dst_ws; ws != &rd_nil_window_state; ws = ws->order_next)
               {
@@ -778,6 +736,8 @@ entry_point(CmdLine *cmd_line)
                   break;
                 }
               }
+              
+              // rjf: got a window -> send command
               if(dst_ws != &rd_nil_window_state)
               {
                 dst_ws->window_temporarily_focused_ipc = 1;
@@ -795,9 +755,15 @@ entry_point(CmdLine *cmd_line)
                   }
                   for EachNode(n, String8Node, cmd_parts_of_msg.first)
                   {
-                    rd_cmd(RD_CmdKind_RunExternalDriverTextCommand, .string = n->string);
+                    String8 cmd_string = str8_skip_chop_whitespace(n->string);
+                    if(cmd_string.size != 0)
+                    {
+                      rd_cmd(RD_CmdKind_RunExternalDriverTextCommand, .string = cmd_string);
+                    }
                   }
                   rd_request_frame();
+                  ipc_command_frame = 1;
+                  rd_state->ipc_sock_endpoint = ipc_endpoint;
                 }
               }
             }
@@ -828,22 +794,14 @@ entry_point(CmdLine *cmd_line)
             rd_cmd(RD_CmdKind_Attach, .pid = jit_pid);
           }
           
-          //- rjf: gather command outputs & write them
+          //- rjf: gather command outputs & send them back back to sender
           if(ipc_command_frame)
           {
-            if(ipc_main2sender_shared_memory_base != 0 &&
-               semaphore_take(ipc_main2sender_lock_semaphore, now_time_us()+5000000))
-            {
-              IPCInfo *ipc_info = (IPCInfo *)ipc_main2sender_shared_memory_base;
-              U8 *buffer = (U8 *)(ipc_info+1);
-              U64 buffer_max = IPC_SHARED_MEMORY_BUFFER_SIZE - sizeof(IPCInfo);
-              StringJoin join = {str8_lit(""), str8_lit("\0"), str8_lit("")};
-              String8 msg = str8_list_join(scratch.arena, &rd_state->cmd_outputs, &join);
-              ipc_info->msg_size = Min(buffer_max, msg.size);
-              MemoryCopy(buffer, msg.str, ipc_info->msg_size);
-              semaphore_drop(ipc_main2sender_signal_semaphore);
-              semaphore_drop(ipc_main2sender_lock_semaphore);
-            }
+            U64 packet_size = rd_state->cmd_outputs.total_size;
+            str8_list_push_front(scratch.arena, &rd_state->cmd_outputs, str8_struct(&packet_size));
+            str8_list_push_front(scratch.arena, &rd_state->cmd_outputs, str8_struct(&ipc_packet_magic_start));
+            String8 msg = str8_list_join(scratch.arena, &rd_state->cmd_outputs, 0);
+            sock_send(ipc_sock_session, ipc_protocol, ipc_endpoint, msg, now_time_us()+5000000);
           }
         }
       }
@@ -855,96 +813,67 @@ entry_point(CmdLine *cmd_line)
     {
       Temp scratch = scratch_begin(0, 0);
       
-      //- rjf: grab explicit PID argument
-      U32 dst_pid = 0;
-      if(cmd_line_has_argument(cmd_line, str8_lit("pid")))
+      //- rjf: create socket session
+      SOCK_Session ipc_sock_session = sock_session_open(0, 0);
+      
+      //- rjf: form target raddbg endpoint address
+      SOCK_Endpoint endpoint = {0};
       {
-        String8 dst_pid_string = cmd_line_string(cmd_line, str8_lit("pid"));
-        U64 dst_pid_u64 = 0;
-        if(dst_pid_string.size != 0 &&
-           try_u64_from_str8_c_rules(dst_pid_string, &dst_pid_u64))
+        endpoint.address_u8[0] = 127;
+        endpoint.address_u8[3] = 1;
+        endpoint.port = (U16)ipc_port;
+        String8 explicit_ipc_addr_arg = cmd_line_string(cmd_line, s("ipc_addr"));
+        if(explicit_ipc_addr_arg.size != 0)
         {
-          dst_pid = (U32)dst_pid_u64;
+          endpoint = sock_endpoint_from_string(explicit_ipc_addr_arg);
         }
       }
       
-      //- rjf: no explicit PID? -> find PID to send message to, by looking for other raddbg instances
-      if(dst_pid == 0)
+      //- rjf: form message from command line inputs
+      String8List parts = {0};
       {
-        U32 this_pid = get_process_info()->pid;
-        DMN_ProcessIter it = {0};
-        dmn_process_iter_begin(&it);
-        for(DMN_ProcessInfo info = {0}; dmn_process_iter_next(scratch.arena, &it, &info);)
+        String8List text_parts = {0};
+        for EachIndex(idx, cmd_line->argc-1)
         {
-          if(str8_match(str8_skip_last_slash(str8_chop_last_dot(cmd_line->exe_name)), str8_skip_last_slash(str8_chop_last_dot(info.name)), StringMatchFlag_CaseInsensitive) &&
-             this_pid != info.pid)
+          String8 arg = str8_cstring(cmd_line->argv[idx+1]);
+          if(!str8_match(arg, s("--ipc"), 0) && !str8_match(arg, s("-ipc"), 0))
           {
-            dst_pid = info.pid;
-            break;
+            str8_list_push(scratch.arena, &text_parts, arg);
           }
         }
-        dmn_process_iter_end(&it);
+        StringJoin join = {.sep = s(" ")};
+        String8 text = str8_list_join(scratch.arena, &text_parts, &join);
+        U64 msg_size = text.size;
+        str8_list_push(scratch.arena, &parts, str8_struct(&ipc_packet_magic_start));
+        str8_list_push(scratch.arena, &parts, str8_struct(&msg_size));
+        str8_list_push(scratch.arena, &parts, text);
       }
+      String8 msg = str8_list_join(scratch.arena, &parts, 0);
       
-      //- rjf: grab destination instance's shared memory resources
-      String8 ipc_sender2main_shared_memory_name = push_str8f(scratch.arena, "_raddbg_ipc_sender2main_shared_memory_%i_", dst_pid);
-      String8 ipc_sender2main_signal_semaphore_name = push_str8f(scratch.arena, "_raddbg_ipc_sender2main_signal_semaphore_%i_", dst_pid);
-      String8 ipc_sender2main_lock_semaphore_name = push_str8f(scratch.arena, "_raddbg_ipc_sender2main_lock_semaphore_%i_", dst_pid);
-      SharedMemory ipc_sender2main_shared_memory = shared_memory_alloc(IPC_SHARED_MEMORY_BUFFER_SIZE, ipc_sender2main_shared_memory_name);
-      ipc_sender2main_shared_memory_base = (U8 *)shared_memory_view_open(ipc_sender2main_shared_memory, r1u64(0, IPC_SHARED_MEMORY_BUFFER_SIZE));
-      ipc_sender2main_signal_semaphore = semaphore_alloc(0, 1, ipc_sender2main_signal_semaphore_name);
-      ipc_sender2main_lock_semaphore = semaphore_alloc(1, 1, ipc_sender2main_lock_semaphore_name);
-      String8 ipc_main2sender_shared_memory_name = push_str8f(scratch.arena, "_raddbg_ipc_main2sender_shared_memory_%i_", dst_pid);
-      String8 ipc_main2sender_signal_semaphore_name = push_str8f(scratch.arena, "_raddbg_ipc_main2sender_signal_semaphore_%i_", dst_pid);
-      String8 ipc_main2sender_lock_semaphore_name = push_str8f(scratch.arena, "_raddbg_ipc_main2sender_lock_semaphore_%i_", dst_pid);
-      SharedMemory ipc_main2sender_shared_memory = shared_memory_alloc(IPC_SHARED_MEMORY_BUFFER_SIZE, ipc_main2sender_shared_memory_name);
-      ipc_main2sender_shared_memory_base = (U8 *)shared_memory_view_open(ipc_main2sender_shared_memory, r1u64(0, IPC_SHARED_MEMORY_BUFFER_SIZE));
-      ipc_main2sender_signal_semaphore = semaphore_alloc(0, 1, ipc_main2sender_signal_semaphore_name);
-      ipc_main2sender_lock_semaphore = semaphore_alloc(1, 1, ipc_main2sender_lock_semaphore_name);
-      
-      //- rjf: got resources -> write message
-      B32 wrote_message = 0;
-      if(dst_pid != 0 &&
-         ipc_sender2main_shared_memory_base != 0 &&
-         semaphore_take(ipc_sender2main_lock_semaphore, max_U64))
-      {
-        wrote_message = 1;
-        IPCInfo *ipc_info = (IPCInfo *)ipc_sender2main_shared_memory_base;
-        U8 *buffer = (U8 *)(ipc_info+1);
-        U64 buffer_max = IPC_SHARED_MEMORY_BUFFER_SIZE - sizeof(IPCInfo);
-        String8List parts = {0};
-        {
-          for EachIndex(idx, cmd_line->argc-1)
-          {
-            str8_list_push(scratch.arena, &parts, str8_cstring(cmd_line->argv[idx+1]));
-          }
-        }
-        StringJoin join = {str8_lit(""), str8_lit(" "), str8_lit("")};
-        String8 msg = str8_list_join(scratch.arena, &parts, &join);
-        ipc_info->msg_size = Min(buffer_max, msg.size);
-        MemoryCopy(buffer, msg.str, ipc_info->msg_size);
-        semaphore_drop(ipc_sender2main_signal_semaphore);
-        semaphore_drop(ipc_sender2main_lock_semaphore);
-      }
-      
-      //- rjf: wrote message -> wait for outputs, read outputs
+      //- rjf: send to server, get outputs
       String8List outputs = {0};
-      if(wrote_message &&
-         ipc_main2sender_shared_memory_base != 0 &&
-         semaphore_take(ipc_main2sender_signal_semaphore, now_time_us()+10000000))
+      if(sock_send(ipc_sock_session, SOCK_Protocol_TCP, endpoint, msg, now_time_us()+10000000))
       {
-        if(semaphore_take(ipc_main2sender_lock_semaphore, max_U64))
+        SOCK_Protocol outputs_protocol = SOCK_Protocol_TCP;
+        SOCK_Endpoint outputs_endpoint = {0};
+        String8 packet = {0};
+        if(sock_recv(scratch.arena, ipc_sock_session, &outputs_protocol, &outputs_endpoint, &packet, now_time_us()+10000000) &&
+           str8_match(packet, str8_struct(&ipc_packet_magic_start), StringMatchFlag_RightSideSloppy) &&
+           packet.size >= sizeof(ipc_packet_magic_start) + sizeof(U64))
         {
-          IPCInfo *ipc_info = (IPCInfo *)ipc_main2sender_shared_memory_base;
-          String8 msg = str8((U8 *)(ipc_info+1), ipc_info->msg_size);
-          msg.size = Min(msg.size, IPC_SHARED_MEMORY_BUFFER_SIZE - sizeof(IPCInfo));
+          U64 msg_size = *(U64 *)(packet.str + sizeof(ipc_packet_magic_start));
+          String8 msg = str8_skip(packet, sizeof(ipc_packet_magic_start) + sizeof(U64));
+          msg.size = Min(msg.size, msg_size);
           U8 split_char = 0;
           outputs = str8_split(scratch.arena, msg, &split_char, 1, 0);
-          semaphore_drop(ipc_main2sender_lock_semaphore);
         }
       }
       
       //- rjf: write outputs to stdout
+      if(outputs.node_count == 0)
+      {
+        fprintf(stdout, "(response received, no output)\n");
+      }
       for(String8Node *n = outputs.first; n != 0; n = n->next)
       {
         fwrite(n->string.str, 1, n->string.size, stdout);
@@ -964,26 +893,26 @@ entry_point(CmdLine *cmd_line)
     //- rjf: help message box
     case ExecMode_Help:
     {
-      wm_graphical_message(0,
-                           str8_lit("The RAD Debugger - Help"),
-                           str8_lit("The following options may be used when starting the RAD Debugger from the command line:\n\n"
-                                    "--user:<path>\n"
-                                    "Use to specify the location of a user file which should be used. User files are used to store settings for users, including window and panel setups, path mapping, and visual settings. If this file does not exist, it will be created as necessary. This file will be autosaved as user-related changes are made.\n\n"
-                                    "--project:<path>\n"
-                                    "Use to specify the location of a project file which should be used. Project files are used to store settings for users and projects. If this file does not exist, it will be created as necessary. This file will be autosaved as project-related changes are made.\n\n"
-                                    "--auto_step\n"
-                                    "This will step into all active targets after the debugger initially starts.\n\n"
-                                    "--auto_run\n"
-                                    "This will run all active targets after the debugger initially starts.\n\n"
-                                    "--quit_after_success (or -q)\n"
-                                    "This will close the debugger automatically after all processes exit, if they all exited successfully (with code 0), and ran with no interruptions.\n\n"
-                                    "--ipc <command>\n"
-                                    "This will launch the debugger in the non-graphical IPC mode, which is used to communicate with another running instance of the debugger. The debugger instance will launch, send the specified command, then immediately terminate. This may be used by editors or other programs to control the debugger.\n\n"
-                                    "--gen_crash_dump\n"
-                                    "Generate mini dump on crash.\n\n"
-                                    "--logs:<path>\n"
-                                    "Overrides default path to the folder with logs.\n"
-                                    ));
+      sh_message(0,
+                 s("The RAD Debugger - Help"),
+                 s("The following options may be used when starting the RAD Debugger from the command line:\n\n"
+                   "--user:<path>\n"
+                   "Use to specify the location of a user file which should be used. User files are used to store settings for users, including window and panel setups, path mapping, and visual settings. If this file does not exist, it will be created as necessary. This file will be autosaved as user-related changes are made.\n\n"
+                   "--project:<path>\n"
+                   "Use to specify the location of a project file which should be used. Project files are used to store settings for users and projects. If this file does not exist, it will be created as necessary. This file will be autosaved as project-related changes are made.\n\n"
+                   "--auto_step\n"
+                   "This will step into all active targets after the debugger initially starts.\n\n"
+                   "--auto_run\n"
+                   "This will run all active targets after the debugger initially starts.\n\n"
+                   "--quit_after_success (or -q)\n"
+                   "This will close the debugger automatically after all processes exit, if they all exited successfully (with code 0), and ran with no interruptions.\n\n"
+                   "--ipc <command>\n"
+                   "This will launch the debugger in the non-graphical IPC mode, which is used to communicate with another running instance of the debugger. The debugger instance will launch, send the specified command, then immediately terminate. This may be used by editors or other programs to control the debugger.\n\n"
+                   "--gen_crash_dump\n"
+                   "Generate mini dump on crash.\n\n"
+                   "--logs:<path>\n"
+                   "Overrides default path to the folder with logs.\n"
+                   ));
     }break;
   }
   

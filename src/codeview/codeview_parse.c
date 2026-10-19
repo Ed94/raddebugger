@@ -291,7 +291,9 @@ cv_c13_inline_site_decoder_step(CV_C13InlineSiteDecoder *decoder, String8 binary
       } break;
       case CV_InlineBinaryAnnotation_CodeOffset: {
         decoder->cursor += cv_decode_inline_annot_u32(binary_annots, decoder->cursor, &decoder->code_offset);
-        decoder->code_offset_changed = 1;
+        decoder->code_offset_lo         = decoder->code_offset;
+        decoder->code_offset_lo_changed = 1;
+        decoder->code_offset_changed    = 1;
       } break;
       case CV_InlineBinaryAnnotation_ChangeCodeOffsetBase: {
         AssertAlways(!"TODO: test case");
@@ -948,6 +950,7 @@ cv_get_leaf_type_index_offsets(Arena *arena, CV_LeafKind leaf_kind, String8 data
     case CV_LeafKind_NESTTYPEEX: {
       cv_symbol_type_index_info_push(arena, &list, CV_TypeIndexSource_TPI, OffsetOf(CV_LeafNestTypeEx, itype));
     } break;
+    case CV_LeafKind_ENDPRECOMP: {} break;
     default: {
       NotImplemented;
     } break;

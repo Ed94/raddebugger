@@ -8,44 +8,6 @@ stap_is_scale_valid(U64 scale)
 }
 
 internal U64
-stap_parse_digit(U8 *begin, U8 *end, U64 *digit_out)
-{
-  U8 *ptr = begin;
-  if (ptr < end && *ptr == '-') {
-    ptr += 1;
-  }
-  for (;ptr < end; ptr += 1) {
-    if (!char_is_digit(*ptr, 10)) { break; }
-  }
-  String8 digit_str = str8(begin, (U64)(ptr - begin));
-  if (digit_out) {
-    *digit_out = u64_from_str8(digit_str, 10);
-  }
-  return digit_str.size;
-}
-
-internal U64
-stap_skip_whitespace(U8 *begin, U8 *end)
-{
-  U8 *ptr = begin;
-  for (; ptr < end && *ptr == ' '; ptr += 1);
-  U64 size = (U64)(ptr - begin);
-  return size;
-}
-
-internal U64
-stap_parse_ident(U8 *begin, U8 *end, String8 *ident_out)
-{
-  U8 *ptr = begin;
-  for (; ptr < end; ptr += 1) {
-    if (!char_is_alpha(*ptr) && !char_is_digit(*ptr, 10)) { break; }
-  }
-  String8 ident = str8(begin, (U64)(ptr - begin));
-  if (ident_out) { *ident_out = ident; }
-  return ident.size;
-}
-
-internal U64
 stap_size_from_arg(String8 string)
 {
   U64 tag_sep      = str8_find_needle(string, 0, str8_lit("@"), 0);
@@ -235,7 +197,7 @@ stap_parse_args_x64(String8 string, STAP_Arg *arg_out)
       }
       
       // fill out memory ref portion
-      arg.type                      = STAP_ArgType_MemoryRef;
+      arg.kind                      = STAP_ArgKind_MemoryRef;
       arg.memory_ref.disp           = disp;
       arg.memory_ref.base.reg_code  = base_reg_code;
       arg.memory_ref.index.reg_code = index_reg_code;
@@ -274,7 +236,7 @@ stap_parse_args_x64(String8 string, STAP_Arg *arg_out)
         goto operand_parse_exit;
       }
       
-      arg.type = STAP_ArgType_Imm;
+      arg.kind = STAP_ArgKind_Imm;
       arg.imm  = imm;
     }
     // %reg
@@ -291,7 +253,7 @@ stap_parse_args_x64(String8 string, STAP_Arg *arg_out)
         goto operand_parse_exit;
       }
       
-      arg.type         = STAP_ArgType_Reg;
+      arg.kind         = STAP_ArgKind_Reg;
       arg.reg.reg_code = reg_code;
     } else {
       goto operand_parse_exit;
@@ -353,21 +315,21 @@ stap_read_arg(STAP_Arg         arg,
   AssertAlways(arg.value_size <= 8);
   ARCH_Info *arch_info = arch_info_from_arch(arch);
   B32 is_value_read = 0;
-  switch(arg.type)
+  switch(arg.kind)
   {
     default:{}break;
-    case STAP_ArgType_Null:{}break;
-    case STAP_ArgType_Imm:
+    case STAP_ArgKind_Null:{}break;
+    case STAP_ArgKind_Imm:
     {
       MemoryCopy(raw_value, &arg.imm, arg.value_size);
       is_value_read = 1;
     }break;
-    case STAP_ArgType_Reg:
+    case STAP_ArgKind_Reg:
     if(0 < arg.reg.reg_code && arg.reg.reg_code < arch_info->reg_code_count)
     {
       is_value_read = arch_reg_block_read_range(arch_info, reg_block, arch_info->reg_code_rng_table[arg.reg.reg_code], raw_value);
     }break;
-    case STAP_ArgType_MemoryRef:
+    case STAP_ArgKind_MemoryRef:
     {
       U64 base = 0;
       if(0 < arg.memory_ref.base.reg_code && arg.memory_ref.base.reg_code < arch_info->reg_code_count)

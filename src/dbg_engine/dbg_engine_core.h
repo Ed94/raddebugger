@@ -5,10 +5,24 @@
 #define DBG_ENGINE_CORE_H
 
 ////////////////////////////////
+//~ rjf: @eval2 Evaluation Bundle
+
+typedef struct D_Eval D_Eval;
+struct D_Eval
+{
+  String8 string;
+  E2_Expr *expr;
+  E2_IRNode *irtree;
+  String8 bytecode;
+  E2_Val val;
+  E2_MsgList msgs;
+};
+
+////////////////////////////////
 //~ rjf: ID Types
 
 typedef U64 D_MsgID;
-typedef U32 D_MachineID;
+typedef U32 D_ServerID;
 typedef U32 D_ControllerKind;
 typedef enum D_ControllerKindEnum
 {
@@ -17,7 +31,7 @@ typedef enum D_ControllerKindEnum
 }
 D_ControllerKindEnum;
 
-#define D_MachineID_Local (1)
+#define D_ServerID_LocalHost (1)
 
 ////////////////////////////////
 //~ rjf: Entity Handle Types
@@ -25,7 +39,7 @@ D_ControllerKindEnum;
 typedef struct D_Handle D_Handle;
 struct D_Handle
 {
-  D_MachineID machine_id;
+  D_ServerID server_id;
   D_ControllerKind controller_kind;
   U64 entity_id;
 };
@@ -63,9 +77,10 @@ struct D_HandleArray
 typedef U32 D_BreakpointFlags;
 enum
 {
-  D_BreakpointFlag_BreakOnWrite   = (1<<0),
-  D_BreakpointFlag_BreakOnRead    = (1<<1),
-  D_BreakpointFlag_BreakOnExecute = (1<<2),
+  D_BreakpointFlag_BreakOnWrite            = (1<<0),
+  D_BreakpointFlag_BreakOnRead             = (1<<1),
+  D_BreakpointFlag_BreakOnExecute          = (1<<2),
+  D_BreakpointFlag_BreakSelectedThreadOnly = (1<<3),
 };
 
 typedef struct D_Breakpoint D_Breakpoint;
@@ -236,8 +251,10 @@ struct D_Target
   String8 stdout_path;
   String8 stderr_path;
   String8 stdin_path;
+  String8 remote_address;
   D_MsgID msg_id;
   B32 debug_subprocesses;
+  B32 deploy;
   String8List env;
 };
 
@@ -317,6 +334,11 @@ struct D_TrapNet
   B32 good_line_info;
   B32 good_read;
 };
+
+////////////////////////////////
+//~ rjf: @eval2 Bundled Evaluation Path
+
+internal D_Eval d_eval_from_string(Arena *arena, String8 string);
 
 ////////////////////////////////
 //~ rjf: Layer Initialization

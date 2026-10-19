@@ -42,15 +42,15 @@ wm_string_from_event_kind(WM_EventKind kind)
     case WM_EventKind_Null:
     case WM_EventKind_COUNT:
     {}break;
-    case WM_EventKind_Press:                {result = str8_lit("Press");}break;
-    case WM_EventKind_Release:              {result = str8_lit("Release");}break;
-    case WM_EventKind_MouseMove:            {result = str8_lit("MouseMove");}break;
-    case WM_EventKind_Text:                 {result = str8_lit("Text");}break;
-    case WM_EventKind_Scroll:               {result = str8_lit("Scroll");}break;
-    case WM_EventKind_WindowLoseFocus:      {result = str8_lit("WindowLoseFocus");}break;
-    case WM_EventKind_WindowClose:          {result = str8_lit("WindowClose");}break;
-    case WM_EventKind_FileDrop:             {result = str8_lit("FileDrop");}break;
-    case WM_EventKind_Wakeup:               {result = str8_lit("Wakeup");}break;
+    case WM_EventKind_Press:                {result = s("Press");}break;
+    case WM_EventKind_Release:              {result = s("Release");}break;
+    case WM_EventKind_MouseMove:            {result = s("MouseMove");}break;
+    case WM_EventKind_Text:                 {result = s("Text");}break;
+    case WM_EventKind_Scroll:               {result = s("Scroll");}break;
+    case WM_EventKind_WindowLoseFocus:      {result = s("WindowLoseFocus");}break;
+    case WM_EventKind_WindowClose:          {result = s("WindowClose");}break;
+    case WM_EventKind_FileDrop:             {result = s("FileDrop");}break;
+    case WM_EventKind_Wakeup:               {result = s("Wakeup");}break;
   }
   return result;
 }

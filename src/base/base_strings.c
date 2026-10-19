@@ -196,7 +196,7 @@ str32_zero(void)
 }
 
 internal String8
-str8_cstring(char *c)
+str8_cstring(const char *c)
 {
   String8 result = {(U8*)c, cstring8_length((U8*)c)};
   return result;
@@ -1856,7 +1856,7 @@ path_absolute_dst_from_relative_dst_src(Arena *arena, String8 dst, String8 src)
   if(dst.size != 0 && dst_style == PathStyle_Relative)
   {
     Temp scratch = scratch_begin(&arena, 1);
-    String8 dst_from_src_absolute = push_str8f(scratch.arena, "%S/%S", src, dst);
+    String8 dst_from_src_absolute = str8f(scratch.arena, "%S/%S", src, dst);
     String8List dst_from_src_absolute_parts = str8_split_path(scratch.arena, dst_from_src_absolute);
     PathStyle dst_from_src_absolute_style = path_style_from_str8(src);
     str8_path_list_resolve_dots_in_place(&dst_from_src_absolute_parts, dst_from_src_absolute_style);
@@ -2487,7 +2487,7 @@ try_guid_from_string(String8 string, Guid *guid_out)
         guid_out->data1 = (U32)data1;
         guid_out->data2 = (U16)data2;
         guid_out->data3 = (U16)data3;
-        U64 data4 = (data4_hi << 48) | data4_lo;
+        U64 data4 = from_be_u64((data4_hi << 48) | data4_lo);
         MemoryCopy(&guid_out->data4[0], &data4, sizeof(data4));
         is_parsed = 1;
       }
@@ -3076,38 +3076,38 @@ str8_deserial_read_sleb128(String8 string, U64 off, S64 *value_out)
 
 ////////////////////////////////
 
-force_inline int
+internal force_inline int
 str8_compar(String8 a, String8 b, B32 ignore_case)
 {
   U64 size = Min(a.size, b.size);
   int cmp = ignore_case ? MemCompareI(a.str, b.str, size) : MemCompare(a.str, b.str, size);
-
+  
   // normalize compar result
   cmp = cmp > 0 ? 1 : cmp < 0 ? -1 : 0;
-
+  
   // shorter prefix must precede longer prefixes
   if (cmp == 0)
   {
     cmp = a.size < b.size ? -1 :
-          a.size > b.size ? +1 : 0;
+    a.size > b.size ? +1 : 0;
   }
   
   return cmp;
 }
 
-force_inline int
+internal force_inline int
 str8_compar_ignore_case(const void *a, const void *b)
 {
   return str8_compar(*(String8*)a, *(String8*)b, 1);
 }
 
-force_inline int
+internal force_inline int
 str8_compar_case_sensitive(const void *a, const void *b)
 {
   return str8_compar(*(String8*)a, *(String8*)b, 0);
 }
 
-force_inline int
+internal force_inline int
 str8_is_before_case_sensitive(const void *a, const void *b)
 {
   int cmp = str8_compar_case_sensitive(a, b);

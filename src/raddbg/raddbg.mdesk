@@ -36,7 +36,7 @@ RD_WatchTabFastPathTable:
   {DebugInfos      "Debug Info"        debug_infos       1                 Module                "Displays, and allows editing of, the list of all debug info files that the debugger has loaded."}
   {Threads         "Threads"           threads           1                 Threads               "Displays the list of all threads in all processes to which the debugger is attached."}
   {Processes       "Processes"         processes         1                 Scheduler             "Displays the list of all processes to which the debugger is attached."}
-  {Machines        "Machines"          machines          1                 Machine               "Displays the list of all machines to which the debugger is connected."}
+  {Servers         "Servers"           servers           1                 Machine               "Displays the list of all servers to which the debugger is connected."}
   {Modules         "Modules"           modules           1                 Module                "Displays the list of all modules in all processes to which the debugger is attached."}
   {FilePathMaps    "File Path Map"     file_path_maps    1                 FileOutline           "Displays, and allows editing of, the list of all file path maps. This allows remapping source code paths referenced by debug information to other paths on your local machine."}
   {TypeViews       "Type Views"        type_views        1                 Binoculars            "Displays, and allows editing of, the list of all type views, which allow automatically adjusting the visualizations for evaluations of a certain type."}
@@ -147,6 +147,7 @@ RD_VocabTable:
   {process              processes                   "Process"                   "Processes"           Scheduler                                      }
   {processes            ""                          "Processes"                 ""                    Scheduler                                      }
   {machine              _                           "Machine"                   _                     Machine                                        }
+  {server               _                           "Server"                    _                     Machine                                        }
   {module               _                           "Module"                    _                     Module                                         }
   {getting_started      ""                          "Getting Started"           ""                    QuestionMark                                   }
   {disasm               ""                          "Disassembly"               ""                    Glasses                                        }
@@ -245,10 +246,14 @@ RD_VocabTable:
         @expand_if("$.animations") @default(1) 'menu_animations': bool,
       
       //- rjf: fonts
-      @display_name('UI Font') @description("The name of, or path to, the font used when displaying non-code UI elements.")
+      @display_name('Use Alternative Font For UI') @description("Uses an alternative font for non-code UI elements.")
+        @default(1) 'use_alternative_font_for_ui': bool,
+      @expand_if("$.use_alternative_font_for_ui") @display_name('UI Font') @description("The name of, or path to, the font used when displaying non-code UI elements.")
         @default('') 'main_font': string,
-      @display_name('Code Font') @description("The name of, or path to, the font used when displaying code.")
+      @expand_if("$.use_alternative_font_for_ui") @display_name('Code Font') @description("The name of, or path to, the font used when displaying code.")
         @default('') 'code_font': string,
+      @expand_if("!$.use_alternative_font_for_ui") @display_name('Font') @description("The name of, or path to, the font used in all UI.")
+        @default('') 'font': string,
       
       //- rjf: theme
       @default("Default (Dark)") @display_name('User Theme')
@@ -274,7 +279,7 @@ RD_VocabTable:
         'cursor_scope_end_annotations': bool,
       
       //- rjf: cursor decorations
-      @default(1) @display_name('Cursor Trail') @description("Controls whether or not a movement trail of the cursor is drawn.")
+      @default(1) @display_name('Cursor Trail') @expand_if("$.animations") @description("Controls whether or not a movement trail animation of the cursor is drawn.")
         'cursor_trail': bool,
       
       //- rjf: thread & breakpoint decorations
@@ -322,9 +327,16 @@ RD_VocabTable:
       @default(0) @display_name('Auto Download Debug Info') @description("Automatically tries to download missing debug info from symbol server(s).")
         'auto_download_debug_info': bool,
       
+      //- rjf: breakpoint behavior
+      @default(0) @display_name('Lock New Breakpoints To Selected Thread') @description("When placing breakpoints, locks them to the selected thread by default.")
+        'lock_new_breakpoints_to_selected_thread': bool,
+      
       //- rjf: update check
       @default(1) @display_name('Check For Updates') @description("Enables a small network request to check if there is a newer release version available.")
         'check_for_updates': bool,
+      
+      //- rjf: system installation
+      @display_name('Install To System') @description("Controls whether or not associated installation files are created on the system, for tighter integration with the operating system shell.") 'install_to_system': bool,
     }
     ```
   }
@@ -357,81 +369,145 @@ RD_VocabTable:
       @no_expand @display_name('Project Theme') @description("The project's theme, which describes all colors used throughout the UI, and can override the user's theme.")
         'theme_colors': set,
       
-      //- rjf: exception settings
-      @default(1) @display_name("Break On Win32 Control-C Exceptions") @description("Code: 0x40010005")
+      //- rjf: win32 exception settings
+      @default(1) @display_name("Break on Win32 Control-C Exceptions") @description("Code: 0x40010005")
         win32_ctrl_c: bool;
-      @default(1) @display_name("Break On Win32 Control-Break Exceptions") @description("Code: 0x40010008")
+      @default(1) @display_name("Break on Win32 Control-Break Exceptions") @description("Code: 0x40010008")
         win32_ctrl_break: bool;
-      @default(0) @display_name("Break On Win32 WinRT Originate Error Exceptions") @description("Code: 0x40080201")
+      @default(0) @display_name("Break on Win32 WinRT Originate Error Exceptions") @description("Code: 0x40080201")
         win32_win_rt_originate_error: bool;
-      @default(0) @display_name("Break On Win32 WinRT Transform Error Exceptions") @description("Code: 0x40080202")
+      @default(0) @display_name("Break on Win32 WinRT Transform Error Exceptions") @description("Code: 0x40080202")
         win32_win_rt_transform_error: bool;
-      @default(0) @display_name("Break On Win32 RPC Call Cancelled Exceptions") @description("Code: 0x0000071a")
+      @default(0) @display_name("Break on Win32 RPC Call Cancelled Exceptions") @description("Code: 0x0000071a")
         win32_rpc_call_cancelled: bool;
-      @default(0) @display_name("Break On Win32 Data Type Misalignment Exceptions") @description("Code: 0x80000002")
+      @default(0) @display_name("Break on Win32 Data Type Misalignment Exceptions") @description("Code: 0x80000002")
         win32_datatype_misalignment: bool;
-      @default(1) @display_name("Break On Win32 Access Violation Exceptions") @description("Code: 0xc0000005")
+      @default(1) @display_name("Break on Win32 Access Violation Exceptions") @description("Code: 0xc0000005")
         win32_access_violation: bool;
-      @default(0) @display_name("Break On Win32 In Page Error Exceptions") @description("Code: 0xc0000006")
+      @default(0) @display_name("Break on Win32 In Page Error Exceptions") @description("Code: 0xc0000006")
         win32_in_page_error: bool;
-      @default(1) @display_name("Break On Win32 Invalid Handle Specified Exceptions") @description("Code: 0xc0000008")
+      @default(1) @display_name("Break on Win32 Invalid Handle Specified Exceptions") @description("Code: 0xc0000008")
         win32_invalid_handle: bool;
-      @default(0) @display_name("Break On Win32 Not Enough Quota Exceptions") @description("Code: 0xc0000017")
+      @default(0) @display_name("Break on Win32 Not Enough Quota Exceptions") @description("Code: 0xc0000017")
         win32_not_enough_quota: bool;
-      @default(0) @display_name("Break On Win32 Illegal Instruction Exceptions") @description("Code: 0xc000001d")
+      @default(0) @display_name("Break on Win32 Illegal Instruction Exceptions") @description("Code: 0xc000001d")
         win32_illegal_instruction: bool;
-      @default(0) @display_name("Break On Win32 Cannot Continue From Exception Exceptions") @description("Code: 0xc0000025")
+      @default(0) @display_name("Break on Win32 Cannot Continue From Exception Exceptions") @description("Code: 0xc0000025")
         win32_cannot_continue_exception: bool;
-      @default(0) @display_name("Break On Win32 Invalid Exception Disposition Returned By Handler Exceptions") @description("Code: 0xc0000026")
+      @default(0) @display_name("Break on Win32 Invalid Exception Disposition Returned By Handler Exceptions") @description("Code: 0xc0000026")
         win32_invalid_exception_disposition: bool;
-      @default(0) @display_name("Break On Win32 Array Bounds Exceeded Exceptions") @description("Code: 0xc000008c")
+      @default(0) @display_name("Break on Win32 Array Bounds Exceeded Exceptions") @description("Code: 0xc000008c")
         win32_array_bounds_exceeded: bool;
-      @default(0) @display_name("Break On Win32 Floating-Point Denormal Operand Exceptions") @description("Code: 0xc000008d")
+      @default(0) @display_name("Break on Win32 Floating-Point Denormal Operand Exceptions") @description("Code: 0xc000008d")
         win32_floating_point_denormal_operand: bool;
-      @default(0) @display_name("Break On Win32 Floating-Point Division By Zero Exceptions") @description("Code: 0xc000008e")
+      @default(0) @display_name("Break on Win32 Floating-Point Division By Zero Exceptions") @description("Code: 0xc000008e")
         win32_floating_point_division_by_zero: bool;
-      @default(0) @display_name("Break On Win32 Floating-Point Inexact Result Exceptions") @description("Code: 0xc000008f")
+      @default(0) @display_name("Break on Win32 Floating-Point Inexact Result Exceptions") @description("Code: 0xc000008f")
         win32_floating_point_inexact_result: bool;
-      @default(0) @display_name("Break On Win32 Floating-Point Invalid Operation Exceptions") @description("Code: 0xc0000090")
+      @default(0) @display_name("Break on Win32 Floating-Point Invalid Operation Exceptions") @description("Code: 0xc0000090")
         win32_floating_point_invalid_operation: bool;
-      @default(0) @display_name("Break On Win32 Floating-Point Overflow Exceptions") @description("Code: 0xc0000091")
+      @default(0) @display_name("Break on Win32 Floating-Point Overflow Exceptions") @description("Code: 0xc0000091")
         win32_floating_point_overflow: bool;
-      @default(0) @display_name("Break On Win32 Floating-Point Stack Check Exceptions") @description("Code: 0xc0000092")
+      @default(0) @display_name("Break on Win32 Floating-Point Stack Check Exceptions") @description("Code: 0xc0000092")
         win32_floating_point_stack_check: bool;
-      @default(0) @display_name("Break On Win32 Floating-Point Underflow Exceptions") @description("Code: 0xc0000093")
+      @default(0) @display_name("Break on Win32 Floating-Point Underflow Exceptions") @description("Code: 0xc0000093")
         win32_floating_point_underflow: bool;
-      @default(0) @display_name("Break On Win32 Integer Division By Zero Exceptions") @description("Code: 0xc0000094")
+      @default(0) @display_name("Break on Win32 Integer Division By Zero Exceptions") @description("Code: 0xc0000094")
         win32_integer_division_by_zero: bool;
-      @default(0) @display_name("Break On Win32 Integer Overflow Exceptions") @description("Code: 0xc0000095")
+      @default(0) @display_name("Break on Win32 Integer Overflow Exceptions") @description("Code: 0xc0000095")
         win32_integer_overflow: bool;
-      @default(0) @display_name("Break On Win32 Privileged Instruction Exceptions") @description("Code: 0xc0000096")
+      @default(0) @display_name("Break on Win32 Privileged Instruction Exceptions") @description("Code: 0xc0000096")
         win32_privileged_instruction: bool;
-      @default(0) @display_name("Break On Win32 Stack Overflow Exceptions") @description("Code: 0xc00000fd")
+      @default(0) @display_name("Break on Win32 Stack Overflow Exceptions") @description("Code: 0xc00000fd")
         win32_stack_overflow: bool;
-      @default(0) @display_name("Break On Win32 Unable To Locate DLL Exceptions") @description("Code: 0xc0000135")
+      @default(0) @display_name("Break on Win32 Unable To Locate DLL Exceptions") @description("Code: 0xc0000135")
         win32_unable_to_locate_dll: bool;
-      @default(0) @display_name("Break On Win32 Ordinal Not Found Exceptions") @description("Code: 0xc0000138")
+      @default(0) @display_name("Break on Win32 Ordinal Not Found Exceptions") @description("Code: 0xc0000138")
         win32_ordinal_not_found: bool;
-      @default(0) @display_name("Break On Win32 Entry Point Not Found Exceptions") @description("Code: 0xc0000139")
+      @default(0) @display_name("Break on Win32 Entry Point Not Found Exceptions") @description("Code: 0xc0000139")
         win32_entry_point_not_found: bool;
-      @default(0) @display_name("Break On Win32 DLL Initialization Failed Exceptions") @description("Code: 0xc0000142")
+      @default(0) @display_name("Break on Win32 DLL Initialization Failed Exceptions") @description("Code: 0xc0000142")
         win32_dll_initialization_failed: bool;
-      @default(0) @display_name("Break On Win32 Floating Point SSE Multiple Faults Exceptions") @description("Code: 0xc00002b4")
+      @default(0) @display_name("Break on Win32 Floating Point SSE Multiple Faults Exceptions") @description("Code: 0xc00002b4")
         win32_floating_point_sse_multiple_faults: bool;
-      @default(0) @display_name("Break On Win32 Floating Point SSE Multiple Traps Exceptions") @description("Code: 0xc00002b5")
+      @default(0) @display_name("Break on Win32 Floating Point SSE Multiple Traps Exceptions") @description("Code: 0xc00002b5")
         win32_floating_point_sse_multiple_traps: bool;
-      @default(1) @display_name("Break On Win32 Assertion Failed Exceptions") @description("Code: 0xc0000420")
+      @default(1) @display_name("Break on Win32 Assertion Failed Exceptions") @description("Code: 0xc0000420")
         win32_assertion_failed: bool;
-      @default(0) @display_name("Break On Win32 Module Not Found Exceptions") @description("Code: 0xc06d007e")
+      @default(0) @display_name("Break on Win32 Module Not Found Exceptions") @description("Code: 0xc06d007e")
         win32_module_not_found: bool;
-      @default(0) @display_name("Break On Win32 Procedure Not Found Exceptions") @description("Code: 0xc06d007f")
+      @default(0) @display_name("Break on Win32 Procedure Not Found Exceptions") @description("Code: 0xc06d007f")
         win32_procedure_not_found: bool;
-      @default(1) @display_name("Break On Win32 Sanitizer Error Detected Exceptions") @description("Code: 0xe073616e")
+      @default(1) @display_name("Break on Win32 Sanitizer Error Detected Exceptions") @description("Code: 0xe073616e")
         win32_sanitizer_error_detected: bool;
-      @default(0) @display_name("Break On Win32 Sanitizer Raw Access Violation Exceptions") @description("Code: 0xe0736171")
+      @default(0) @display_name("Break on Win32 Sanitizer Raw Access Violation Exceptions") @description("Code: 0xe0736171")
         win32_sanitizer_raw_access_violation: bool;
-      @default(1) @display_name("Break On Win32 DirectX Debug Layer Exceptions") @description("Code: 0x0000087a")
+      @default(1) @display_name("Break on Win32 DirectX Debug Layer Exceptions") @description("Code: 0x0000087a")
         win32_directx_debug_layer: bool;
+      
+      //- rjf: linux exception settings
+      @display_name("Break on Linux SIGHUP") @default(1) @description("Hangup detected on controlling terminal or death of controlling process (Code: 1)")
+        linux_sighup: bool,
+      @display_name("Break on Linux SIGINT") @default(1) @description("Interrupt from keyboard (Code: 2)")
+        linux_sigint: bool,
+      @display_name("Break on Linux SIGQUIT") @default(1) @description("Quit from keyboard (Code: 3)")
+        linux_sigquit: bool,
+      @display_name("Break on Linux SIGILL") @default(1) @description("Illegal Instruction (Code: 4)")
+        linux_sigill: bool,
+      @display_name("Break on Linux SIGTRAP") @default(1) @description("Trace/breakpoint trap (Code: 5)")
+        linux_sigtrap: bool,
+      @display_name("Break on Linux SIGABRT") @default(1) @description("Abort signal (Code: 6)")
+        linux_sigabrt: bool,
+      @display_name("Break on Linux SIGBUS") @default(1) @description("Bus error (bad address) (Code: 7)")
+        linux_sigbus: bool,
+      @display_name("Break on Linux SIGFPE") @default(1) @description("Erroneous arithmetic operation (Code: 8)")
+        linux_sigfpe: bool,
+      @display_name("Break on Linux SIGKILL") @default(1) @description("Kill signal (Code: 9)")
+        linux_sigkill: bool,
+      @display_name("Break on Linux SIGUSR1") @default(1) @description("User-defined signal 1 (Code: 10)")
+        linux_sigusr1: bool,
+      @display_name("Break on Linux SIGSEGV") @default(1) @description("Invalid memory reference (Code: 11)")
+        linux_sigsegv: bool,
+      @display_name("Break on Linux SIGUSR2") @default(1) @description("User-defined signal 2 (Code: 12)")
+        linux_sigusr2: bool,
+      @display_name("Break on Linux SIGPIPE") @default(0) @description("Broken pipe; write to pipe with no readers (Code: 13)")
+        linux_sigpipe: bool,
+      @display_name("Break on Linux SIGALRM") @default(0) @description("Timer signal (Code: 14)")
+        linux_sigalrm: bool,
+      @display_name("Break on Linux SIGTERM") @default(1) @description("Termination signal (Code: 15)")
+        linux_sigterm: bool,
+      @display_name("Break on Linux SIGSTKFLT") @default(1) @description("Stack fault on coprocessor (Code: 16)")
+        linux_sigstkflt: bool,
+      @display_name("Break on Linux SIGCHLD") @default(0) @description("Child stopped, terminated, or continued (Code: 17)")
+        linux_sigchld: bool,
+      @display_name("Break on Linux SIGCONT") @default(0) @description("Continue if stopped (Code: 18)")
+        linux_sigcont: bool,
+      @display_name("Break on Linux SIGSTOP") @default(1) @description("Stop process (Code: 19)")
+        linux_sigstop: bool,
+      @display_name("Break on Linux SIGTSTP") @default(1) @description("Stop typed at terminal (Code: 20)")
+        linux_sigtstp: bool,
+      @display_name("Break on Linux SIGTTIN") @default(1) @description("Terminal input for background process (Code: 21)")
+        linux_sigttin: bool,
+      @display_name("Break on Linux SIGTTOU") @default(1) @description("Terminal output for background process (Code: 22)")
+        linux_sigttou: bool,
+      @display_name("Break on Linux SIGURG") @default(0) @description("Urgent condition on socket (Code: 23)")
+        linux_sigurg: bool,
+      @display_name("Break on Linux SIGXCPU") @default(1) @description("CPU time limit exceeded (Code: 24)")
+        linux_sigxcpu: bool,
+      @display_name("Break on Linux SIGXFSZ") @default(1) @description("File size limit exceeded (Code: 25)")
+        linux_sigxfsz: bool,
+      @display_name("Break on Linux SIGVTALRM") @default(0) @description("Virtual alarm clock (Code: 26)")
+        linux_sigvtalrm: bool,
+      @display_name("Break on Linux SIGPROF") @default(0) @description("Profiling timer expired (Code: 27)")
+        linux_sigprof: bool,
+      @display_name("Break on Linux SIGWINCH") @default(0) @description("Window resize signal (Code: 28)")
+        linux_sigwinch: bool,
+      @display_name("Break on Linux SIGIO") @default(0) @description("I/O now possible (Code: 29)")
+        linux_sigio: bool,
+      @display_name("Break on Linux SIGPWR") @default(1) @description("Power failure (Code: 30)")
+        linux_sigpwr: bool,
+      @display_name("Break on Linux SIGSYS") @default(1) @description("Bad system call (Code: 31)")
+        linux_sigsys: bool,
     }
     ```
   }
@@ -719,14 +795,20 @@ RD_VocabTable:
       'label':              code_string,
       'executable':         path,
       'arguments':          string,
-      'working_directory':  path,
+      'working_directory':  @folder path,
       'entry_point':        expr_string,
       @default("output") 'output_label': code_string,
-      'stdout_path':        @no_relativize path,
-      'stderr_path':        @no_relativize path,
-      'stdin_path':         @no_relativize path,
+      'stdout_path':        @can_not_exist @no_relativize path,
+      'stderr_path':        @can_not_exist @no_relativize path,
+      'stdin_path':         @can_not_exist @no_relativize path,
       'environment':        set,
       'debug_subprocesses': bool,
+      @display_name('Remote')
+        'remote': bool,
+      @expand_if("$.remote") @display_name('Deploy')
+        'deploy': bool,
+      @expand_if("$.remote") @display_name('Address')
+        'address': string,
       @no_revert @no_expand @default(0) 'enabled': bool,
     }
     ```,
@@ -749,6 +831,7 @@ RD_VocabTable:
       'break_on_write':   bool,
       'break_on_read':    bool,
       'break_on_execute': bool,
+      @display_name("Break Selected Thread Only") 'break_selected_thread_only': bool,
       @no_revert @no_expand @default(1) 'enabled': bool,
     }
     ```,
@@ -802,9 +885,9 @@ RD_VocabTable:
     ```x:{'path':path, 'name':string}```,
   }
   
-  //- rjf: @schema machine
+  //- rjf: @schema server
   {
-    machine, 0,
+    server, 0,
     ```x:{'label':code_string, @no_expand 'active':bool, 'unattached_processes':set, 'processes':set}```,
   }
   
@@ -846,7 +929,7 @@ RD_VocabTable:
 RD_RegTable:
 {
   // rjf: ctrl entities
-  {D_Handle          machine                          Machine                                 }
+  {D_Handle          server                           Server                                  }
   {D_Handle          module                           Module                                  }
   {D_Handle          process                          Process                                 }
   {D_Handle          thread                           Thread                                  }
@@ -909,6 +992,8 @@ RD_RegTable:
   {B32               activate_with_single_click       ActivateWithSingleClick                 }
   {B32               disable_addresses                DisableAddresses                        }
   {B32               small_size                       SmallSize                               }
+  {B32               auto_unwind                      AutoUnwind                              }
+  {B32               create_new                       CreateNew                               }
   {Dir2              dir2                             Dir2                                    }
   {String8           string                           String                                  }
   {String8           cmd_name                         CmdName                                 }
@@ -968,6 +1053,8 @@ RD_CmdTable:    //               |   |        |              |                  
   {State                          0   0        1              ""                                               Null               0  0  0  0  0  0  0                                                                  Null                  "state"                                                     "State"                                       ""                                                                                                                 ""                               ""                                                                                                                                      }
   {Eval                           0   0        1              ""                                               Expr               0  0  0  0  0  0  0                                                                  Null                  "eval"                                                      "Eval"                                        ""                                                                                                                 ""                               ""                                                                                                                                      }
   {LineFromVAddr                  0   0        1              ""                                               Vaddr              0  0  0  0  0  0  0                                                                  Null                  "line_from_vaddr"                                           "Line From Virtual Address"                   ""                                                                                                                 ""                               ""                                                                                                                                      }
+  {HideUI                         0   0        1              ""                                               Null               0  0  0  0  0  0  0                                                                  Null                  "hide_ui"                                                   "Hide UI"                                     ""                                                                                                                 ""                               ""                                                                                                                                      }
+  {ShowUI                         0   0        1              ""                                               Null               0  0  0  0  0  0  0                                                                  Null                  "show_ui"                                                   "Show UI"                                     ""                                                                                                                 ""                               ""                                                                                                                                      }
   
   //- rjf: os event passthrough
   {WMEvent                        0   0        0              ""                                               Null               0  0  0  0  0  0  0                                                                  Null                  "wm_event"                                                  "OS Event"                                    ""                                                                                                                 ""                               ""                                                                                                                                      }
@@ -1002,8 +1089,6 @@ RD_CmdTable:    //               |   |        |              |                  
   
   //- rjf: panel splitting
   {ResetToDefaultPanels           0   1        1              ""                                               Null               0  0  0  0  0  0  0                                                                  Window                "reset_to_default_panels"                                   "Reset To Default Panel Layout"               "Resets the window to the default panel layout."                                                                   "panel"                          ""                                                                                                                                      }
-  {ResetToCompactPanels           0   1        1              ""                                               Null               0  0  0  0  0  0  0                                                                  Window                "reset_to_compact_panels"                                   "Reset To Compact Panel Layout"               "Resets the window to the compact panel layout."                                                                   "panel"                          ""                                                                                                                                      }
-  {ResetToSimplePanels            0   1        1              ""                                               Null               0  0  0  0  0  0  0                                                                  Window                "reset_to_simple_panels"                                    "Reset To Simple Panel Layout"                "Resets the window to the simple panel layout."                                                                    "panel"                          ""                                                                                                                                      }
   {NewPanelLeft                   0   1        1              ""                                               Null               0  0  0  0  0  0  0                                                                  XSplit                "new_panel_left"                                            "Split Panel Left"                            "Creates a new panel to the left of the active panel."                                                             "panel"                          ""                                                                                                                                      }
   {NewPanelUp                     0   1        1              ""                                               Null               0  0  0  0  0  0  0                                                                  YSplit                "new_panel_up"                                              "Split Panel Up"                              "Creates a new panel at the top of the active panel."                                                              "panel"                          ""                                                                                                                                      }
   {NewPanelRight                  0   1        1              ""                                               Null               0  0  0  0  0  0  0                                                                  XSplit                "new_panel_right"                                           "Split Panel Right"                           "Creates a new panel to the right of the active panel."                                                            "panel"                          ""                                                                                                                                      }
@@ -1016,11 +1101,17 @@ RD_CmdTable:    //               |   |        |              |                  
   //- rjf: focused panel changing
   {NextPanel                      0   1        1              ""                                               Null               0  0  0  0  0  0  0                                                                  RightArrow            "next_panel"                                                "Focus Next Panel"                            "Cycles the active panel forward."                                                                                 ""                               ""                                                                                                                                      }
   {PrevPanel                      0   1        1              ""                                               Null               0  0  0  0  0  0  0                                                                  LeftArrow             "prev_panel"                                                "Focus Previous Panel"                        "Cycles the active panel backwards."                                                                               ""                               ""                                                                                                                                      }
+  {ParentPanel                    0   1        1              ""                                               Null               0  0  0  0  0  0  0                                                                  Null                  "parent_panel"                                              "Focus Parent Panel"                          "Focuses the parent of the currently selected panel."                                                              ""                               ""                                                                                                                                      }
   {FocusPanel                     0   0        0              ""                                               Null               0  0  0  0  0  0  0                                                                  Null                  "focus_panel"                                               "Focus Panel"                                 "Focuses a new panel."                                                                                             ""                               ""                                                                                                                                      }
   {FocusPanelRight                0   1        1              ""                                               Null               0  0  0  0  0  0  0                                                                  RightArrow            "focus_panel_right"                                         "Focus Panel Right"                           "Focuses a panel rightward of the currently focused panel."                                                        ""                               ""                                                                                                                                      }
   {FocusPanelLeft                 0   1        1              ""                                               Null               0  0  0  0  0  0  0                                                                  LeftArrow             "focus_panel_left"                                          "Focus Panel Left"                            "Focuses a panel leftward of the currently focused panel."                                                         ""                               ""                                                                                                                                      }
   {FocusPanelUp                   0   1        1              ""                                               Null               0  0  0  0  0  0  0                                                                  UpArrow               "focus_panel_up"                                            "Focus Panel Up"                              "Focuses a panel upward of the currently focused panel."                                                           ""                               ""                                                                                                                                      }
   {FocusPanelDown                 0   1        1              ""                                               Null               0  0  0  0  0  0  0                                                                  DownArrow             "focus_panel_down"                                          "Focus Panel Down"                            "Focuses a panel downward of the currently focused panel."                                                         ""                               ""                                                                                                                                      }
+  
+  //- rjf: panel zooming
+  {ZoomPanel                      0   1        1              ""                                               Null               0  0  0  0  0  0  0                                                                  Window                "zoom_panel"                                                "Zoom Panel"                                  "Zooms a panel, making it occupy the entire window."                                                               ""                               ""                                                                                                                                      }
+  {UnzoomPanel                    0   1        1              ""                                               Null               0  0  0  0  0  0  0                                                                  Window                "unzoom_panel"                                              "Unzoom Panel"                                "Unzooms the currently zoomed panel."                                                                              ""                               ""                                                                                                                                      }
+  {ToggleZoomPanel                0   1        1              ""                                               Null               0  0  0  0  0  0  0                                                                  Window                "toggle_zoom_panel"                                         "Toggle Panel Zoom"                           "Zooms a panel, making it occupy the entire window, or unzooms it, if already zoomed."                             ""                               ""                                                                                                                                      }
   
   //- rjf: undo/redo
   {Undo                           0   0        0              ""                                               Null               0  0  0  0  0  0  0                                                                  Undo                  "undo"                                                      "Undo"                                        "Undoes the previous action."                                                                                      ""                               ""                                                                                                                                      }
@@ -1039,7 +1130,7 @@ RD_CmdTable:    //               |   |        |              |                  
   {PrevTab                        0   1        1              ""                                               Null               0  0  0  0  0  0  0                                                                  LeftArrow             "prev_tab"                                                  "Focus Previous Tab"                          "Focuses the previous tab on the active panel."                                                                    ""                               ""                                                                                                                                      }
   {MoveTabRight                   0   1        1              ""                                               Null               0  0  0  0  0  0  0                                                                  RightArrow            "move_tab_right"                                            "Move Tab Right"                              "Moves the selected tab right one slot."                                                                           ""                               ""                                                                                                                                      }
   {MoveTabLeft                    0   1        1              ""                                               Null               0  0  0  0  0  0  0                                                                  LeftArrow             "move_tab_left"                                             "Move Tab Left"                               "Moves the selected tab left one slot."                                                                            ""                               ""                                                                                                                                      }
-  {OpenTab                        0   1        1              "query:tab_commands"                             CmdName            0  0  0  0  0  1  1                                                                  Null                  "open_tab"                                                  "Open New Tab"                                "Opens a new tab."                                                                                                 ""                               ""                                                                                                                                      }
+  {OpenTab                        0   1        0              ""                                               Null               0  0  0  0  0  0  0                                                                  Null                  "open_tab"                                                  "Open New Tab"                                "Opens a new tab."                                                                                                 ""                               ""                                                                                                                                      }
   {BuildTab                       0   0        0              ""                                               Null               0  0  0  0  0  0  0                                                                  Null                  "build_tab"                                                 "Build Tab"                                   "Opens a new tab with the parameterized view specification."                                                       ""                               ""                                                                                                                                      }
   {DuplicateTab                   0   1        1              ""                                               Tab                0  0  0  0  0  0  0                                                                  Duplicate             "duplicate_tab"                                             "Duplicate Tab"                               "Duplicates a tab."                                                                                                ""                               ""                                                                                                                                      }
   {CopyTabFullPath                0   0        0              ""                                               Tab                0  0  0  0  0  0  0                                                                  Clipboard             "copy_tab_full_path"                                        "Copy Full Path"                              "Copies the full path of the file being viewed by this tab."                                                       ""                               ""                                                                                                                                      }
@@ -1052,7 +1143,7 @@ RD_CmdTable:    //               |   |        |              |                  
   //- rjf: files
   {SetCurrentPath                 0   0        1              ""                                               Null               0  0  0  0  0  0  0                                                                  FileOutline           "set_current_path"                                          "Set Current Path"                            "Sets the debugger's current path, which is used as a starting point when browsing for files."                     ""                               ""                                                                                                                                      }
   {Open                           0   1        1              `folder:\\"$input\\"`                            FilePath           1  0  0  0  0  1  1                                                                  FileOutline           "open"                                                      "Open"                                        "Opens a file."                                                                                                    "code,source,file"               ""                                                                                                                                      }
-  {OpenSourceFileFromDebugInfo    0   1        0              "query:source_files"                             Cfg                0  0  0  0  0  1  1                                                                  FileOutline           "open_source_file_from_debug_info"                          "Open Source File From Debug Info"            "Opens a source file found within loaded debug info."                                                              "code,source,file"               "{tab_commands}"                                                                                                                        }
+  {OpenSourceFileFromDebugInfo    0   1        0              "query:source_files"                             Cfg                0  0  0  0  0  1  1                                                                  FileOutline           "open_source_file_from_debug_info"                          "Open Source File From Debug Info"            "Opens a source file found within loaded debug info."                                                              "code,source,file"               ""                                                                                                                                      }
   {SwitchToPartnerFile            0   1        1              ""                                               Null               0  0  0  0  0  0  0                                                                  FileOutline           "switch_to_partner_file"                                    "Switch To Partner File"                      "Switches to the focused file's partner; or from header to implementation or vice versa."                          "code,source,file"               ""                                                                                                                                      }
   {ShowFileInExplorer             0   1        1              ""                                               Null               0  0  0  0  0  0  0                                                                  FolderClosedFilled    "show_file_in_explorer"                                     "Show File In Explorer"                       "Opens the operating system's file explorer and shows the selected file."                                          ""                               ""                                                                                                                                      }
   
@@ -1231,14 +1322,14 @@ RD_CmdTable:    //               |   |        |              |                  
   {SearchBackwards                0   1        1              ""                                               String             0  0  1  1  1  0  1                                                                  Find                  "search_backwards"                                          "Search Backwards"                            "Begins searching backwards within the active interface."                                                          "sort,search,filter,find"        ""                                                                                                                                      }
   
   //- rjf: queries
-  {PickFile                       0   0        0              `folder:\\"$input\\"`                            FilePath           1  0  0  0  0  1  1                                                                  FileOutline           "pick_file"                                                 "Pick File"                                   "Opens the file browser to pick a file."                                                                           ""                               ""                                                                                                                                      }
-  {PickFolder                     0   0        0              `folder:\\"$input\\"`                            FilePath           0  1  0  0  0  1  1                                                                  FolderOpenFilled      "pick_folder"                                               "Pick Folder"                                 "Opens the file browser to pick a folder."                                                                         ""                               ""                                                                                                                                      }
-  {PickFileOrFolder               0   0        0              `folder:\\"$input\\"`                            FilePath           1  1  0  0  0  1  1                                                                  FileOutline           "pick_file_or_folder"                                       "Pick File/Folder"                            "Opens the file browser to pick a file or folder."                                                                 ""                               ""                                                                                                                                      }
+  {PickFileReplacement            0   0        0              `folder:\\"$input\\"`                            FilePath           1  0  0  0  0  1  1                                                                  FileOutline           "pick_file_replacement"                                     "Pick File Replacement"                       "Opens the file browser to pick a file replacement for a missing source file."                                     ""                               ""                                                                                                                                      }
+  {PickFilePath                   0   1        0              `folder:\\"$input\\"`                            FilePath           1  0  0  0  0  1  1                                                                  FileOutline           "pick_file_path"                                            "Pick File Path"                              "Opens the file browser to pick a file, then inserts that file's path as text."                                    ""                               ""                                                                                                                                      }
   
   //- rjf: query stack
   {PushQuery                      0   0        0              ""                                               Null               0  0  0  0  0  0  0                                                                  Null                  "push_query"                                                "Push Query"                                  "Opens a new temporary query interface."                                                                           ""                               ""                                                                                                                                      }
   {CompleteQuery                  0   0        0              ""                                               Null               0  0  0  0  0  0  0                                                                  Null                  "complete_query"                                            "Complete Query"                              "Completes and closes a query."                                                                                    ""                               ""                                                                                                                                      }
   {CancelQuery                    0   0        0              ""                                               Null               0  0  0  0  0  0  0                                                                  Null                  "cancel_query"                                              "Cancel Query"                                "Closes a query."                                                                                                  ""                               ""                                                                                                                                      }
+  {CancelAllQueries               0   0        0              ""                                               Null               0  0  0  0  0  0  0                                                                  Null                  "cancel_all_queries"                                        "Cancel All Queries"                          "Closes all queries."                                                                                                  ""                               ""                                                                                                                                      }
   {UpdateQuery                    0   0        0              ""                                               Null               0  0  0  0  0  0  0                                                                  Null                  "update_query"                                              "Update Query"                                "Updates a query input."                                                                                           ""                               ""                                                                                                                                      }
   
   //- rjf: event buffers
@@ -1612,7 +1703,7 @@ RD_ThemePresetTable:
       theme_color:{tags: "good text", value: 0x32a852ff}
       theme_color:{tags: "neutral text", value: 0x3a90bbff}
       theme_color:{tags: "bad text", value: 0xcf5242ff}
-      theme_color:{tags: hover, value: 0xabdeffff}
+      theme_color:{tags: hover, value: 0xffffffff}
       theme_color:{tags: "focus overlay", value: 0x2292eb14}
       theme_color:{tags: "focus border", value: 0x2392ebff}
       theme_color:{tags: cursor, value: 0x8aff00ff}

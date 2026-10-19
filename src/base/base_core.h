@@ -21,6 +21,7 @@
 #define STB_SPRINTF_DECORATE(name) raddbg_##name
 #define STB_SPRINTF_STATIC
 #include "third_party/stb/stb_sprintf.h"
+#include "third_party/radsort/radsort.h"
 
 ////////////////////////////////
 //~ rjf: Codebase Keywords
@@ -54,7 +55,7 @@
 #if COMPILER_MSVC
 # define force_inline __forceinline
 #elif COMPILER_CLANG || COMPILER_GCC
-# define force_inline __attribute__((always_inline))
+# define force_inline inline __attribute__((always_inline))
 #else
 # error force_inline not defined for this compiler.
 #endif
@@ -199,7 +200,7 @@
 #define EachNonZeroEnumVal(type, it) (type it = (type)1; it < type##_COUNT; it = (type)(it+1))
 #define EachInRange(it, range) (U64 it = (range).min; it < (range).max; it += 1)
 #define EachNode(it, T, first) (T *it = first; it != 0; it = it->next)
-#define EachBit(it, flags) (U64 (_i_) = (flags), it = (flags) & -(flags); (_i_) != 0; (_i_) &= ((_i_) - 1), it = (flags) & -(flags))
+#define EachBit(it, flags) (U64 (_i_) = (flags), it = (_i_) & -(_i_); (_i_) != 0; (_i_) &= ((_i_) - 1), it = (_i_) & -(_i_))
 
 ////////////////////////////////
 //~ rjf: Memory Operation Macros
@@ -241,8 +242,8 @@
 #else
 # define Assert(x) (void)(x)
 #endif
-#define InvalidPath        Assert(!"Invalid Path!")
-#define NotImplemented     Assert(!"Not Implemented!")
+#define InvalidPath        AssertAlways(!"Invalid Path!")
+#define NotImplemented     AssertAlways(!"Not Implemented!")
 #define NoOp               ((void)0)
 #define StaticAssert(C, ID) global U8 Glue(ID, __LINE__)[(C)?1:-1]
 
@@ -695,6 +696,7 @@ enum
   AccessFlag_ShareRead   = (1<<4),
   AccessFlag_ShareWrite  = (1<<5),
   AccessFlag_Inherited   = (1<<6),
+  AccessFlag_CreateNew   = (1<<7), // fail if file already exists; never truncates
 };
 
 ////////////////////////////////
@@ -1120,10 +1122,6 @@ internal U64 wrapped_read(U8 *ring_base, U64 ring_size, U64 ring_pos, void *dst_
 //~ rjf: Sorts
 
 #define quick_sort(ptr, count, element_size, cmp_function) qsort((ptr), (count), (element_size), (int (*)(const void *, const void *))(cmp_function))
-
-////////////////////////////////
-
-internal U64 u64_array_bsearch(U64 *arr, U64 count, U64 value);
 
 ////////////////////////////////
 

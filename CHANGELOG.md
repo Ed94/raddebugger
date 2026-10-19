@@ -1,11 +1,102 @@
+# v0.9.29-alpha
+
+## Debugger Changes
+- **The debugger now has preliminary support for native Linux x64 debugging.**
+  It's still *very early*, and there is surely a lot to fix, so please expect a
+  less stable experience than on Windows! But it is now finally in a state that
+  we feel it'd be helpful for people to try it, so that we can begin
+  battle-testing the debugger on Linux also. Here are a list of known issues
+  and caveats:
+  - We are not releasing any binaries for Linux yet, so we've provided
+    instructions for locally building the debugger in the codebase's
+    `README.md`.
+  - We do not support debugging of code which uses `fork` and `vfork` yet.
+  - When computing locations of thread-local storage, we currently assume that
+    the debuggee uses the same libc version as the debugger.
+  - We do not currently correctly unwind when the `.eh_frame_hdr` section is
+    missing. This is normally there by default, but this may explain some
+    broken callstacks you encounter. It can be enabled by passing the
+    `--eh-frame-hdr` flag to the linker, if it's not enabled by default.
+  - Bitfield type info is not yet supported correctly.
+  - In some cases, our type deduplication (when converting from DWARF to RDI)
+    is not working correctly. (#959)
+  - Sometimes, a keyboard combination will incorrectly send text events. (#954)
+- The debugger now has preliminary support for loading Minidump (`.dmp`) files.
+  They can be opened with the `Open Crash Dump` command.
+- Added a breakpoint setting which causes breakpoints to only break if they're
+  hit by the currently selected thread, if there is a selected thread. If there
+  isn't a selected thread yet, all threads will still cause a break.
+- Added a setting, `Lock New Breakpoints To Selected Thread`, which turns on
+  the aforementioned breakpoint setting by default on all newly placed
+  breakpoints.
+- Reintroduced `Browse` buttons for cells that edit file paths, which spawn a
+  file picker, to more conveniently choose paths.
+- The debugger now tags watch expressions with the selected project, which
+  means they'll be loaded and unloaded along with projects, similar to targets
+  and breakpoints.
+- Empty spaces in the leftmost margin (where the selected thread position is
+  visualized) in source and disassembly views is now clickable, as a fastpath
+  for `Run To Line`.
+- The position of the destination of a `Run To Line` command is now visualized.
+- The debugger now better visualizes the status of loading debug info in the
+  `Modules` tab.
+- The debugger's IPC system is now built on sockets rather than shared memory
+  ring buffers. This is mostly an implementation detail, but it has introduced
+  some noteworthy changes. First, communication with instances of the graphical
+  debugger is now done through network ports, rather than through process IDs.
+  By default, this port is `7423`, but it can be changed per-instance by
+  passing the `--ipc_port` command line option, e.g. `raddbg --ipc_port=1234`.
+  Furthermore, this also means that IPC commands can be sent over the network.
+  This is unlikely to be especially helpful right now. But to do this, you can
+  pass an IP address and port when sending a command, e.g.:
+  `raddbg --ipc --ipc_addr=123.45.67.89:1234`.
+- The debugger now allows using a single font for the entire interface, if you
+  want the UI elements and code to be drawn in a more uniform style. This is
+  available through the `Use Alternative Font For UI` setting.
+- Fixed a performance issue when computing very large call stacks with many
+  very small frames (fixes missing call stacks in some stack overflow cases).
+  (#963)
+- Fixed `raddbg.com` adding the debugger as a command line target to itself
+  incorrectly. (#946)
+- Fixed many other minor bugs and instabilities.
+
+## Linker Changes
+- Improved memory usage and performance.
+- Fixes.
+
 # v0.9.28-alpha
+
+## Debugger Changes
+- First pass (will only work for simple cases currently) of watch expressions
+  locks, allowing the same address (with the same type) to be evaluated after
+  the expression goes out of scope.
+- Improved disassembly snapping behavior when not viewing disassembly. Now, if
+  you do not have disassembly open, the debugger will prefer snapping to a call
+  stack frame which has line info.	
+- Added some visual and discoverability improvements to the UI.
+- Fixed a crash in the new (as of 0.9.27) unwinder. (#893, #882, #877, #869,
+  #867, #865, #857, #848, #855, #824, #823)
+- Fixed a number of memory leaks, causing out-of-control memory usage in some
+  cases. (#850)
+- Fixed certain cases of location information being incorrectly generated
+  (notably in optimized builds, and functions with large stack usage). (#864)
+- Fixed incorrect session start logic (debug string clearing, breakpoint hit
+  count resets) in multi-process debugging scenarios.
+- Fixed rare issues with call stack computation reliability.
+- Fixed cursor trails not being toggled by the `Animations` setting.
+- Fixed cursor trails being incorrectly rendered when a cursor is first
+  scrolled into view.
+- Fixed line edits embedded in cells (e.g. in the Palette) not correctly
+  clipping and scrolling longer strings. (#873)
+- Fixed behavior of setting the project path when that would overwrite a file
+  which is not a debugger project file. (#875)
 
 ## Linker Changes
 - Implemented `/OPT:ICF` identical COMDAT folding.
 - Added DEF, and SECTION configuration support.
 - Improved COMDAT handling for weak symbols, ICF, and zero-sized COMDAT
-  anchors, and stopped emitting empty marker sections that could produce invalid
-  PE images.
+  anchors, and stopped emitting empty marker sections that could produce
+  invalid PE images.
 - Fixed import/export edge cases, including import data-directory bounds and
   archive member handling for `__imp_*` symbols.
 - Accepted duplicate identical weak search aliases without reporting multiply
@@ -14,6 +105,12 @@
 - Fixed DBI section-contribution image-section range mapping.
 - Improved debug logging for `/OPT:REF` liveness stats and unresolved symbols
   referenced by `.llvm_addrsig`.
+- Improved diagnostics for unresolved symbols: radlink now identifies functions
+  that reference undefined symbols, even if the function was inlined (provided
+  the object file was compiled with debug info)
+- Reduced memory usage for large links.
+- Fixed forwarder export detection when the symbol name contains dots and has
+  no alias.
 
 # v0.9.27-alpha
 

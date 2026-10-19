@@ -352,6 +352,24 @@ pe_string_from_load_config_guard_flags(Arena *arena, PE_LoadConfigGuardFlags fla
 }
 
 internal String8
+pe_string_from_file_characteristics(Arena *arena, PE_ImageFileCharacteristics file_chars)
+{
+  Temp scratch = scratch_begin(&arena, 1);
+  String8List result = {0};
+  for EachBit(i, file_chars) {
+    switch (i) {
+#define X(ID, VAL, DISPLAY_STRING) case (1 << VAL): str8_list_push(scratch.arena, &result, str8_lit(DISPLAY_STRING)); break;
+      PE_ImageFileCharacteristic_XList
+#undef X
+      default: str8_list_pushf(scratch.arena, &result, "%llu", i);
+    }
+  }
+  String8 string = str8_list_join(arena, &result, &(StringJoin){.sep=str8_lit(", ")});
+  scratch_end(scratch);
+  return string;
+}
+
+internal String8
 pe_string_from_dll_characteristics(Arena *arena, PE_DllCharacteristics dll_chars)
 {
   Temp scratch = scratch_begin(&arena, 1);
@@ -609,6 +627,7 @@ pe_bin_info_from_data(Arena *arena, String8 data)
     info.arch                = arch_from_coff_machine(file_header.machine);
     info.image_base          = image_base;
     info.entry_point         = entry_point;
+    info.timestamp           = file_header.time_stamp;
     info.is_pe32             = (optional_magic == PE_PE32_MAGIC);
     info.subsystem           = subsystem;
     info.check_sum           = check_sum;
@@ -631,11 +650,12 @@ pe_bin_info_from_data(Arena *arena, String8 data)
 }
 
 internal PE_DataDirectory *
-pe_data_directory_from_idx(String8 file_data, PE_BinInfo pe, PE_DataDirectoryIndex dir_idx)
+pe_data_directory_from_idx(String8 file_data, PE_BinInfo *pe, PE_DataDirectoryIndex dir_idx)
 {
   PE_DataDirectory *result = 0;
-  if (dir_idx < pe.data_dir_count) {
-    result = str8_deserial_get_raw_ptr(file_data, pe.data_dir_range.min + sizeof(*result)*dir_idx, sizeof(*result));
+  if(dir_idx < pe->data_dir_count)
+  {
+    result = str8_deserial_get_raw_ptr(file_data, pe->data_dir_range.min + sizeof(*result)*dir_idx, sizeof(*result));
   }
   return result;
 }
@@ -670,6 +690,7 @@ pe_debug_info_list_from_raw_debug_dir(Arena *arena, String8 raw_image, String8 r
               str8_deserial_read_cstr(raw_image, entry->foff+sizeof(cv), &path);
               n->v.cv_pdb20_header = cv;
               n->v.path = path;
+              n->v.age = cv.age;
             }
           }break;
           case PE_CODEVIEW_PDB70_MAGIC:
@@ -682,6 +703,8 @@ pe_debug_info_list_from_raw_debug_dir(Arena *arena, String8 raw_image, String8 r
               str8_deserial_read_cstr(raw_image, entry->foff+sizeof(cv), &path);
               n->v.cv_pdb70_header = cv;
               n->v.path = path;
+              n->v.guid = cv.guid;
+              n->v.age = cv.age;
             }
           }break;
           case PE_CODEVIEW_RDI_MAGIC:
@@ -694,6 +717,7 @@ pe_debug_info_list_from_raw_debug_dir(Arena *arena, String8 raw_image, String8 r
               str8_deserial_read_cstr(raw_image, entry->foff+sizeof(cv), &path);
               n->v.cv_rdi_header = cv;
               n->v.path = path;
+              n->v.guid = cv.guid;
             }
           }break;
           default:{}break;
@@ -915,7 +939,7 @@ pe_get_entry_point_names(COFF_MachineType            machine,
 {
   String8Array entry_point_names = {0};
   
-  if (file_characteristics & PE_ImageFileCharacteristic_FILE_DLL) {
+  if (file_characteristics & PE_ImageFileCharacteristic_DLL) {
     if (machine == COFF_MachineType_X86) {
       read_only static String8 dll_entry_point_arr[] = {
         str8_lit_comp("__DllMainCRTStartup@12"),

@@ -8,9 +8,9 @@ local copy has been built. You can find pre-built release binaries
 [here](https://github.com/EpicGames/raddebugger/releases)._
 
 The RAD Debugger is a native, user-mode, multi-process, graphical debugger. It
-currently only supports local-machine Windows x64 debugging with PDBs, with
-plans to expand and port in the future. In the future we'll expand to also
-support native Linux debugging and DWARF debug info.
+currently only supports local-machine x64 debugging on both Windows and Linux
+(although Linux support is still very early). We plan to expand support to
+other architectures, and to implement remote and multi-machine debugging.
 
 The debugger is currently in *ALPHA*. In order to get the debugger
 bullet-proof, it'd greatly help out if you submitted the issues you find
@@ -27,8 +27,7 @@ additional related technologies: **(1)** the RAD Debug Info (RDI) format, and
 The RAD Debug Info (RDI) format is our custom debug information format, which
 the debugger parses and uses, rather than the debug information natively
 produced by toolchains, like PDB or DWARF. To work with these existing
-toolchains, we convert PDB (and eventually PE/ELF files with embedded DWARF)
-into the RDI format on-demand.
+toolchains, we convert PDB and DWARF to the RDI format on-demand.
 
 The RDI format is currently specified in code, in the files within the
 `src/lib_rdi` folder. In [`rdi.h`](src/lib_rdi/rdi.h) and
@@ -83,20 +82,23 @@ A benchmark of the linker's performance is below:
 
 ---
 
-# Project Development Setup Instructions
+# Project Development Setup / Local Build Instructions
 
-**NOTE: Currently, only x64 Windows development is supported for the project.**
+The project is actively developed both on [Windows x64](#windows-x64) and
+[Linux x64](#linux-x64) development machines. Click on whichever you'd like to
+use.
 
-## 1. Installing the Required Tools (MSVC & Windows SDK)
+## Windows x64
 
-In order to work with the codebase, you'll need the [Microsoft C/C++ Build Tools
-v15 (2017) or later](https://aka.ms/vs/17/release/vs_BuildTools.exe), for both
-the Windows SDK and the MSVC compiler and linker.
+### 1. Installing the Required Tools (MSVC & Windows SDK)
+
+First, you'll need the [Microsoft C/C++ Build Tools v15 (2017) or later](https://aka.ms/vs/17/release/vs_BuildTools.exe),
+for the Windows SDK, and the MSVC compiler and linker.
 
 If the Windows SDK is installed (e.g. via installation of the Microsoft C/C++
 Build Tools), you may also build with [Clang](https://releases.llvm.org/).
 
-## 2. Build Environment Setup
+### 2. Build Environment Setup
 
 Building the codebase can be done in a terminal which is equipped with the
 ability to call either MSVC or Clang from command line.
@@ -169,73 +171,142 @@ build radlink release
 build radbin release
 ```
 
----
+## Linux x64
 
-# Project Roadmap
+### 1. Installing the Required Tools (GCC or Clang, Libraries)
 
-### The Initial Alpha Battle-Testing Phase
+First, you'll need either GCC or Clang, if you don't already have them. They
+can be obtained by running one of the following commands, depending on your
+toolchain of choice and distribution:
 
-The first priority for the project is to ensure that the most crucial components
-are functioning extremely reliably for local, x64, Windows development.
-For the debugger, this would include parts like debug info conversion, debug
-info loading, process control, stepping, evaluation (correct usage of both
-location info and type info), and a robust frontend which ensures the lower
-level parts are usable. For the linker, this is a matter of reliability and
-convergence with existing linker behavior.
+#### GCC on Ubuntu / Debian / Mint
+```
+sudo apt update && sudo apt install build-essential
+```
 
-We feel that we've already come a long way in all of these respects, but given
-the massive set of possible combinations of languages, build settings,
-toolchains, used language features, and patterns of generated code, we still
-expect some issues, and are prioritizing these issues being resolved first.
+#### Clang on Ubuntu / Debian / Mint
+```
+sudo apt update && sudo apt install clang llvm
+```
 
-We also hope to continue to improve performance in this phase. For the debugger,
-this primarily includes frontend performance, introducing caches when economical
-to do so, and tightening existing systems up. For the linker, it has been mostly
-tuned thus far for giant projects, and so we'd like to improve linking speed for
-small-to-mid sized projects as well.
+#### GCC on Arch / Manjaro
+```
+sudo pacman -S base-devel
+```
 
-For the linker, there are also a number of features to come, like
-dead-code-elimination (`/opt:ref`), and link-time-optimizations with the help
-of `clang` (we won't support LTCG from MSVC, since it is undocumented).
+#### Clang on Arch / Manjaro
+```
+sudo pacman -S clang llvm
+```
 
-### Local x64 Linux Debugging Phase
+If you've installed the Clang and LLVM tooling required, you can run:
 
-The next priority for the project is to take the rock solid x64 Windows
-debugging experience, and port all of the relevant pieces to support local x64
-Linux debugging also.
+```
+clang --version && llvm-ar --version
+```
 
-The debugger has been written to abstract over the parts that need to differ on
-either Linux or Windows, and this is mainly going to be a task in building out
-different backends for those abstraction layers.
+You should see output similar to the following:
 
-The major parts of this phase are:
+```
+Ubuntu clang version 18.1.3 (1ubuntu1)
+Target: x86_64-pc-linux-gnu
+Thread model: posix
+InstalledDir: /usr/bin
+Ubuntu LLVM version 18.1.3
+  Optimized build.
+```
 
-- Porting the `src/demon` layer to implement the Demon local process control
-abstraction API.
-- Implementing an x64 ELF Linux unwinder in the `src/ctrl` layer.
-- Creating a DWARF-to-RDI converter (in the same way that we've built a
-PDB-to-RDI converter). A partial implementation of this is in
-`src/rdi_from_dwarf`.
-- Porting the `src/render` layer to implement all of the rendering features the
-frontend needs on a Linux-compatible API (the backend used on Windows is D3D11).
-- Porting the `src/font_provider` layer to a Linux-compatible font
-rasterization backend, like FreeType (the backend used on Windows is
-DirectWrite).
-- Porting the `src/os` layers to Linux. This includes core operating system
-abstraction (virtual memory allocation, threading and synchronization
-primitives, and so on), and graphical operating system abstraction (windows,
-input events, and so on).
+If you've installed the GCC tooling required, you can run:
 
-Once the above list is complete, and once every part is rock solid, the Windows
-debugging experience we'll have worked diligently to create will also be
-available natively on Linux machines.
+```
+gcc --version && gcc-ar --version
+```
 
-### And Beyond!
+You should see output similar to the following:
 
-There are several directions we might take after these two major phases,
-like remote debugging, porting to different architectures, further improving
-the debugger's features (like improving the visualization engine), and so on.
-But for now, we're mostly focused on those first two phases.
+```
+gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+Copyright (C) 2023 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+GNU ar (GNU Binutils for Ubuntu) 2.42
+Copyright (C) 2024 Free Software Foundation, Inc.
+This program is free software; you may redistribute it under the terms of
+the GNU General Public License version 3 or (at your option) any later version.
+This program has absolutely no warranty.
+```
+
+### 2. Installing Dependencies
+
+The debugger project relies on a few dynamically linked libraries being present
+on the system:
+
+- `libfreetype`
+- `libx11`
+- `libxext`
+- `libxfixes`
+- `libxrandr`
+- `libgl`
+- `libegl`
+
+You'll need the development packages for them in order to build. These can be
+installed using one of the following commands, depending on your distribution:
+
+#### Ubuntu / Debian / Mint 
+
+```
+sudo apt install -y libfreetype6-dev libx11-dev libxext-dev libxfixes-dev libxrandr-dev libgl-dev libegl-dev
+```
+
+#### Arch / Manjaro
+
+```
+sudo pacman -S --needed freetype2 libx11 libxext libxfixes libxrandr libglvnd
+```
+
+### 3. Building
+
+To build, `cd` to the root directory of the codebase, and run the `build.sh`
+script:
+
+```
+./build.sh
+```
+
+You should see something similar to the following output:
+
+```
+[clang compile]
+[debug mode]
+[building metagen]
+searching /mnt/c/devel/raddebugger/src... 562 files found
+parsing metadesk... 23 metadesk files parsed
+gathering tables... 138 tables found
+generating layer code...
+```
+
+If everything worked correctly, there will be a `build` folder in the root
+level of the codebase, and it will contain a freshly-built `raddbg` binary.
+
+This `raddbg` will have been built in **debug mode**, which is not built with
+optimizations, and may perform worse. To produce a **release mode executable**,
+run `build.sh` with a `release` argument:
+
+```
+./build.sh release
+```
+
+This build will take significantly longer.
+
+By default, `build.sh` only builds the debugger if no arguments (or just
+`release`) are passed, but additional arguments can be passed to build the RAD
+Linker, or the `radbin` CLI binary file utility:
+
+```
+./build.sh radlink release
+./build.sh radbin release
+```
 
 ---
 

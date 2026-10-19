@@ -59,7 +59,7 @@ D_RunKind;
 typedef struct D_CmdParams D_CmdParams;
 struct D_CmdParams
 {
-  D_Handle machine;
+  D_Handle server;
   D_Handle process;
   D_Handle thread;
   D_Handle entity;
@@ -160,6 +160,8 @@ struct D_RunLocalsCache
 typedef enum D_MsgKind
 {
   D_MsgKind_Null,
+  D_MsgKind_OpenRemoteServer,
+  D_MsgKind_CloseRemoteServer,
   D_MsgKind_Launch,
   D_MsgKind_Attach,
   D_MsgKind_OpenCrashDump,
@@ -195,7 +197,9 @@ struct D_Msg
   B32 env_inherit;
   B32 debug_subprocesses;
   B32 auto_download_debug_info;
+  B32 deploy;
   U64 exception_code_filters[(D_ExceptionCodeKind_COUNT+63)/64];
+  String8 address;
   String8 path;
   String8List entry_points;
   String8List cmd_line_string_list;
@@ -262,6 +266,14 @@ typedef enum D_EventKind
   D_EventKind_MemCommit,
   D_EventKind_MemDecommit,
   D_EventKind_MemRelease,
+  
+  //- rjf: remote server connections
+  D_EventKind_ServerConnect,
+  D_EventKind_ServerDisconnect,
+  
+  //- rjf: remote controllers
+  D_EventKind_RemoteControllerConnect,
+  D_EventKind_RemoteControllerDisconnect,
   
   D_EventKind_COUNT
 }
@@ -366,7 +378,6 @@ struct D_UserState
   Arena *ctrl_last_run_arena;
   D_RunKind ctrl_last_run_kind;
   U64 ctrl_last_run_frame_idx;
-  D_Handle ctrl_last_run_thread_handle;
   D_RunFlags ctrl_last_run_flags;
   D_TrapList ctrl_last_run_traps;
   D_BreakpointArray ctrl_last_run_extra_bps;
@@ -404,7 +415,7 @@ internal D_BreakpointArray d_breakpoint_array_copy(Arena *arena, D_BreakpointArr
 ////////////////////////////////
 //~ rjf: Path Map Application
 
-internal String8List d_possible_path_overrides_from_maps_path(Arena *arena, D_Entity *primary_module, D_PathMapArray *path_maps, String8 file_path);
+internal String8List d_possible_path_overrides_from_maps_path(Arena *arena, D_PathMapArray *path_maps, String8 file_path);
 
 ////////////////////////////////
 //~ rjf: Debug Info Extraction Type Pure Functions
@@ -433,7 +444,7 @@ internal D_TrapNet d_trap_net_from_thread__step_to_exit(Arena *arena, D_Entity *
 //~ rjf: Debug Info Lookups
 
 //- rjf: voff -> line info
-internal D_LineList d_lines_from_dbgi_key_voff(Arena *arena, DI_Key dbgi_key, U64 voff);
+internal D_LineList d_lines_from_dbgi_key_path_voff(Arena *arena, DI_Key dbgi_key, String8 dbgi_path, U64 voff);
 
 //- rjf: file:line -> line info
 // TODO(rjf): this depends on file path maps, needs to move
@@ -481,6 +492,6 @@ internal B32 d_next_cmd(D_Cmd **cmd);
 ////////////////////////////////
 //~ rjf: Main Layer Top-Level Calls
 
-internal D_EventList d_tick(Arena *arena, D_TargetArray *targets, D_BreakpointArray *breakpoints, D_PathMapArray *path_maps, U64 exception_code_filters[(D_ExceptionCodeKind_COUNT+63)/64], B32 auto_download_debug_info);
+internal D_EventList d_tick(Arena *arena, D_TargetArray *targets, D_BreakpointArray *breakpoints, D_PathMapArray *path_maps, D_Handle selected_thread, U64 exception_code_filters[(D_ExceptionCodeKind_COUNT+63)/64], B32 auto_download_debug_info);
 
 #endif // DBG_ENGINE_USER_H

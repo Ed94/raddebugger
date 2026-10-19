@@ -27,10 +27,12 @@ cd /D "%~dp0"
 :: - `ubsan`: enable undefined-behavior sanitizer
 :: - `telemetry`: enable RAD telemetry profiling support
 :: - `spall`: enable spall profiling support
+:: - `oodle`: enable Oodle from local\oodle2*\win or an explicit OODLE_SDK_DIR
 
 :: --- Unpack Arguments -------------------------------------------------------
 for %%a in (%*) do set "%%~a=1"
 if not "%msvc%"=="1" if not "%clang%"=="1" set msvc=1
+if not "%release%"=="1" if not "%debug%"=="1" set debug_implicit=1
 if not "%release%"=="1" set debug=1
 if "%debug%"=="1"   set release=0 && echo [debug mode]
 if "%release%"=="1" set debug=0 && echo [release mode]
@@ -67,6 +69,13 @@ if "%pgo%"=="1" (
   )
 )
 
+:: --- Mix Git Commit ID ------------------------------------------------------
+git rev-parse --is-inside-work-tree >nul 2>&1 && set in_git_tree=1
+if "%in_git_tree%"=="1" (
+  for /f %%i in ('call git describe --always --dirty')   do set auto_compile_flags=!auto_compile_flags! -DBUILD_GIT_HASH=\"%%i\"
+  for /f %%i in ('call git rev-parse HEAD')              do set auto_compile_flags=!auto_compile_flags! -DBUILD_GIT_HASH_FULL=\"%%i\"
+)
+
 :: --- Compile/Link Line Definitions ------------------------------------------
 set cl_common=     /I..\src\ /I..\local\ /nologo /FC /Z7 /Zc:preprocessor
 set cl_debug=      call cl /Od /Ob1 /DBUILD_DEBUG=1 %cl_common% %auto_compile_flags% 
@@ -97,6 +106,10 @@ if "%msvc%"=="1"    set rc=call rc
 if "%clang%"=="1"   set rc=call llvm-rc
 if "%msvc%"=="1"    set link_dll=/link /DLL
 if "%clang%"=="1"   set link_dll=-Xlinker -DLL
+if "%msvc%"=="1"    set asm=call ml64 -nologo -c -Zi -Fo
+if "%clang%"=="1"   set asm=call llvm-ml -m64 -nologo -c -Fo
+if "%msvc%"=="1"    set mklib=call lib -nologo
+if "%clang%"=="1"   set mklib=call llvm-lib
 
 :: --- Choose Compile/Link Lines ----------------------------------------------
 if "%msvc%"=="1"      set compile_debug=%cl_debug%
@@ -121,12 +134,9 @@ pushd build
 %rc% /nologo /fo logo.res ..\data\logo.rc || exit /b 1
 popd
 
-:: --- Get Current Git Commit Id ----------------------------------------------
-for /f %%i in ('call git describe --always --dirty')   do set compile=%compile% -DBUILD_GIT_HASH=\"%%i\"
-for /f %%i in ('call git rev-parse HEAD')              do set compile=%compile% -DBUILD_GIT_HASH_FULL=\"%%i\"
-
 :: --- Build & Run Metaprogram ------------------------------------------------
 pushd build
+if not exist metagen.exe set meta=1
 if "%meta%"=="1" (
   echo [building metagen]
   %compile_debug% ..\src\metagen\metagen_main.c %compile_link% %out%metagen.exe || exit /b 1
@@ -137,11 +147,56 @@ if "%no_meta%"=="" if exist metagen.exe (
 )
 popd
 
+:: --- Assemble BLAKE3 --------------------------------------------------------
+if not exist build\blake3.lib if "%VSCMD_ARG_TGT_ARCH%" equ "x64" (
+  echo [assembling blake3]
+  pushd build
+  %asm% blake3_sse2_x86-64_windows_msvc.obj   ..\src\third_party\blake3\blake3_sse2_x86-64_windows_msvc.asm   || exit /b 1
+  %asm% blake3_sse41_x86-64_windows_msvc.obj  ..\src\third_party\blake3\blake3_sse41_x86-64_windows_msvc.asm  || exit /b 1
+  %asm% blake3_avx2_x86-64_windows_msvc.obj   ..\src\third_party\blake3\blake3_avx2_x86-64_windows_msvc.asm   || exit /b 1
+  %asm% blake3_avx512_x86-64_windows_msvc.obj ..\src\third_party\blake3\blake3_avx512_x86-64_windows_msvc.asm || exit /b 1
+  %mklib% -out:blake3.lib blake3_*_msvc.obj                                                                   || exit /b 1
+  popd
+)
+
+:: --- Set up Oodle SDK -------------------------------------------------------
+if "%oodle%"=="1" (
+  set "oodle_sdk_path=%OODLE_SDK_DIR%"
+  if not defined oodle_sdk_path (
+    for /d %%d in ("%~dp0local\oodle2*") do (
+      if exist "%%~fd\win\include\oodle2.h" (
+        if defined oodle_sdk_path (
+          echo Multiple Oodle SDKs found: "!oodle_sdk_path!" and "%%~fd\win"
+          echo Set OODLE_SDK_DIR to select the SDK root.
+          exit /b 1
+        )
+        set "oodle_sdk_path=%%~fd\win"
+      )
+    )
+  )
+  if not defined oodle_sdk_path (
+    echo Oodle SDK not found. Put an oodle2* SDK with a win subdirectory in "%~dp0local" or set OODLE_SDK_DIR.
+    exit /b 1
+  )
+  if exist "!oodle_sdk_path!\win\include\oodle2.h" set "oodle_sdk_path=!oodle_sdk_path!\win"
+  for %%d in ("!oodle_sdk_path!") do set "oodle_sdk_path=%%~fd"
+  if not exist "!oodle_sdk_path!\include\oodle2.h" (
+    echo Oodle SDK directory "!oodle_sdk_path!" must contain include\oodle2.h
+    exit /b 1
+  )
+  echo [Oodle SDK: !oodle_sdk_path!]
+  set "compile=!compile! -DOODLE_SDK=1 -I"!oodle_sdk_path!\include""
+  if exist "!oodle_sdk_path!\redist\oo2core_*_win64.dll" (
+    copy /y "!oodle_sdk_path!\redist\oo2core_*_win64.dll" "%~dp0build\" >nul || exit /b 1
+  )
+)
+
 :: --- Build Everything (@build_targets) --------------------------------------
 pushd build
 if "%raddbg%"=="1"                     set didbuild=1 && %compile% ..\src\raddbg\raddbg_main.c                               %compile_link% %link_icon% %out%raddbg.exe || exit /b 1
 if "%raddbg_non_graphical%"=="1"       set didbuild=1 && %compile% -DWM_STUB=1 -DR_BACKEND=R_BACKEND_STUB ..\src\raddbg\raddbg_main.c %compile_link% %link_icon% %out%raddbg_non_graphical.exe || exit /b 1
 if "%com_shim%"=="1"                   set didbuild=1 && %compile% ..\src\com_shim\com_shim_main.c                           %compile_link% %out%com_shim.exe || exit /b 1
+if "%raddbg_server%"=="1"              set didbuild=1 && %compile% ..\src\raddbg_server\raddbg_server_main.c                 %compile_link% %out%raddbg_server.exe || exit /b 1
 if "%radlink%"=="1"                    set didbuild=1 && %compile% ..\src\linker\lnk.c                                       %compile_link% %linker% /NOIMPLIB %linker% /NATVIS:"%~dp0\src\linker\linker.natvis" %out%radlink.exe || exit /b 1
 if "%radbin%"=="1"                     set didbuild=1 && %compile% ..\src\radbin\radbin_main.c                               %compile_link% %out%radbin.exe || exit /b 1
 if "%raddump%"=="1"                    set didbuild=1 && %compile% ..\src\raddump\raddump_main.c                             %compile_link% %out%raddump.exe || exit /b 1
@@ -186,4 +241,9 @@ if "%pgo_run%"=="1" (
     popd
   )
   goto restart
+)
+
+:: --- Warn On Debug Builds (if debug not explicitly specified) ---------------
+if "%debug_implicit%"=="1" (
+  echo [INFO] Debug build complete. For a faster build, call this script with the `release` argument; this will take significantly longer than a debug build.
 )

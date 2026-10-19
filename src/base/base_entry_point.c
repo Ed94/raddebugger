@@ -58,6 +58,9 @@ main_thread_base_entry_point(int arguments_count, char **arguments)
   }
   
   //- rjf: initialize all included layers
+#if defined(SOCKET_H) && !defined(SOCKET_INIT_MANUAL)
+  sock_init();
+#endif
 #if defined(HTTP_H) && !defined(HTTP_INIT_MANUAL)
   http_init();
 #endif
@@ -79,7 +82,7 @@ main_thread_base_entry_point(int arguments_count, char **arguments)
 #if defined(DBG_INFO_H) && !defined(DI_INIT_MANUAL)
   di_init(&cmdline);
 #endif
-#if defined(DEMON_CORE_H) && !defined(DMN_INIT_MANUAL)
+#if defined(DEMON_H) && !defined(DMN_INIT_MANUAL)
   dmn_init();
 #endif
 #if defined(DBG_ENGINE_CORE_H) && !defined(D_INIT_MANUAL)
@@ -221,6 +224,9 @@ async_thread_entry_point(void *params)
 #endif
 #if defined(FILE_STREAM_H)
       fs_async_tick();
+#endif
+#if defined(SOCKET_H)
+      sock_async_tick();
 #endif
 #if defined(HTTP_H)
       http_async_tick();

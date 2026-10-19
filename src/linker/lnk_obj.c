@@ -93,6 +93,9 @@ THREAD_POOL_TASK_FUNC(lnk_obj_initer)
     lnk_error_input_obj(LNK_Error_IllData, input, "corrupted file, unable to read string table");
   }
 
+  COFF_SectionHeader *section_headers = push_array(arena, COFF_SectionHeader, header.section_count_no_null + 1);
+  MemoryCopy(section_headers + 1, raw_coff_section_table.str, raw_coff_section_table.size);
+
   //
   // section table pass
   //  - error check headers fields
@@ -100,39 +103,49 @@ THREAD_POOL_TASK_FUNC(lnk_obj_initer)
   //  - find debug info and meta-data leaders
   //
   COFF_SectionHeader *coff_section_table    = (COFF_SectionHeader *)raw_coff_section_table.str;
-  COFF_SectionFlags  *section_flags         = push_array_no_zero(arena, COFF_SectionFlags, header.section_count_no_null);
-  U32                 debug_t_sect_idx      = ~0;
-  U32                 debug_p_sect_idx      = ~0;
-  U32                 debug_h_sect_idx      = ~0;
-  U32                 llvm_addrsig_sect_idx = ~0;
-  for (U64 sect_idx = 0; sect_idx < header.section_count_no_null; sect_idx += 1) {
+  U32                 debug_t_section_number      = 0;
+  U32                 debug_p_section_number      = 0;
+  U32                 debug_h_section_number      = 0;
+  U32                 llvm_addrsig_section_number = 0;
+  for EachIndex(sect_idx, header.section_count_no_null) {
+    U64                 section_number    = sect_idx + 1;
     COFF_SectionHeader *coff_sect_header = &coff_section_table[sect_idx];
-    section_flags[sect_idx]              = coff_sect_header->flags & ~3; // linker reserves low 2 bits for internal flags
+    COFF_SectionFlags  *section_flags    = &section_headers[section_number].flags;
     String8             sect_name        = coff_name_from_section_header(raw_coff_string_table, coff_sect_header);
+    *section_flags = coff_sect_header->flags & ~3; // linker reserves low 2 bits for internal flags
 
     if (str8_starts_with(sect_name, str8_lit(".debug$"))) {
-      section_flags[sect_idx] |= LNK_SECTION_FLAG_DEBUG;
+      *section_flags |= LNK_SECTION_FLAG_DEBUG;
     }
     if (str8_ends_with(sect_name, str8_lit("$fo$"), 0) ||
         str8_ends_with(sect_name, str8_lit("$fo_rvas$"), 0) ||
         str8_ends_with(sect_name, str8_lit("$fo_bdd$"), 0)) {
-      section_flags[sect_idx] |= COFF_SectionFlag_LnkInfo;
+      *section_flags |= COFF_SectionFlag_LnkInfo;
     }
-    if (task->find_debug_t) {
-      if (str8_match(sect_name, str8_lit(".debug$T"), 0)) {
-        debug_t_sect_idx = sect_idx;
-      } else if (str8_match(sect_name, str8_lit(".debug$P"), 0)) {
-        debug_p_sect_idx = sect_idx;
-      } else if (str8_match(sect_name, str8_lit(".debug$H"), 0)) {
-        debug_h_sect_idx = sect_idx;
+    if (~*section_flags & LNK_SECTION_FLAG_DEBUG) {
+      String8 sect_base_name, sect_postfix;
+      coff_parse_section_name(sect_name, &sect_base_name, &sect_postfix);
+      for EachNode(name_n, String8Node, task->remove_sections.first) {
+        if (str8_match(sect_base_name, name_n->string, 0)) {
+          *section_flags |= COFF_SectionFlag_LnkRemove;
+          break;
+        }
       }
     }
-    if (task->find_llvm_addrsig && llvm_addrsig_sect_idx == max_U32 &&
-        str8_match(sect_name, str8_lit(".llvm_addrsig"), 0)) {
-      llvm_addrsig_sect_idx = sect_idx;
+
+    if (str8_match(sect_name, str8_lit(".debug$T"), 0)) {
+      debug_t_section_number = section_number;
+    } else if (str8_match(sect_name, str8_lit(".debug$P"), 0)) {
+      debug_p_section_number = section_number;
+    } else if (str8_match(sect_name, str8_lit(".debug$H"), 0)) {
+      debug_h_section_number = section_number;
     }
 
-    if (~section_flags[sect_idx] & COFF_SectionFlag_CntUninitializedData) {
+    if (llvm_addrsig_section_number == 0 && str8_match(sect_name, str8_lit(".llvm_addrsig"), 0)) {
+      llvm_addrsig_section_number = section_number;
+    }
+
+    if (~*section_flags & COFF_SectionFlag_CntUninitializedData) {
       if (coff_sect_header->fsize > 0) {
         Rng1U64 sect_range = rng_1u64(coff_sect_header->foff, coff_sect_header->foff + coff_sect_header->fsize);
         if (contains_1u64(header.header_range, coff_sect_header->foff) ||
@@ -166,27 +179,45 @@ THREAD_POOL_TASK_FUNC(lnk_obj_initer)
     }
   }
 
-  U64                 name_block_count = CeilIntegerDiv(header.symbol_count, 64);
-  LNK_SymbolNameCache symbol_name_cache = {
-    .masks       = push_array(arena, U64, name_block_count),
-    .block_bases = push_array_no_zero(arena, U32, name_block_count),
-    .name_sizes  = push_array_no_zero(arena, U32, primary_symbol_count),
+  U64 symbol_block_count = CeilIntegerDiv(header.symbol_count, 64);
+  LNK_ObjSymbolArray symbols = {
+    .count           = primary_symbol_count,
+    .primary_bits    = bit_array_init32(arena, header.symbol_count),
+    .block_bases     = push_array_no_zero(arena, U32,                  symbol_block_count),
+    .values          = push_array_no_zero(arena, U64,                  primary_symbol_count),
+    .section_numbers = push_array_no_zero(arena, U32,                  primary_symbol_count),
+    .types           = push_array_no_zero(arena, COFF_SymbolType,      primary_symbol_count),
+    .storage_classes = push_array_no_zero(arena, COFF_SymStorageClass, primary_symbol_count),
+    .aux_counts      = push_array_no_zero(arena, U8,                   primary_symbol_count),
+    .name_offsets    = push_array_no_zero(arena, U32,                  primary_symbol_count),
+    .name_sizes      = push_array_no_zero(arena, U32,                  primary_symbol_count),
   };
   {
-    COFF_SectionHeader *section_table = (COFF_SectionHeader *)str8_substr(input->data, header.section_table_range).str;
-    U64 next_block = 0;
-    U32 name_count = 0;
+    U64 next_block  = 0;
+    U32 primary_idx = 0;
     COFF_ParsedSymbol symbol;
     for (U64 symbol_idx = 0; symbol_idx < header.symbol_count; symbol_idx += (1 + symbol.aux_symbol_count)) {
+
       symbol = coff_parse_symbol(header, raw_coff_string_table, raw_coff_symbol_table, symbol_idx);
-      U64 block_idx = symbol_idx >> 6;
-      while (next_block <= block_idx) {
-        symbol_name_cache.block_bases[next_block++] = name_count;
+
+      // copy out primary symbols
+      {
+        U64 block_idx = symbol_idx >> 6;
+        while (next_block <= block_idx) { symbols.block_bases[next_block++] = primary_idx; }
+
+        bit_array_set_bit32(symbols.primary_bits, symbol_idx, 1);
+
+        symbols.values         [primary_idx] = symbol.value;
+        symbols.section_numbers[primary_idx] = symbol.section_number;
+        symbols.types          [primary_idx] = symbol.type;
+        symbols.storage_classes[primary_idx] = symbol.storage_class;
+        symbols.aux_counts     [primary_idx] = symbol.aux_symbol_count;
+        symbols.name_offsets   [primary_idx] = symbol.name.size ? safe_cast_u32(symbol.name.str - input->data.str) : 0;
+        symbols.name_sizes     [primary_idx] = safe_cast_u32(symbol.name.size);
+
+        primary_idx += 1;
       }
-      if (symbol.name.size) {
-        symbol_name_cache.masks[block_idx] |= 1ull << (symbol_idx & 63);
-        symbol_name_cache.name_sizes[name_count++] = safe_cast_u32(symbol.name.size);
-      }
+
       COFF_SymbolValueInterpType interp = coff_interp_symbol(symbol.section_number, symbol.value, symbol.storage_class);
       if (interp == COFF_SymbolValueInterp_Regular) {
         if (symbol.section_number == 0 || symbol.section_number > header.section_count_no_null) {
@@ -198,15 +229,16 @@ THREAD_POOL_TASK_FUNC(lnk_obj_initer)
           coff_parse_secdef(symbol, header.is_big_obj, &select, &section_number, 0, 0);
           if (select == COFF_ComdatSelect_Associative) {
             if (section_number == 0 || section_number > header.section_count_no_null) {
-              lnk_error_input_obj(LNK_Error_IllData, input, "section definition symbol %S (No. 0x%x) associates with an out of bounds section 0x%x", symbol.name, symbol_idx, symbol.section_number);
+              lnk_error_input_obj(LNK_Error_IllData, input, "section definition symbol %S (No. 0x%x) associates with an out of bounds section 0x%x", symbol.name, symbol_idx, section_number);
             }
           }
         }
       }
     }
-    while (next_block < name_block_count) {
-      symbol_name_cache.block_bases[next_block++] = name_count;
+    while (next_block < symbol_block_count) {
+      symbols.block_bases[next_block++] = primary_idx;
     }
+    Assert(primary_idx == primary_symbol_count);
   }
 
   //
@@ -214,8 +246,8 @@ THREAD_POOL_TASK_FUNC(lnk_obj_initer)
   //
   U32 *comdats;
   {
-    comdats = push_array_no_zero(arena, U32, header.section_count_no_null);
-    MemorySet(comdats, 0xff, header.section_count_no_null * sizeof(comdats[0]));
+    comdats = push_array_no_zero(arena, U32, header.section_count_no_null + 1);
+    MemorySet(comdats, 0xff, (header.section_count_no_null + 1) * sizeof(comdats[0]));
 
     COFF_ParsedSymbol symbol;
     for (U64 symbol_idx = 0; symbol_idx < header.symbol_count; symbol_idx += (1 + symbol.aux_symbol_count)) {
@@ -226,13 +258,13 @@ THREAD_POOL_TASK_FUNC(lnk_obj_initer)
         if (symbol.storage_class == COFF_SymStorageClass_Static) {
           if (symbol.section_number > 0 && symbol.section_number <= header.section_count_no_null) {
             COFF_SectionHeader *sect_header = &coff_section_table[symbol.section_number-1];
-            if (section_flags[symbol.section_number-1] & COFF_SectionFlag_LnkCOMDAT) {
+            if (section_headers[symbol.section_number].flags & COFF_SectionFlag_LnkCOMDAT) {
               if (symbol.aux_symbol_count) {
                 U32 section_length = 0;
                 coff_parse_secdef(symbol, header.is_big_obj, 0, 0, &section_length, 0);
                 if (sect_header->fsize == section_length) {
-                  if (comdats[symbol.section_number-1] == ~0) {
-                    comdats[symbol.section_number-1] = symbol_idx;
+                  if (comdats[symbol.section_number] == ~0) {
+                    comdats[symbol.section_number] = symbol_idx;
                   } else {
                     lnk_error_input_obj(LNK_Error_IllData, input, "section definition symbo (No. 0x%llx) tries to ovewrite comdat", symbol_idx);
                   }
@@ -256,9 +288,9 @@ THREAD_POOL_TASK_FUNC(lnk_obj_initer)
     Temp scratch = scratch_begin(&arena, 1);
 
     HashTable *visited_sections = hash_table_init(scratch.arena, 32);
-    for (U64 sect_idx = 0; sect_idx < header.section_count_no_null; sect_idx += 1) {
-      for (U32 curr_section = sect_idx;;) {
-        U32 symbol_idx = comdats[curr_section];
+    for (U32 section_number = 1; section_number <= header.section_count_no_null; section_number += 1) {
+      for (U32 curr_section_number = section_number;;) {
+        U32 symbol_idx = comdats[curr_section_number];
 
         // is section COMDAT?
         if (symbol_idx == max_U32) {
@@ -268,8 +300,8 @@ THREAD_POOL_TASK_FUNC(lnk_obj_initer)
         // extract COMDAT info for current section
         COFF_ParsedSymbol     symbol         = coff_parse_symbol_no_name(header, raw_coff_symbol_table, symbol_idx);
         COFF_ComdatSelectType select         = COFF_ComdatSelect_Null;
-        U32                   section_number = 0;
-        coff_parse_secdef(symbol, header.is_big_obj, &select, &section_number, 0, 0);
+        U32                   associated_section_number = 0;
+        coff_parse_secdef(symbol, header.is_big_obj, &select, &associated_section_number, 0, 0);
 
         if (select != COFF_ComdatSelect_Associative) {
           // section terminates at non-associative COMDAT -- no loop
@@ -277,18 +309,18 @@ THREAD_POOL_TASK_FUNC(lnk_obj_initer)
         }
 
         // was section visited? -- loop found
-        if (hash_table_search_u64(visited_sections, curr_section)) {
-          COFF_ParsedSymbol symbol = coff_parse_symbol(header, raw_coff_string_table, raw_coff_symbol_table, comdats[sect_idx]);
-          lnk_error_input_obj(LNK_Error_AssociativeLoop, input, "section symbol %S (No. 0x%x) does not terminate on a non-associate COMDAT symbol", symbol.name, comdats[sect_idx]);
+        if (hash_table_search_u64(visited_sections, curr_section_number)) {
+          COFF_ParsedSymbol symbol = coff_parse_symbol(header, raw_coff_string_table, raw_coff_symbol_table, comdats[section_number]);
+          lnk_error_input_obj(LNK_Error_AssociativeLoop, input, "section symbol %S (No. 0x%x) does not terminate on a non-associate COMDAT symbol", symbol.name, comdats[section_number]);
           break;
         }
 
         // track visited sections
-        hash_table_push_u64_u64(scratch.arena, visited_sections, curr_section, 0);
+        hash_table_push_u64_u64(scratch.arena, visited_sections, curr_section_number, 0);
 
         // follow association
-        Assert(section_number > 0);
-        curr_section = section_number-1;
+        Assert(associated_section_number > 0);
+        curr_section_number = associated_section_number;
       }
 
       // purge hash table for next run
@@ -333,7 +365,7 @@ THREAD_POOL_TASK_FUNC(lnk_obj_initer)
     CV_Symbol comp_symbol = {0};
     for EachIndex(sect_idx, header.section_count_no_null) {
       COFF_SectionHeader *sect_header = &coff_section_table[sect_idx];
-      if (section_flags[sect_idx] & LNK_SECTION_FLAG_DEBUG) {
+      if (section_headers[sect_idx + 1].flags & LNK_SECTION_FLAG_DEBUG) {
         String8 name = str8_cstring_capped(sect_header->name, sect_header->name+sizeof(sect_header->name));
         if (str8_match(name, str8_lit(".debug$S"), 0)) {
           Temp temp = temp_begin(scratch.arena);
@@ -367,21 +399,26 @@ THREAD_POOL_TASK_FUNC(lnk_obj_initer)
   }
 
   // fill out obj
-  obj->data                    = input->data;
+  obj->coff = (LNK_ObjCoff){
+    .data   = input->data,
+    .header = header,
+    .sections = {
+      .count_no_null = header.section_count_no_null,
+      .headers      = section_headers,
+      .comdats      = comdats,
+      .associated_section_numbers = associated_sections,
+    },
+    .symbols                     = symbols,
+    .debug_t_section_number      = debug_t_section_number,
+    .debug_p_section_number      = debug_p_section_number,
+    .debug_h_section_number      = debug_h_section_number,
+    .llvm_addrsig_section_number = llvm_addrsig_section_number,
+    .hotpatch                    = hotpatch,
+  };
   obj->path                    = push_str8_copy(arena, input->path);
-  obj->header                  = header;
-  obj->section_flags           = section_flags;
-  obj->symbol_name_cache       = symbol_name_cache;
-  obj->comdats                 = comdats;
   obj->exclude_from_debug_info = input->exclude_from_debug_info;
-  obj->hotpatch                = hotpatch;
-  obj->associated_sections     = associated_sections;
   obj->self                    = &task->objs[task_id];
   obj->link_member             = input->link_member;
-  obj->debug_t_sect_idx        = debug_t_sect_idx;
-  obj->debug_p_sect_idx        = debug_p_sect_idx;
-  obj->debug_h_sect_idx        = debug_h_sect_idx;
-  obj->llvm_addrsig_sect_idx   = llvm_addrsig_sect_idx;
 }
 
 internal LNK_ObjNode *
@@ -394,8 +431,7 @@ lnk_obj_from_input_many(TP_Context *tp, TP_Arena *arena, LNK_Config *config, U64
       .inputs            = inputs,
       .objs              = objs,
       .machine           = config->machine,
-      .find_debug_t      = lnk_do_debug_info(config),
-      .find_llvm_addrsig = config->opt_icf == LNK_SwitchState_Yes,
+      .remove_sections   = config->remove_sections,
     };
     tp_for_parallel(tp, arena, inputs_count, lnk_obj_initer, &task);
   }
@@ -433,9 +469,9 @@ THREAD_POOL_TASK_FUNC(lnk_input_coff_symbol_table)
 {
   LNK_InputCoffSymbolTable *task = raw_task;
   LNK_Obj                  *obj  = task->objs[task_id];
-  COFF_ParsedSymbol symbol = {0};
-  for (U64 symbol_idx = 0; symbol_idx < obj->header.symbol_count; symbol_idx += (1 + symbol.aux_symbol_count)) {
-    symbol = lnk_parsed_symbol_from_coff_symbol_idx_no_name(obj, symbol_idx);
+  for LNK_EachCoffSymbol(it, obj) {
+    U64               symbol_idx = it.symbol_idx;
+    COFF_ParsedSymbol symbol     = it.v;
     COFF_SymbolValueInterpType interp = coff_interp_from_parsed_symbol(symbol);
     LNK_SymbolSearchType search_type = lnk_symbol_search_type_from_coff(obj, symbol, interp);
     switch (interp) {
@@ -480,14 +516,14 @@ THREAD_POOL_TASK_FUNC(lnk_input_coff_symbol_table)
 internal LNK_ObjSymbolRef *
 lnk_symlinks_from_obj(Arena *arena, LNK_SymbolTable *symtab, LNK_Obj *obj)
 {
-  LNK_ObjSymbolRef *symlinks = push_array(arena, LNK_ObjSymbolRef, obj->header.section_count_no_null + 1);
-  COFF_ParsedSymbol symbol = {0};
-  for (U64 symbol_idx = 0; symbol_idx < obj->header.symbol_count; symbol_idx += (1 + symbol.aux_symbol_count)) {
-    symbol = lnk_parsed_symbol_from_coff_symbol_idx_no_name(obj, symbol_idx);
+  LNK_ObjSymbolRef *symlinks = push_array(arena, LNK_ObjSymbolRef, obj->coff.sections.count_no_null + 1);
+  for LNK_EachCoffSymbol(it, obj) {
+    U64               symbol_idx = it.symbol_idx;
+    COFF_ParsedSymbol symbol     = it.v;
     COFF_SymbolValueInterpType interp = coff_interp_from_parsed_symbol(symbol);
     if (interp != COFF_SymbolValueInterp_Regular) { continue; }
 
-    COFF_SectionFlags section_flags = obj->section_flags[symbol.section_number - 1];
+    COFF_SectionFlags section_flags = obj->coff.sections.headers[symbol.section_number].flags;
     if (~section_flags & COFF_SectionFlag_LnkCOMDAT) { continue; }
 
     LNK_ObjSymbolRef *symlink = &symlinks[symbol.section_number];
@@ -529,29 +565,30 @@ lnk_symlinks_from_obj(Arena *arena, LNK_SymbolTable *symtab, LNK_Obj *obj)
 }
 
 internal U32List
-lnk_obj_collect_associated_sections(Arena *arena, LNK_Obj *obj, U32 root_section, COFF_SectionFlags skip_flags)
+lnk_obj_collect_associated_section_numbers(Arena *arena, LNK_Obj *obj, U32 root_section_number, COFF_SectionFlags skip_flags)
 {
+  Assert(1 <= root_section_number && root_section_number <= obj->coff.sections.count_no_null);
   Temp scratch = scratch_begin(&arena, 1);
 
   // track each child before enqueueing it because COFF associations can cycle
   HashMap  seen_hm = {0};
   U32List  queue   = {0};
 
-  U32Node root_n = { root_section };
+  U32Node root_n = { root_section_number };
   u32_list_push_node(&queue, &root_n);
-  hash_map_push_u64_u64(scratch.arena, &seen_hm, root_section, 1);
+  hash_map_push_u64_u64(scratch.arena, &seen_hm, root_section_number, 1);
 
   // walk the complete descendant chain because associated COMDATs can nest
   for EachNode(parent_n, U32Node, queue.first) {
-    for EachNode(associated_n, U32Node, obj->associated_sections[parent_n->data]) {
-      U32 child_section = associated_n->data;
+    for EachNode(associated_n, U32Node, obj->coff.sections.associated_section_numbers[parent_n->data]) {
+      U32 child_section_number = associated_n->data;
 
-      if (child_section == 0)                                 { continue; }
-      if (hash_map_search_u64_u64(&seen_hm, child_section))   { continue; }
-      if (obj->section_flags[child_section - 1] & skip_flags) { continue; }
+      if (child_section_number == 0)                                           { continue; }
+      if (hash_map_search_u64_u64(&seen_hm, child_section_number))             { continue; }
+      if (obj->coff.sections.headers[child_section_number].flags & skip_flags) { continue; }
 
-      hash_map_push_u64_u64(scratch.arena, &seen_hm, child_section, 1);
-      u32_list_push(arena, &queue, child_section);
+      hash_map_push_u64_u64(scratch.arena, &seen_hm, child_section_number, 1);
+      u32_list_push(arena, &queue, child_section_number);
     }
   }
 
@@ -596,9 +633,9 @@ lnk_push_obj_symbols(TP_Context *tp, TP_Arena *arena, LNK_SymbolTable *symtab, U
 internal COFF_ParsedSymbol
 lnk_obj_match_symbol(LNK_Obj *obj, String8 match_name)
 {
-  COFF_ParsedSymbol symbol;
-  for (U64 symbol_idx = 0; symbol_idx < obj->header.symbol_count; symbol_idx += (1 + symbol.aux_symbol_count)) {
-    symbol = lnk_parsed_symbol_from_coff_symbol_idx(obj, symbol_idx);
+  for LNK_EachCoffSymbol(it, obj) {
+    COFF_ParsedSymbol symbol = it.v;
+    symbol.name = lnk_symbol_name_from_coff_symbol_idx(obj, it.symbol_idx);
     if (str8_match(symbol.name, match_name, 0)) {
       return symbol;
     }
@@ -610,18 +647,6 @@ internal MSCRT_FeatFlags
 lnk_obj_get_features(LNK_Obj *obj)
 {
   return lnk_obj_match_symbol(obj, str8_lit("@feat.00")).value;
-}
-
-internal U32
-lnk_obj_get_comp_id(LNK_Obj *obj)
-{
-  return lnk_obj_match_symbol(obj, str8_lit("@comp.id")).value;
-}
-
-internal U32
-lnk_obj_get_vol_md(LNK_Obj *obj)
-{
-  return lnk_obj_match_symbol(obj, str8_lit("@vol.md")).value;
 }
 
 internal LNK_Lib *
@@ -644,12 +669,13 @@ lnk_obj_get_lib_path(LNK_Obj *obj)
 internal U32
 lnk_obj_get_removed_section_number(LNK_Obj *obj)
 {
-  return obj->header.is_big_obj ? LNK_REMOVED_SECTION_NUMBER_32 : LNK_REMOVED_SECTION_NUMBER_16;
+  return obj->coff.header.is_big_obj ? LNK_REMOVED_SECTION_NUMBER_32 : LNK_REMOVED_SECTION_NUMBER_16;
 }
 
 internal B32
-lnk_obj_get_comdat_symlink(LNK_Obj *obj, U64 section_number, LNK_ObjSymbolRef *symlink_out)
+lnk_obj_get_comdat_symlink_from_section_number(LNK_Obj *obj, U64 section_number, LNK_ObjSymbolRef *symlink_out)
 {
+  Assert(1 <= section_number && section_number <= obj->coff.sections.count_no_null);
   LNK_ObjSymbolRef symlink = obj->symlinks[section_number];
   B32 is_valid = symlink.obj != 0;
   if (is_valid && symlink_out) {
@@ -658,68 +684,65 @@ lnk_obj_get_comdat_symlink(LNK_Obj *obj, U64 section_number, LNK_ObjSymbolRef *s
   return is_valid;
 }
 
-internal COFF_SectionHeader *
-lnk_coff_section_table_from_obj(LNK_Obj *obj)
-{
-  return (COFF_SectionHeader *)str8_substr(obj->data, obj->header.section_table_range).str;
-}
-
-internal U64
-lnk_obj_sect_idx_from_section_number(LNK_Obj *obj, U64 section_number)
-{
-  Assert(1 <= section_number && section_number <= obj->header.section_count_no_null);
-  return section_number-1;
-}
-
-internal U64
-lnk_obj_section_number_from_sect_idx(LNK_Obj *obj, U64 sect_idx)
-{
-  Assert(sect_idx < obj->header.section_count_no_null);
-  return sect_idx+1;
-}
-
 internal String8
-lnk_obj_section_name_from_sect_idx(LNK_Obj *obj, U64 sect_idx)
+lnk_obj_section_data_from_number(LNK_Obj *obj, U64 section_number)
 {
-  COFF_SectionHeader *section_header = &lnk_coff_section_table_from_obj(obj)[sect_idx];
-  return coff_name_from_section_header(lnk_coff_string_table_from_obj(obj), section_header);
+  Assert(1 <= section_number && section_number <= obj->coff.sections.count_no_null);
+  COFF_SectionHeader *section_table = (COFF_SectionHeader *)str8_substr(obj->coff.data, obj->coff.header.section_table_range).str;
+  COFF_SectionHeader *section       = &section_table[section_number-1];
+  return str8_substr(obj->coff.data, r1u64s(section->foff, section->fsize));
+}
+
+internal U64
+lnk_obj_foff_from_section_data_ptr(LNK_Obj *obj, void *ptr)
+{
+  U64 data_min = IntFromPtr(obj->coff.data.str);
+  U64 ptr_v    = IntFromPtr(ptr);
+  Assert(data_min <= ptr_v && ptr_v < data_min + obj->coff.data.size);
+  return ptr_v - data_min;
 }
 
 internal String8
 lnk_obj_section_name_from_section_number(LNK_Obj *obj, U64 section_number)
 {
-  Assert(section_number > 0);
-  return lnk_obj_section_name_from_sect_idx(obj, section_number-1);
-}
-
-internal LNK_ObjSection
-lnk_obj_section_from_sect_idx(LNK_Obj *obj, U64 sect_idx)
-{
-  Assert(sect_idx < obj->header.section_count_no_null);
-  LNK_ObjSection section = {0};
-  section.obj            = obj;
-  section.sect_idx       = sect_idx;
-  section.section_number = sect_idx+1;
-  section.header         = &lnk_coff_section_table_from_obj(obj)[sect_idx];
-  section.flags          = &obj->section_flags[sect_idx];
-  section.vrange         = rng_1u64(section.header->voff, section.header->voff + section.header->vsize);
-  section.frange         = rng_1u64(section.header->foff, section.header->foff + section.header->fsize);
-  section.reloc_count    = section.header->reloc_count;
-  return section;
+  Assert(1 <= section_number && section_number <= obj->coff.sections.count_no_null);
+  COFF_SectionHeader *section_header = &obj->coff.sections.headers[section_number];
+  return coff_name_from_section_header(lnk_coff_string_table_from_obj(obj), section_header);
 }
 
 internal LNK_ObjSection
 lnk_obj_section_from_section_number(LNK_Obj *obj, U64 section_number)
 {
-  U64 sect_idx = lnk_obj_sect_idx_from_section_number(obj, section_number);
-  return lnk_obj_section_from_sect_idx(obj, sect_idx);
+  Assert(1 <= section_number && section_number <= obj->coff.sections.count_no_null);
+  COFF_SectionHeader *header = &obj->coff.sections.headers[section_number];
+  LNK_ObjSection section = {
+    .obj            = obj,
+    .section_number = section_number,
+    .header         = header,
+    .flags          = &header->flags,
+    .vrange         = rng_1u64(header->voff, header->voff + header->vsize),
+    .frange         = rng_1u64(header->foff, header->foff + header->fsize),
+    .reloc_count    = header->reloc_count,
+  };
+  return section;
+}
+
+internal force_inline B32
+lnk_obj_section_iter_next(LNK_Obj *obj, LNK_ObjSectionIter *it)
+{
+  U64 section_number = it->v.section_number + 1;
+  B32 is_valid = section_number <= obj->coff.sections.count_no_null;
+  if (is_valid) {
+    it->v = lnk_obj_section_from_section_number(obj, section_number);
+  }
+  return is_valid;
 }
 
 internal COFF_RelocArray
 lnk_coff_relocs_from_section_header(LNK_Obj *obj, COFF_SectionHeader *section_header)
 {
-  COFF_RelocInfo   reloc_info = coff_reloc_info_from_section_header(obj->data, section_header);
-  COFF_Reloc      *relocs     = (COFF_Reloc *)(obj->data.str + reloc_info.array_off);
+  COFF_RelocInfo   reloc_info = coff_reloc_info_from_section_header(obj->coff.data, section_header);
+  COFF_Reloc      *relocs     = (COFF_Reloc *)(obj->coff.data.str + reloc_info.array_off);
   COFF_RelocArray  result     = { .count = reloc_info.count, .v = relocs };
   return result;
 }
@@ -727,21 +750,21 @@ lnk_coff_relocs_from_section_header(LNK_Obj *obj, COFF_SectionHeader *section_he
 internal String8
 lnk_coff_string_table_from_obj(LNK_Obj *obj)
 {
-  return str8_substr(obj->data, obj->header.string_table_range);
+  return str8_substr(obj->coff.data, obj->coff.header.string_table_range);
 }
 
 internal String8
 lnk_coff_symbol_table_from_obj(LNK_Obj *obj)
 {
-  return str8_substr(obj->data, obj->header.symbol_table_range);
+  return str8_substr(obj->coff.data, obj->coff.header.symbol_table_range);
 }
 
 internal COFF_RelocArray
 lnk_coff_reloc_info_from_section_number(LNK_Obj *obj, U64 section_number)
 {
   LNK_ObjSection   section    = lnk_obj_section_from_section_number(obj, section_number);
-  COFF_RelocInfo   reloc_info = coff_reloc_info_from_section_header(obj->data, section.header);
-  COFF_Reloc      *relocs     = str8_deserial_get_raw_ptr(obj->data, reloc_info.array_off, sizeof(*relocs)*reloc_info.count);
+  COFF_RelocInfo   reloc_info = coff_reloc_info_from_section_header(obj->coff.data, section.header);
+  COFF_Reloc      *relocs     = str8_deserial_get_raw_ptr(obj->coff.data, reloc_info.array_off, sizeof(*relocs)*reloc_info.count);
   COFF_RelocArray  result     = { .count = reloc_info.count, .v = relocs };
   return result;
 }
@@ -749,11 +772,11 @@ lnk_coff_reloc_info_from_section_number(LNK_Obj *obj, U64 section_number)
 internal B32
 lnk_try_comdat_props_from_section_number(LNK_Obj *obj, U32 section_number, COFF_ComdatSelectType *select_out, U32 *section_number_out, U32 *section_length_out, U32 *check_sum_out)
 {
-  Assert(section_number > 0);
-  U32 symbol_idx = obj->comdats[section_number-1];
+  Assert(1 <= section_number && section_number <= obj->coff.sections.count_no_null);
+  U32 symbol_idx = obj->coff.sections.comdats[section_number];
   if (symbol_idx != max_U32) {
     COFF_ParsedSymbol secdef = lnk_parsed_symbol_from_coff_symbol_idx_no_name(obj, symbol_idx);
-    coff_parse_secdef(secdef, obj->header.is_big_obj, select_out, section_number_out, section_length_out, check_sum_out);
+    coff_parse_secdef(secdef, obj->coff.header.is_big_obj, select_out, section_number_out, section_length_out, check_sum_out);
     return 1;
   }
   return 0;
@@ -762,38 +785,73 @@ lnk_try_comdat_props_from_section_number(LNK_Obj *obj, U32 section_number, COFF_
 internal COFF_SectionHeader *
 lnk_coff_section_header_from_section_number(LNK_Obj *obj, U64 section_number)
 {
-  Assert(section_number > 0);
-  U64 sect_idx = section_number - 1;
-  COFF_SectionHeader *section_table = str8_deserial_get_raw_ptr(obj->data, obj->header.section_table_range.min, dim_1u64(obj->header.section_table_range));
-  return &section_table[sect_idx];
+  Assert(1 <= section_number && section_number <= obj->coff.sections.count_no_null);
+  return &obj->coff.sections.headers[section_number];
+}
+
+internal force_inline U64
+lnk_obj_primary_symbol_idx_from_coff_symbol_idx(LNK_Obj *obj, U64 symbol_idx)
+{
+  U64 block_idx = symbol_idx >> 6;
+  U64 word_idx  = symbol_idx >> 5;
+  U32 bit_idx   = symbol_idx & 31;
+  U32Array primary_bits = obj->coff.symbols.primary_bits;
+  Assert(bit_array_get_bit32(primary_bits, symbol_idx));
+
+  U64 primary_idx = obj->coff.symbols.block_bases[block_idx];
+  if (word_idx & 1) {
+    primary_idx += count_bits_set32(primary_bits.v[word_idx - 1]);
+  }
+  primary_idx += count_bits_set32(primary_bits.v[word_idx] & ((1u << bit_idx) - 1));
+  return primary_idx;
+}
+
+internal force_inline B32
+lnk_obj_symbol_iter_next(LNK_Obj *obj, LNK_ObjSymbolIter *it)
+{
+  if (it->next_primary_idx >= obj->coff.symbols.count) {
+    Assert(it->next_symbol_idx >= obj->coff.header.symbol_count);
+    return 0;
+  }
+
+  Assert(it->next_symbol_idx < obj->coff.header.symbol_count);
+  U64 symbol_size = obj->coff.header.is_big_obj ? sizeof(COFF_Symbol32) : sizeof(COFF_Symbol16);
+  it->symbol_idx  = it->next_symbol_idx;
+  it->primary_idx = it->next_primary_idx;
+  it->v = (COFF_ParsedSymbol){
+    .value            = obj->coff.symbols.values[it->primary_idx],
+    .section_number   = obj->coff.symbols.section_numbers[it->primary_idx],
+    .type             = obj->coff.symbols.types[it->primary_idx],
+    .storage_class    = obj->coff.symbols.storage_classes[it->primary_idx],
+    .aux_symbol_count = obj->coff.symbols.aux_counts[it->primary_idx],
+    .raw_symbol       = lnk_coff_symbol_table_from_obj(obj).str + it->symbol_idx * symbol_size,
+  };
+  it->next_symbol_idx  += 1 + it->v.aux_symbol_count;
+  it->next_primary_idx += 1;
+  return 1;
 }
 
 internal force_inline COFF_ParsedSymbol
 lnk_parsed_symbol_from_coff_symbol_idx_no_name(LNK_Obj *obj, U64 symbol_idx)
 {
-  return coff_parse_symbol_no_name(obj->header, lnk_coff_symbol_table_from_obj(obj), safe_cast_u32(symbol_idx));
+  U64 primary_idx = lnk_obj_primary_symbol_idx_from_coff_symbol_idx(obj, symbol_idx);
+  U64 symbol_size = obj->coff.header.is_big_obj ? sizeof(COFF_Symbol32) : sizeof(COFF_Symbol16);
+  COFF_ParsedSymbol result = {
+    .value            = obj->coff.symbols.values[primary_idx],
+    .section_number   = obj->coff.symbols.section_numbers[primary_idx],
+    .type             = obj->coff.symbols.types[primary_idx],
+    .storage_class    = obj->coff.symbols.storage_classes[primary_idx],
+    .aux_symbol_count = obj->coff.symbols.aux_counts[primary_idx],
+    .raw_symbol       = lnk_coff_symbol_table_from_obj(obj).str + symbol_idx * symbol_size,
+  };
+  return result;
 }
 
 internal force_inline String8
 lnk_symbol_name_from_coff_symbol_idx(LNK_Obj *obj, U64 symbol_idx)
 {
-  String8 result    = {0};
-  U64     block_idx = symbol_idx >> 6;
-  U64     bit        = 1ull << (symbol_idx & 63);
-  U64     mask       = obj->symbol_name_cache.masks[block_idx];
-  if (mask & bit) {
-    U64 name_idx  = obj->symbol_name_cache.block_bases[block_idx] + count_bits_set64(mask & (bit - 1));
-    U64 name_size = obj->symbol_name_cache.name_sizes[name_idx];
-
-    String8          symbol_table = lnk_coff_symbol_table_from_obj(obj);
-    COFF_SymbolName *name         = obj->header.is_big_obj ? &((COFF_Symbol32 *)symbol_table.str)[symbol_idx].name
-                                                           : &((COFF_Symbol16 *)symbol_table.str)[symbol_idx].name;
-    U8 *name_ptr = name->long_name.zeroes == 0
-                 ? obj->data.str + obj->header.string_table_range.min + name->long_name.string_table_offset
-                 : name->short_name;
-    result = str8(name_ptr, name_size);
-  }
-  return result;
+  U64 primary_idx = lnk_obj_primary_symbol_idx_from_coff_symbol_idx(obj, symbol_idx);
+  return str8(obj->coff.data.str + obj->coff.symbols.name_offsets[primary_idx], obj->coff.symbols.name_sizes[primary_idx]);
 }
 
 internal force_inline COFF_ParsedSymbol
@@ -810,16 +868,16 @@ THREAD_POOL_TASK_FUNC(lnk_collect_obj_chunks_task)
   LNK_SectionCollector *task = raw_task;
   LNK_Obj              *obj  = task->objs[task_id];
 
-  for EachIndex(sect_idx, obj->header.section_count_no_null) {
-    LNK_ObjSection section = lnk_obj_section_from_sect_idx(obj, sect_idx);
+  for LNK_EachCoffSection(it, obj) {
+    LNK_ObjSection section = it.v;
 
     if (*section.flags & COFF_SectionFlag_LnkRemove && !task->collect_discarded) {
       continue;
     }
 
-    String8 section_name = lnk_obj_section_name_from_sect_idx(obj, sect_idx);
+    String8 section_name = lnk_obj_section_name_from_section_number(obj, section.section_number);
     if (str8_match(section_name, task->name, 0)) {
-      String8 section_data = str8_substr(obj->data, section.frange);
+      String8 section_data = lnk_obj_section_data_from_number(obj, section.section_number);
       str8_list_push(arena, &task->out_lists[task_id], section_data);
     }
   }
@@ -828,12 +886,14 @@ THREAD_POOL_TASK_FUNC(lnk_collect_obj_chunks_task)
 internal String8List *
 lnk_collect_obj_sections(TP_Context *tp, TP_Arena *arena, U64 objs_count, LNK_Obj **objs, String8 name, B32 collect_discarded)
 {
+  ProfBeginFunction();
   LNK_SectionCollector task = {0};
   task.objs              = objs;
   task.name              = name;
   task.collect_discarded = collect_discarded;
   task.out_lists         = push_array(arena->v[0], String8List, objs_count);
   tp_for_parallel(tp, arena, objs_count, lnk_collect_obj_chunks_task, &task);
+  ProfEnd();
   return task.out_lists;
 }
 
@@ -866,14 +926,14 @@ lnk_parse_msvc_linker_directive(Arena *arena, LNK_Obj *obj, LNK_DirectiveInfo *d
   String8List arg_list = lnk_arg_list_parse_windows_rules(scratch.arena, to_parse);
   LNK_CmdLine cmd_line = lnk_cmd_line_parse_windows_rules(scratch.arena, arg_list);
 
-  for (LNK_CmdOption *opt = cmd_line.first_option; opt != 0; opt = opt->next) {
+  for EachNode(opt, LNK_CmdOption, cmd_line.first_option) {
     LNK_CmdSwitch *cmd_switch = lnk_cmd_switch_from_string(opt->string);
 
     if (cmd_switch == 0) {
       lnk_error_obj(LNK_Warning_UnknownDirective, obj, "unknown directive \"%S\"", opt->string);
       continue;
     }
-    if (!cmd_switch->is_legal_directive) {
+    if (cmd_switch->is_legal_directive == 0) {
       lnk_error_obj(LNK_Warning_IllegalDirective, obj, "illegal directive \"%S\"", opt->string);
       continue;
     }
@@ -881,7 +941,7 @@ lnk_parse_msvc_linker_directive(Arena *arena, LNK_Obj *obj, LNK_DirectiveInfo *d
     LNK_Directive *directive = push_array_no_zero(arena, LNK_Directive, 1);
     directive->next          = 0;
     directive->id            = str8_cstring(cmd_switch->name);
-    directive->value_list    = str8_list_copy(arena, &opt->value_strings);
+    directive->value         = push_str8_copy(arena, opt->value);
 
     LNK_DirectiveList *directive_list = &directive_info->v[cmd_switch->type];
     SLLQueuePush(directive_list->first, directive_list->last, directive);
@@ -895,10 +955,10 @@ internal String8List
 lnk_raw_directives_from_obj(Arena *arena, LNK_Obj *obj)
 {
   String8List drectve_data = {0};
-  for (U64 sect_idx = 0; sect_idx < obj->header.section_count_no_null; sect_idx += 1) {
-    LNK_ObjSection section = lnk_obj_section_from_sect_idx(obj, sect_idx);
+  for LNK_EachCoffSection(it, obj) {
+    LNK_ObjSection section = it.v;
     if (*section.flags & COFF_SectionFlag_LnkInfo) {
-      String8 section_name = lnk_obj_section_name_from_sect_idx(obj, sect_idx);
+      String8 section_name = lnk_obj_section_name_from_section_number(obj, section.section_number);
       if (str8_match(section_name, str8_lit(".drectve"), 0)) {
         if (*section.flags & COFF_SectionFlag_CntUninitializedData) {
           lnk_error_obj(LNK_Error_IllData, obj, ".drectve section header has flag COFF_SectionFlag_CntUninitializedData");
@@ -912,7 +972,7 @@ lnk_raw_directives_from_obj(Arena *arena, LNK_Obj *obj)
           lnk_error_obj(LNK_Error_IllData, obj, ".drectve must not have relocations");
           break;
         }
-        str8_list_push(arena, &drectve_data, str8_substr(obj->data, section.frange));
+        str8_list_push(arena, &drectve_data, lnk_obj_section_data_from_number(obj, section.section_number));
       }
     }
   }
@@ -929,6 +989,72 @@ lnk_directive_info_from_raw_directives(Arena *arena, LNK_Obj *obj, String8List r
   return directive_info;
 }
 
+internal force_inline int
+lnk_section_offset_symbol_is_before(void *raw_a, void *raw_b)
+{
+  LNK_SectionOffsetSymbol *a = raw_a, *b = raw_b;
+  if (a->key == b->key) {
+    return a->symbol_idx < b->symbol_idx;
+  }
+  return a->key < b->key;
+}
+
+internal LNK_ObjSymbolMap *
+lnk_symbol_map_from_obj(Arena *arena, LNK_Obj *obj)
+{
+  // count functions
+  U64 count = 0;
+  for LNK_EachCoffSymbol(it, obj) {
+    COFF_ParsedSymbol symbol = it.v;
+    if (coff_interp_from_parsed_symbol(symbol) == COFF_SymbolValueInterp_Regular && COFF_SymbolType_IsFunc(symbol.type)) {
+      count += 1;
+    }
+  }
+
+  LNK_ObjSymbolMap *map = push_array(arena, LNK_ObjSymbolMap, 1);
+  map->v = push_array_no_zero(arena, LNK_SectionOffsetSymbol, count);
+
+  for LNK_EachCoffSymbol(it, obj) {
+    COFF_ParsedSymbol symbol = it.v;
+    if (coff_interp_from_parsed_symbol(symbol) == COFF_SymbolValueInterp_Regular && COFF_SymbolType_IsFunc(symbol.type)) {
+      LNK_SectionOffsetSymbol *entry = &map->v[map->count++];
+      entry->key                     = Compose64Bit(symbol.section_number, symbol.value);
+      entry->symbol_idx              = safe_cast_u32(it.symbol_idx);
+    }
+  }
+  Assert(map->count == count);
+
+  radsort(map->v, map->count, lnk_section_offset_symbol_is_before);
+
+  return map;
+}
+
+internal U32
+lnk_symbol_from_section_offset(LNK_ObjSymbolMap *map, U32 section_number, U32 offset)
+{
+  U64 key = Compose64Bit(section_number, offset);
+
+  U64 min = 0;
+  U64 opl = map->count;
+  while (min < opl) {
+    U64 mid = min + (opl - min) / 2;
+    if (map->v[mid].key <= key) {
+      min = mid + 1;
+    } else {
+      opl = mid;
+    }
+  }
+
+  U32 symbol_idx = max_U32;
+  if (min > 0) {
+    LNK_SectionOffsetSymbol *entry = &map->v[min - 1];
+    if (entry->key >> 32 == section_number) {
+      symbol_idx = entry->symbol_idx;
+    }
+  }
+  return symbol_idx;
+}
+
 internal CV_DebugS
 lnk_debug_s_from_obj(Arena *arena, LNK_Obj *obj)
 {
@@ -936,11 +1062,11 @@ lnk_debug_s_from_obj(Arena *arena, LNK_Obj *obj)
 
   String8List raw_debug_s = {0};
   {
-    for EachIndex(sect_idx, obj->header.section_count_no_null) {
-      LNK_ObjSection section      = lnk_obj_section_from_sect_idx(obj, sect_idx);
-      String8        section_name = lnk_obj_section_name_from_sect_idx(obj, sect_idx);
+    for LNK_EachCoffSection(it, obj) {
+      LNK_ObjSection section      = it.v;
+      String8        section_name = lnk_obj_section_name_from_section_number(obj, section.section_number);
       if (str8_match(section_name, str8_lit(".debug$S"), 0)) {
-        String8 debug_s = str8_substr(obj->data, section.frange);
+        String8 debug_s = lnk_obj_section_data_from_number(obj, section.section_number);
         str8_list_push(scratch.arena, &raw_debug_s, debug_s);
       }
     }
@@ -970,3 +1096,510 @@ lnk_debug_s_from_obj(Arena *arena, LNK_Obj *obj)
   scratch_end(scratch);
   return debug_s;
 }
+
+internal force_inline int
+lnk_line_table_block_is_before(void *raw_a, void *raw_b)
+{
+  LNK_LineTableBlock *a = raw_a, *b = raw_b;
+  U64 key_a = Compose64Bit(a->header->sec_idx, a->header->sec_off_lo);
+  U64 key_b = Compose64Bit(b->header->sec_idx, b->header->sec_off_lo);
+  if (key_a == key_b) { return a->header->sec_off_hi < b->header->sec_off_hi; }
+  return key_a < key_b;
+}
+
+internal force_inline int
+lnk_inline_range_is_before(void *raw_a, void *raw_b)
+{
+  LNK_InlineRange *a = raw_a, *b = raw_b;
+  if (a->key_min != b->key_min) { return a->key_min < b->key_min; }
+  return a->site_idx < b->site_idx;
+}
+
+internal LNK_ObjLineMap *
+lnk_line_map_from_obj(Arena *arena, LNK_Obj *obj)
+{
+  Temp scratch = scratch_begin(&arena, 1);
+
+  //
+  // build .debug$S section file offset -> relocation value
+  //
+#define DebugRelocValueFromFileOffset(foff) hash_map_search_u64_u64(&debug_reloc_hm, foff)
+  HashMap debug_reloc_hm = {0};
+  for LNK_EachCoffSection(it, obj) {
+    LNK_ObjSection section = it.v;
+    if (!str8_match(lnk_obj_section_name_from_section_number(obj, section.section_number), str8_lit(".debug$S"), 0)) { continue; }
+
+    String8         section_data = lnk_obj_section_data_from_number(obj, section.section_number);
+    COFF_RelocArray relocs       = lnk_coff_relocs_from_section_header(obj, section.header);
+    for EachIndex(reloc_idx, relocs.count) {
+      COFF_Reloc       *reloc = &relocs.v[reloc_idx];
+      COFF_ParsedSymbol symbol = lnk_parsed_symbol_from_coff_symbol_idx_no_name(obj, reloc->isymbol);
+      if (coff_interp_from_parsed_symbol(symbol) != COFF_SymbolValueInterp_Regular) { continue; }
+
+      U64 reloc_size  = 0;
+      U64 reloc_value = 0;
+      if ((obj->coff.header.machine == COFF_MachineType_X64 && reloc->type == COFF_Reloc_X64_Section) ||
+          (obj->coff.header.machine == COFF_MachineType_X86 && reloc->type == COFF_Reloc_X86_Section)) {
+        reloc_size  = sizeof(U16);
+        reloc_value = symbol.section_number;
+      } else if ((obj->coff.header.machine == COFF_MachineType_X64 && reloc->type == COFF_Reloc_X64_SecRel) ||
+                 (obj->coff.header.machine == COFF_MachineType_X86 && reloc->type == COFF_Reloc_X86_SecRel)) {
+        reloc_size  = sizeof(U32);
+        reloc_value = symbol.value;
+      }
+
+      if (reloc_size > 0 && reloc->apply_off + reloc_size <= section_data.size) {
+        U64 addend = 0;
+        str8_deserial_read(section_data, reloc->apply_off, &addend, reloc_size, 1);
+        U64 foff  = section.frange.min + reloc->apply_off;
+        U64 value = reloc_value + extend_sign64(addend, reloc_size);
+        U64 *existing = hash_map_search_u64_u64(&debug_reloc_hm, foff);
+        if (existing) {
+          *existing = value;
+        } else {
+          hash_map_push_u64_u64(scratch.arena, &debug_reloc_hm, foff, value);
+        }
+      }
+    }
+  }
+
+  CV_DebugS   debug_s        = lnk_debug_s_from_obj(scratch.arena, obj);
+  String8List raw_lines_list = cv_sub_section_from_debug_s(debug_s, CV_C13SubSectionKind_Lines);
+  String8List raw_checksums  = cv_sub_section_from_debug_s(debug_s, CV_C13SubSectionKind_FileChksms);
+  String8List raw_strings    = cv_sub_section_from_debug_s(debug_s, CV_C13SubSectionKind_StringTable);
+
+  //
+  // estimate requried line table block capacity
+  //
+  U64 line_table_blocks_cap = 0;
+  for EachNode(raw_lines_node, String8Node, raw_lines_list.first) {
+    Temp temp = temp_begin(scratch.arena);
+    CV_C13LinesHeaderList parsed_list = cv_c13_lines_from_sub_sections(temp.arena, raw_lines_node->string, rng_1u64(0, raw_lines_node->string.size));
+    line_table_blocks_cap += parsed_list.count;
+    temp_end(temp);
+  }
+
+  LNK_ObjLineMap *map = push_array(arena, LNK_ObjLineMap, 1);
+  map->arena             = arena;
+  map->debug_checksums   = str8_list_first(&raw_checksums);
+  map->debug_strings     = str8_list_first(&raw_strings);
+  map->line_table_blocks = push_array(arena, LNK_LineTableBlock, line_table_blocks_cap);
+  map->tables            = push_array(arena, LNK_LineTable, line_table_blocks_cap);
+
+  for EachNode(raw_lines_node, String8Node, raw_lines_list.first) {
+    Temp temp = temp_begin(scratch.arena);
+    String8               raw_lines   = raw_lines_node->string;
+    CV_C13LinesHeaderList parsed_list = cv_c13_lines_from_sub_sections(temp.arena, raw_lines, rng_1u64(0, raw_lines.size));
+    for EachNode(header_node, CV_C13LinesHeaderNode, parsed_list.first) {
+      if (header_node->v.line_count == 0) { continue; }
+      LNK_LineTableBlock *block = &map->line_table_blocks[map->line_table_block_count++];
+      block->raw_lines          = raw_lines;
+      block->header             = push_array(arena, CV_C13LinesHeader, 1);
+      *block->header = header_node->v;
+
+      // resovle lines header
+      {
+        CV_C13LinesHeader *header      = block->header;
+        U64                header_foff = lnk_obj_foff_from_section_data_ptr(obj, raw_lines.str) + header->header_off;
+
+        U64 *sec_off = DebugRelocValueFromFileOffset(header_foff + OffsetOf(CV_C13SubSecLinesHeader, sec_off));
+        if (sec_off) {
+          U64 len            = header->sec_off_hi - header->sec_off_lo;
+          header->sec_off_lo = *sec_off;
+          header->sec_off_hi = *sec_off + len;
+        }
+
+        U64 *sec = DebugRelocValueFromFileOffset(header_foff + OffsetOf(CV_C13SubSecLinesHeader, sec));
+        if (sec) {
+          header->sec_idx = *sec;
+        }
+      }
+    }
+    temp_end(temp);
+  }
+  Assert(map->line_table_block_count <= line_table_blocks_cap);
+  radsort(map->line_table_blocks, map->line_table_block_count, lnk_line_table_block_is_before);
+
+  for (U64 block_idx = 0; block_idx < map->line_table_block_count;) {
+    LNK_LineTableBlock *block   = &map->line_table_blocks[block_idx];
+    U64                 key_min = Compose64Bit(block->header->sec_idx, block->header->sec_off_lo);
+    U64                 key_max = Compose64Bit(block->header->sec_idx, block->header->sec_off_hi);
+
+    U64 block_opl = block_idx + 1;
+    for (; block_opl < map->line_table_block_count; block_opl += 1) {
+      LNK_LineTableBlock *next = &map->line_table_blocks[block_opl];
+      if (next->header->sec_idx    != block->header->sec_idx ||
+          next->header->sec_off_lo != block->header->sec_off_lo ||
+          next->header->sec_off_hi != block->header->sec_off_hi) {
+        break;
+      }
+    }
+
+    LNK_LineTable *table = &map->tables[map->table_count++];
+    table->key_min       = key_min;
+    table->key_max       = key_max;
+    table->prefix_max    = map->table_count > 1 ? Max(map->tables[map->table_count - 2].prefix_max, key_max) : key_max;
+    table->block_first   = block_idx;
+    table->block_count   = block_opl - block_idx;
+
+    block_idx = block_opl;
+  }
+
+  //
+  // build inlinee id -> inlinee name
+  //
+  HashMap inlinee_hm = {0};
+  if (obj->coff.debug_t_section_number) {
+    String8      raw_debug_t = lnk_obj_section_data_from_number(obj, obj->coff.debug_t_section_number);
+    CV_Signature debug_t_sig = cv_signature_from_debug_s(raw_debug_t);
+    if (debug_t_sig == CV_Signature_C13) {
+      CV_DebugT debug_t = cv_debug_t_from_data(scratch.arena, str8_skip(raw_debug_t, sizeof(CV_Signature)), CV_LeafAlign);
+
+      CV_TypeIndex ti_base = CV_MinComplexTypeIndex;
+      if (cv_debug_t_is_pch(&debug_t)) {
+        CV_Leaf        precomp_leaf = cv_debug_t_get_leaf(&debug_t, 0);
+        CV_PrecompInfo precomp      = cv_precomp_info_from_leaf(precomp_leaf);
+
+        // discard LF_PRECOMP
+        debug_t.offsets += 1;
+        debug_t.count   -= 1;
+
+        ti_base = precomp.start_index + precomp.leaf_count;
+      }
+
+      for EachIndex(leaf_idx, debug_t.count) {
+        CV_Leaf leaf = cv_debug_t_get_leaf(&debug_t, leaf_idx);
+
+        String8 name = str8_zero();
+        if (leaf.kind == CV_LeafKind_FUNC_ID) {
+          String8 data = str8_substr(leaf.data, r1u64(sizeof(CV_LeafFuncId), leaf.data.size));
+          name = str8_cstring_capped(data.str, data.str + data.size);
+        } else if (leaf.kind == CV_LeafKind_MFUNC_ID) {
+          String8 data = str8_substr(leaf.data, r1u64(sizeof(CV_LeafMFuncId), leaf.data.size));
+          name = str8_cstring_capped(data.str, data.str + data.size);
+        }
+
+        if (name.size) {
+          U64 inlinee_itype = ti_base + leaf_idx;
+          hash_map_push_u64_string(scratch.arena, &inlinee_hm, inlinee_itype, name);
+        }
+      }
+    }
+  }
+
+  //
+  // build inlinee lines accelerator
+  //
+  String8List                   raw_inlinee_lines   = cv_sub_section_from_debug_s(debug_s, CV_C13SubSectionKind_InlineeLines);
+  CV_C13InlineeLinesParsedList  inlinee_lines       = cv_c13_inlinee_lines_from_sub_sections(scratch.arena, raw_inlinee_lines);
+  CV_InlineeLinesAccel         *inlinee_lines_accel = cv_c13_make_inlinee_lines_accel(scratch.arena, inlinee_lines);
+
+  //
+  // estimate required inline site capacity
+  //
+  String8List raw_symbols     = cv_sub_section_from_debug_s(debug_s, CV_C13SubSectionKind_Symbols);
+  U64         inline_site_cap = 0;
+  for EachNode(raw_symbols_node, String8Node, raw_symbols.first) {
+    for (U64 cursor = 0; cursor < raw_symbols_node->string.size;) {
+      CV_Symbol symbol = {0};
+      TryReadBreak(cv_read_symbol(raw_symbols_node->string, cursor, CV_SymbolAlign, &symbol), cursor);
+      inline_site_cap += symbol.kind == CV_SymKind_INLINESITE || symbol.kind == CV_SymKind_INLINESITE2;
+    }
+  }
+
+  //
+  // extract inline site info from the .debug$S sections
+  //
+  typedef struct LNK_InlineRangeNode LNK_InlineRangeNode;
+  struct LNK_InlineRangeNode {
+    LNK_InlineRangeNode *next;
+    LNK_InlineRange      v;
+  };
+  LNK_InlineRangeNode *range_first = 0, *range_last = 0;
+  map->inline_sites = push_array(arena, LNK_InlineSite, inline_site_cap);
+  for EachNode(raw_symbols_node, String8Node, raw_symbols.first) {
+    U32  proc_section            = 0;
+    U32  proc_offset             = 0;
+    U64  inline_site_stack_count = 0;
+    U32 *inline_site_stack       = push_array_no_zero(scratch.arena, U32, inline_site_cap);
+    for (U64 cursor = 0; cursor < raw_symbols_node->string.size;) {
+      CV_Symbol symbol = {0};
+      TryReadBreak(cv_read_symbol(raw_symbols_node->string, cursor, CV_SymbolAlign, &symbol), cursor);
+
+      if (CV_IsProc32(symbol.kind)) {
+        CV_SymProc32 *proc = str8_deserial_get_raw_ptr(symbol.data, 0, sizeof(*proc));
+        if (proc) {
+          U64  proc_foff = lnk_obj_foff_from_section_data_ptr(obj, symbol.data.str);
+          U64 *off_reloc = DebugRelocValueFromFileOffset(proc_foff + OffsetOf(CV_SymProc32, off));
+          U64 *sec_reloc = DebugRelocValueFromFileOffset(proc_foff + OffsetOf(CV_SymProc32, sec));
+          proc_offset             = off_reloc ? safe_cast_u32(*off_reloc) : proc->off;
+          proc_section            = sec_reloc ? safe_cast_u32(*sec_reloc) : proc->sec;
+          inline_site_stack_count = 0;
+        }
+      } else if (symbol.kind == CV_SymKind_INLINESITE || symbol.kind == CV_SymKind_INLINESITE2) {
+        U64 header_size = symbol.kind == CV_SymKind_INLINESITE ? sizeof(CV_SymInlineSite) : sizeof(CV_SymInlineSite2);
+        if (proc_section && symbol.data.size >= header_size) {
+          CV_ItemId  inlinee         = symbol.kind == CV_SymKind_INLINESITE ? ((CV_SymInlineSite *)symbol.data.str)->inlinee : ((CV_SymInlineSite2 *)symbol.data.str)->inlinee;
+          String8    raw_annots      = str8_skip(symbol.data, header_size);
+          String8   *inlinee_name    = hash_map_search_u64_string(&inlinee_hm, inlinee);
+          U32        inline_site_idx = safe_cast_u32(map->inline_site_count++);
+
+          LNK_InlineSite *inline_site     = &map->inline_sites[inline_site_idx];
+          inline_site->parent_idx_plus_one = inline_site_stack_count ? inline_site_stack[inline_site_stack_count - 1] + 1 : 0;
+          inline_site->depth               = inline_site->parent_idx_plus_one ? map->inline_sites[inline_site->parent_idx_plus_one - 1].depth + 1 : 1;
+          inline_site->inlinee             = inlinee;
+          inline_site->name                = inlinee_name ? *inlinee_name : str8_zero();
+          inline_site_stack[inline_site_stack_count++] = inline_site_idx;
+
+          CV_C13InlineeLinesParsed *inlinee_info = cv_c13_inlinee_lines_accel_find(inlinee_lines_accel, inlinee);
+          if (inlinee_info) {
+            //
+            // decode inline site line table
+            //
+            typedef struct LNK_InlineLineNode LNK_InlineLineNode;
+            struct LNK_InlineLineNode {
+              LNK_InlineLineNode *next;
+              CV_Line             v;
+            };
+            LNK_InlineLineNode      *line_first       = 0;
+            LNK_InlineLineNode      *line_last        = 0;
+            LNK_InlineRangeNode     *last_site_range  = 0;
+            U32                      current_file_off = inlinee_info->file_off;
+            CV_C13InlineSiteDecoder  decoder          = cv_c13_inline_site_decoder_init(inlinee_info->file_off, inlinee_info->first_source_ln, proc_offset);
+            for (;;) {
+              U64 old_cursor = decoder.cursor;
+
+              CV_C13InlineSiteDecoderStep step = cv_c13_inline_site_decoder_step(&decoder, raw_annots);
+              if (step.flags == 0 || decoder.cursor <= old_cursor) { break; }
+              if (step.flags & CV_C13InlineSiteDecoderStepFlag_EmitFile) {
+                current_file_off = step.file_off;
+              }
+
+              if (step.range.min < step.range.max) {
+                if ((step.flags & CV_C13InlineSiteDecoderStepFlag_EmitRange) ||
+                    ((step.flags & CV_C13InlineSiteDecoderStepFlag_ExtendLastRange) && last_site_range == 0)) {
+                  LNK_InlineRangeNode *node = push_array(scratch.arena, LNK_InlineRangeNode, 1);
+                  node->v.key_min  = Compose64Bit(proc_section, step.range.min);
+                  node->v.key_max  = Compose64Bit(proc_section, step.range.max);
+                  node->v.site_idx = inline_site_idx;
+                  SLLQueuePush(range_first, range_last, node);
+                  last_site_range = node;
+                  map->inline_range_count += 1;
+                }
+              }
+
+              if ((step.flags & CV_C13InlineSiteDecoderStepFlag_ExtendLastRange) && last_site_range) {
+                last_site_range->v.key_max = Compose64Bit(proc_section, step.range.max);
+              }
+
+              if (step.flags & CV_C13InlineSiteDecoderStepFlag_EmitLine) {
+                LNK_InlineLineNode *node = push_array(scratch.arena, LNK_InlineLineNode, 1);
+                node->v.voff     = step.line_voff;
+                node->v.file_off = current_file_off;
+                node->v.line_num = step.ln;
+                SLLQueuePush(line_first, line_last, node);
+                inline_site->line_count += 1;
+              }
+            }
+
+            // line list -> sorted line array
+            inline_site->lines = push_array_no_zero(arena, CV_Line, inline_site->line_count);
+            U64 line_idx = 0;
+            for EachNode(line, LNK_InlineLineNode, line_first) { inline_site->lines[line_idx++] = line->v; }
+            radsort(inline_site->lines, inline_site->line_count, cv_c13_voff_map_is_before);
+          }
+        }
+      } else if (symbol.kind == CV_SymKind_CALLEES) {
+        if (inline_site_stack_count && symbol.data.size >= sizeof(CV_SymFunctionList)) {
+          CV_SymFunctionList *func_list    = (CV_SymFunctionList *)symbol.data.str;
+          U64                 callee_count = Min(func_list->count, (symbol.data.size - sizeof(*func_list)) / sizeof(CV_ItemId));
+          CV_ItemId          *callees      = (CV_ItemId *)(func_list + 1);
+
+          LNK_InlineSite *inline_site = &map->inline_sites[inline_site_stack[inline_site_stack_count - 1]];
+          inline_site->callee_count = callee_count;
+          inline_site->callee_names = push_array(arena, String8, callee_count);
+          for EachIndex(callee_idx, callee_count) {
+            String8 *callee_name = hash_map_search_u64_string(&inlinee_hm, callees[callee_idx]);
+            inline_site->callee_names[callee_idx] = callee_name ? *callee_name : str8_zero();
+          }
+        }
+      } else if (symbol.kind == CV_SymKind_INLINESITE_END) {
+        if (inline_site_stack_count > 0) {
+          inline_site_stack_count -= 1;
+        }
+      } else if (symbol.kind == CV_SymKind_END || symbol.kind == CV_SymKind_PROC_ID_END) {
+        proc_section            = 0;
+        proc_offset             = 0;
+        inline_site_stack_count = 0;
+      }
+    }
+  }
+
+  //
+  // fill out & sort inline site ranges
+  //
+  {
+    map->inline_ranges = push_array_no_zero(arena, LNK_InlineRange, map->inline_range_count);
+    U64 range_idx = 0;
+    for EachNode(range, LNK_InlineRangeNode, range_first) {
+      map->inline_ranges[range_idx++] = range->v;
+    }
+    radsort(map->inline_ranges, map->inline_range_count, lnk_inline_range_is_before);
+
+    for EachIndex(i, map->inline_range_count) {
+      map->inline_ranges[i].prefix_max = i ?
+        Max(map->inline_ranges[i - 1].prefix_max, map->inline_ranges[i].key_max) :
+        map->inline_ranges[i].key_max;
+    }
+  }
+
+#undef DebugRelocValueFromFileOff
+  scratch_end(scratch);
+  return map;
+}
+
+internal CV_Line *
+lnk_lines_from_section_offset(LNK_ObjLineMap *map, U64 section_number, U64 offset, U64 *line_count_out)
+{
+  U64 key = Compose64Bit(safe_cast_u32(section_number), safe_cast_u32(offset));
+
+  // upper bound search
+  U64 min = 0;
+  U64 opl = map->table_count;
+  while (min < opl) {
+    U64 mid = min + (opl - min) / 2;
+    if (map->tables[mid].key_min <= key) {
+      min = mid + 1;
+    } else {
+      opl = mid;
+    }
+  }
+
+  // backward search until containing interval is found
+  LNK_LineTable *table = 0;
+  while (min > 0) {
+    LNK_LineTable *candidate = &map->tables[--min];
+    if (key < candidate->key_max) {
+      table = candidate;
+      break;
+    }
+    if (min == 0 || map->tables[min - 1].prefix_max <= key) {
+      break;
+    }
+  }
+
+  CV_Line *lines      = 0;
+  U64      line_count = 0;
+  if (table) {
+    if (table->accel == 0) {
+      Temp scratch = scratch_begin(&map->arena, 1);
+
+      // unpack lines from line table blocks
+      CV_LineArray *line_arrays = push_array_no_zero(scratch.arena, CV_LineArray, table->block_count);
+      for EachIndex(i, table->block_count) {
+        LNK_LineTableBlock *block = &map->line_table_blocks[table->block_first + i];
+        CV_C13LinesHeader header = *block->header;
+        header.sec_off_hi -= header.sec_off_lo;
+        header.sec_off_lo = 0;
+        line_arrays[i] = cv_c13_line_array_from_data(scratch.arena, block->raw_lines, 0, header);
+      }
+
+      // cache line table accel
+      table->accel = cv_c13_make_lines_accel(map->arena, table->block_count, line_arrays);
+
+      scratch_end(scratch);
+    }
+
+    // match (section, offset) => lines
+    U32 table_offset = safe_cast_u32(key - table->key_min);
+    lines = cv_line_from_voff(table->accel, table_offset, &line_count);
+  }
+
+  if (line_count_out) {
+    *line_count_out = line_count;
+  }
+
+  return lines;
+}
+
+internal LNK_InlineSite *
+lnk_inline_site_from_section_offset(LNK_ObjLineMap *map, U64 section_number, U64 offset, LNK_Symbol *callee_symbol)
+{
+  U64 key = Compose64Bit(safe_cast_u32(section_number), safe_cast_u32(offset));
+
+  // find upper bound
+  U64 min = 0;
+  U64 opl = map->inline_range_count;
+  while (min < opl) {
+    U64 mid = min + (opl - min) / 2;
+    if (map->inline_ranges[mid].key_min <= key) {
+      min = mid + 1;
+    } else {
+      opl = mid;
+    }
+  }
+
+  // hacky demangle
+  String8 callee_name = callee_symbol ? callee_symbol->name : str8_zero();
+  if (str8_starts_with(callee_name, str8_lit("__imp_"))) {
+    callee_name = str8_skip(callee_name, 6);
+  }
+  if (str8_starts_with(callee_name, str8_lit("?"))) {
+    U64 name_opl = str8_find_needle(callee_name, 1, str8_lit("@"), 0);
+    callee_name = str8_substr(callee_name, r1u64(1, name_opl));
+  }
+
+  // scan back to the lower bound and match inline sites
+  LNK_InlineSite *site                     = 0;
+  LNK_InlineSite *callee_site              = 0;
+  B32             callee_site_is_ambiguous = 0;
+  while (min > 0) {
+    LNK_InlineRange *range = &map->inline_ranges[--min];
+    if (key < range->key_max) {
+      LNK_InlineSite *candidate = &map->inline_sites[range->site_idx];
+
+      if (site == 0 || site->depth < candidate->depth) {
+        site = candidate;
+      }
+
+      for EachIndex(callee_idx, candidate->callee_count) {
+        String8 pdb_callee_name = candidate->callee_names[callee_idx];
+        if (str8_match(callee_name, pdb_callee_name, 0)) {
+
+          // candidate matches callee
+          if (callee_site == 0 || callee_site->depth < candidate->depth) {
+            callee_site              = candidate;
+            callee_site_is_ambiguous = 0;
+          } else if (candidate->depth == callee_site->depth && candidate != callee_site) {
+            callee_site_is_ambiguous = 1;
+          }
+
+          break;
+        }
+      }
+    }
+
+    if (min == 0 || map->inline_ranges[min - 1].prefix_max <= key) {
+      break;
+    }
+  }
+
+  return (callee_site && !callee_site_is_ambiguous) ? callee_site : site;
+}
+
+internal CV_Line *
+lnk_line_from_inline_site(LNK_InlineSite *site, U32 offset)
+{
+  U64 min = 0;
+  U64 opl = site->line_count;
+  while (min < opl) {
+    U64 mid = min + (opl - min) / 2;
+    if (site->lines[mid].voff <= offset) {
+      min = mid + 1;
+    } else {
+      opl = mid;
+    }
+  }
+  return min > 0 ? &site->lines[min - 1] : 0;
+}
+

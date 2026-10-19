@@ -14,6 +14,7 @@ rd_code_view_init(RD_CodeViewState *cv)
     cv->preferred_column = 1;
     cv->patch_arena = rd_push_view_arena();
     cv->find_text_arena = rd_push_view_arena();
+    cv->initial_center = 1;
     cv->center_cursor = 1;
     rd_store_view_loading_info(1, 0, 0);
   }
@@ -158,7 +159,7 @@ rd_code_view_build(Arena *arena, RD_CodeViewState *cv, RD_CodeViewBuildFlags fla
       UI_TxtOp single_line_op = ui_single_line_txt_op_from_event(scratch.arena, evt, line, line_range, *cursor, *mark);
       
       //- TODO(rjf): skip replace-ranges for now
-      if(single_line_op.replace.size != 0)
+      if(single_line_op.replace.size != 0 || evt->flags & UI_EventFlag_Delete)
       {
         continue;
       }
@@ -563,9 +564,11 @@ rd_code_view_build(Arena *arena, RD_CodeViewState *cv, RD_CodeViewBuildFlags fla
         U64 rip_vaddr = d_query_cached_rip_from_thread_unwind(thread, unwind_count);
         U64 last_inst_on_unwound_rip_vaddr = rip_vaddr - !!unwind_count;
         D_Entity *module = d_module_from_process_vaddr(process, last_inst_on_unwound_rip_vaddr);
+        D_Entity *dbg_path = d_entity_child_from_kind(module, D_EntityKind_DebugInfoPath);
         U64 rip_voff = d_voff_from_vaddr(module, last_inst_on_unwound_rip_vaddr);
-        DI_Key dbgi_key = d_dbgi_key_from_module(module);
-        D_LineList lines = d_lines_from_dbgi_key_voff(scratch.arena, dbgi_key, rip_voff);
+        String8 dbgi_path = dbg_path->string;
+        DI_Key dbgi_key = d_dbgi_key_from_debug_info_path(dbg_path);
+        D_LineList lines = d_lines_from_dbgi_key_path_voff(scratch.arena, dbgi_key, dbgi_path, rip_voff);
         String8 file_checksums[RDI_ChecksumKind_COUNT] = {0};
         for(D_LineNode *n = lines.first; n != 0; n = n->next)
         {
@@ -639,6 +642,18 @@ rd_code_view_build(Arena *arena, RD_CodeViewState *cv, RD_CodeViewBuildFlags fla
         MemoryCopy(code_slice_params.line_infos, lines_array.v, sizeof(D_LineList)*lines_array.count);
       }
       code_slice_params.relevant_dbgi_keys = lines_array.dbgi_keys;
+    }
+    
+    // rjf: find visible run-to-line info for source code
+    if(!dasm_lines)
+    {
+      CFG_Node *transient = cfg_node_child_from_string(cfg_node_root(), s("transient"));
+      CFG_Node *run_to_line = cfg_node_child_from_string(transient, s("run_to_line"));
+      RD_Location loc = rd_location_from_cfg(run_to_line);
+      if(path_match_normalized(loc.file_path, rd_regs()->file_path))
+      {
+        code_slice_params.run_to_line_num = loc.pt.line;
+      }
     }
     
     // rjf: find live threads mapping to disasm
@@ -715,14 +730,32 @@ rd_code_view_build(Arena *arena, RD_CodeViewState *cv, RD_CodeViewBuildFlags fla
     if(dasm_lines)
     {
       D_Entity *module = d_module_from_process_vaddr(process, dasm_vaddr_range.min);
-      DI_Key dbgi_key = d_dbgi_key_from_module(module);
+      D_Entity *dbg_path = d_entity_child_from_kind(module, D_EntityKind_DebugInfoPath);
+      String8 dbgi_path = dbg_path->string;
+      DI_Key dbgi_key = d_dbgi_key_from_debug_info_path(dbg_path);
       for(S64 line_num = visible_line_num_range.min; line_num < visible_line_num_range.max; line_num += 1)
       {
         U64 vaddr = dasm_vaddr_range.min + dasm_line_array_code_off_from_idx(dasm_lines, line_num-1);
         U64 voff = d_voff_from_vaddr(module, vaddr);
         U64 slice_idx = line_num-visible_line_num_range.min;
         code_slice_params.line_vaddrs[slice_idx] = vaddr;
-        code_slice_params.line_infos[slice_idx] = d_lines_from_dbgi_key_voff(scratch.arena, dbgi_key, voff);
+        code_slice_params.line_infos[slice_idx] = d_lines_from_dbgi_key_path_voff(scratch.arena, dbgi_key, dbgi_path, voff);
+      }
+    }
+    
+    // rjf: find visible run-to-line info for disassembly
+    if(dasm_lines)
+    {
+      CFG_Node *transient = cfg_node_child_from_string(cfg_node_root(), s("transient"));
+      CFG_Node *run_to_line = cfg_node_child_from_string(transient, s("run_to_line"));
+      RD_Location loc = rd_location_from_cfg(run_to_line);
+      E_Value loc_value = e_value_from_string(loc.expr);
+      if(contains_1u64(dasm_vaddr_range, loc_value.u64))
+      {
+        U64 off = loc_value.u64 - dasm_vaddr_range.min;
+        U64 idx = dasm_line_array_idx_from_code_off__linear_scan(dasm_lines, off);
+        S64 line_num = (S64)idx+1;
+        code_slice_params.run_to_line_num = line_num;
       }
     }
     
@@ -966,6 +999,15 @@ rd_code_view_build(Arena *arena, RD_CodeViewState *cv, RD_CodeViewBuildFlags fla
           new_idx = Clamp(scroll_idx_rng[Axis2_Y].min, new_idx, scroll_idx_rng[Axis2_Y].max);
           ui_scroll_pt_target_idx(&scroll_pos.y, new_idx);
           snap[Axis2_Y] = 0;
+        }
+        
+        // rjf: just snap if this is the initial center
+        if(cv->initial_center)
+        {
+          scroll_pos.x.off = 0;
+          scroll_pos.y.off = 0;
+          cv->initial_center = 0;
+          
         }
       }
     }
@@ -1565,7 +1607,7 @@ rd_watch_row_info_from_row(Arena *arena, EV_Row *row)
       rd_watch_cell_list_push_new(arena, &info.cells, RD_WatchCellKind_Eval, row->eval,
                                   .flags = RD_WatchCellFlag_Expr|RD_WatchCellFlag_NoEval|RD_WatchCellFlag_Indented|RD_WatchCellFlag_Button,
                                   .pct = 1.f);
-      if(entity->kind == D_EntityKind_Machine ||
+      if(entity->kind == D_EntityKind_Server ||
          entity->kind == D_EntityKind_Process ||
          entity->kind == D_EntityKind_Thread)
       {
@@ -2311,7 +2353,7 @@ RD_VIEW_UI_FUNCTION_DEF(text)
       default:{}break;
       
       // rjf: override file picking
-      case RD_CmdKind_PickFile:
+      case RD_CmdKind_PickFileReplacement:
       {
         String8 src = rd_regs()->file_path;
         String8 dst = cmd->regs->file_path;
@@ -2441,7 +2483,7 @@ RD_VIEW_UI_FUNCTION_DEF(text)
         UI_TagF("pop")
         if(ui_clicked(ui_buttonf("Find alternative...")))
       {
-        rd_cmd(RD_CmdKind_RunCommand, .cmd_name = rd_cmd_kind_info_table[RD_CmdKind_PickFile].string);
+        rd_cmd(RD_CmdKind_RunCommand, .cmd_name = rd_cmd_kind_info_table[RD_CmdKind_PickFileReplacement].string);
       }
       scratch_end(scratch);
     }
@@ -2678,13 +2720,13 @@ RD_VIEW_UI_FUNCTION_DEF(disasm)
     {
       auto_selected = 1;
       auto_space = rd_eval_space_from_ctrl_entity(d_entity_from_handle(dv->temp_look_process), D_EvalSpaceKind_Entity);
-      eval = e_eval_from_stringf("(0x%I64x & (~(0x4000 - 1)))", dv->temp_look_vaddr);
+      eval = e_eval_from_stringf("(0x%I64x & (~(0x1000 - 1)))", dv->temp_look_vaddr);
     }
     else
     {
       auto_selected = 1;
       auto_space = rd_eval_space_from_ctrl_entity(d_entity_from_handle(rd_regs()->process), D_EvalSpaceKind_Entity);
-      eval = e_eval_from_stringf("(reg:rip & (~(0x4000 - 1)))");
+      eval = e_eval_from_stringf("(reg:rip & (~(0x1000 - 1)))");
     }
   }
   
@@ -2731,6 +2773,7 @@ RD_VIEW_UI_FUNCTION_DEF(disasm)
   D_Entity *space_entity = rd_ctrl_entity_from_eval_space(space);
   D_Entity *dasm_module = &d_entity_nil;
   DI_Key dbgi_key = {0};
+  String8 dbgi_path = {0};
   U64 base_vaddr = 0;
   switch(space_entity->kind)
   {
@@ -2739,8 +2782,10 @@ RD_VIEW_UI_FUNCTION_DEF(disasm)
     {
       if(arch == Arch_Null) { arch = space_entity->arch; }
       dasm_module = d_module_from_process_vaddr(space_entity, range.min);
-      dbgi_key    = d_dbgi_key_from_module(dasm_module);
-      base_vaddr  = dasm_module->vaddr_range.min;
+      D_Entity *dbg_path = d_entity_child_from_kind(dasm_module, D_EntityKind_DebugInfoPath);
+      dbgi_path = dbg_path->string;
+      dbgi_key = d_dbgi_key_from_debug_info_path(dbg_path);
+      base_vaddr = dasm_module->vaddr_range.min;
     }break;
   }
   DASM_StyleFlags style_flags = 0;
@@ -2835,7 +2880,7 @@ RD_VIEW_UI_FUNCTION_DEF(disasm)
     rd_regs()->vaddr = range.min+off;
     rd_regs()->vaddr_range = r1u64(range.min+off, range.min+off);
     rd_regs()->voff_range = d_voff_range_from_vaddr_range(dasm_module, rd_regs()->vaddr_range);
-    rd_regs()->lines = d_lines_from_dbgi_key_voff(rd_frame_arena(), dbgi_key, rd_regs()->voff_range.min);
+    rd_regs()->lines = d_lines_from_dbgi_key_path_voff(rd_frame_arena(), dbgi_key, dbgi_path, rd_regs()->voff_range.min);
   }
   
   //////////////////////////////
@@ -4084,6 +4129,7 @@ RD_VIEW_UI_FUNCTION_DEF(memory)
               }
               if(ui_clicked(peek_sig))
               {
+                rd_cmd(RD_CmdKind_CancelAllQueries);
                 rd_cmd(RD_CmdKind_PushQuery, .expr = casted_expr);
               }
             }
@@ -4354,12 +4400,14 @@ RD_VIEW_UI_FUNCTION_DEF(memory)
     // rjf: right-click -> push query
     if(ui_right_clicked(sig))
     {
+      rd_cmd(RD_CmdKind_CancelAllQueries);
       rd_cmd(RD_CmdKind_PushQuery,
-             .expr = s("query:memory_commands"),
+             .expr = str8f(scratch.arena, "query:config.$%I64x", rd_regs()->view),
              .do_implicit_root = 1,
              .do_lister = 1,
              .activate_with_single_click = 1,
-             .ui_key = sig.box->key);
+             .ui_key = ui_get_selected_state()->root->key,
+             .off_px = ui_mouse());
     }
     
     // rjf: ctrl+scroll -> change font size
@@ -4741,13 +4789,6 @@ EV_EXPAND_RULE_INFO_FUNCTION_DEF(graph)
 ////////////////////////////////
 //~ rjf: bitmap @view_hook_impl
 
-typedef struct RD_BitmapTopology RD_BitmapTopology;
-struct RD_BitmapTopology
-{
-  Vec2S16 dim;
-  R_Tex2DFormat fmt;
-};
-
 typedef struct RD_BitmapBoxDrawData RD_BitmapBoxDrawData;
 struct RD_BitmapBoxDrawData
 {
@@ -4765,46 +4806,6 @@ struct RD_BitmapCanvasBoxDrawData
   Vec2F32 view_center_pos;
   F32 zoom;
 };
-
-internal AC_Artifact
-rd_bitmap_artifact_create(String8 key, B32 *cancel_signal, AC_Status *status_out, U64 *gen_out)
-{
-  Access *access = access_open();
-  
-  //- rjf: unpack key
-  U128 hash = {0};
-  RD_BitmapTopology top = {0};
-  {
-    U64 key_read_off = 0;
-    key_read_off += str8_deserial_read_struct(key, key_read_off, &hash);
-    key_read_off += str8_deserial_read_struct(key, key_read_off, &top);
-  }
-  String8 data = c_data_from_hash(access, hash);
-  
-  //- rjf: create texture
-  R_Handle texture = {0};
-  if(top.dim.x > 0 && top.dim.y > 0 &&
-     data.size >= (U64)top.dim.x*(U64)top.dim.y*(U64)r_tex2d_format_bytes_per_pixel_table[top.fmt])
-  {
-    texture = r_tex2d_alloc(R_ResourceKind_Static, v2s32(top.dim.x, top.dim.y), top.fmt, data.str);
-  }
-  
-  //- rjf: bundle as artifact
-  AC_Artifact artifact = {0};
-  StaticAssert(sizeof(artifact) >= sizeof(texture), tex_artifact_size_check);
-  MemoryCopy(&artifact, &texture, Min(sizeof(texture), sizeof(artifact)));
-  
-  access_close(access);
-  return artifact;
-}
-
-internal void
-rd_bitmap_artifact_destroy(AC_Artifact artifact)
-{
-  R_Handle texture = {0};
-  MemoryCopy(&texture, &artifact, Min(sizeof(texture), sizeof(artifact)));
-  r_tex2d_release(texture);
-}
 
 internal Vec2F32
 rd_bitmap_screen_from_canvas_pos(Vec2F32 view_center_pos, F32 zoom, Rng2F32 rect, Vec2F32 cvs)
@@ -4945,29 +4946,46 @@ RD_VIEW_UI_FUNCTION_DEF(bitmap)
   RD_BitmapTopology topology = {v2s16(dim.x, dim.y), fmt};
   U128 data_hash = {0};
   R_Handle texture = {0};
-  for EachIndex(rewind_idx, C_KEY_HASH_HISTORY_COUNT)
+  String8 data = {0};
   {
-    U128 hash = c_hash_from_key(texture_key, rewind_idx);
-#pragma pack(push, 1)
-    struct
+    data_hash = c_hash_from_key(texture_key, 0);
+    data = c_data_from_hash(access, data_hash);
+    U64 slot_idx = data_hash.u64[1]%rd_state->bitmap_cache_slots_count;
+    RD_BitmapCacheSlot *slot = &rd_state->bitmap_cache_slots[slot_idx];
+    B32 found = 0;
+    for(RD_BitmapCacheNode *n = slot->first; n != 0; n = n->next)
     {
-      U128 hash;
-      RD_BitmapTopology top;
+      if(u128_match(data_hash, n->hash) && MemoryMatchStruct(&topology, &n->top))
+      {
+        texture = n->texture;
+        found = 1;
+        n->last_touched_frame_idx = rd_state->frame_index;
+        break;
+      }
     }
-    key_data = {hash, topology};
-#pragma pack(pop)
-    String8 key = str8_struct(&key_data);
-    AC_Artifact artifact = ac_artifact_from_key(access, key, rd_bitmap_artifact_create, rd_bitmap_artifact_destroy, 0);
-    R_Handle texture_candidate = {0};
-    MemoryCopy(&texture_candidate, &artifact, Min(sizeof(texture_candidate), sizeof(artifact)));
-    if(!r_handle_match(texture_candidate, r_handle_zero()))
+    if(!found)
     {
-      data_hash = hash;
-      texture = texture_candidate;
-      break;
+      RD_BitmapCacheNode *node = rd_state->bitmap_cache_free_node;
+      if(node)
+      {
+        SLLStackPop(rd_state->bitmap_cache_free_node);
+      }
+      else
+      {
+        node = push_array(rd_state->arena, RD_BitmapCacheNode, 1);
+      }
+      DLLPushBack(slot->first, slot->last, node);
+      node->hash = data_hash;
+      node->top = topology;
+      node->last_touched_frame_idx = rd_state->frame_index;
+      MemoryZeroStruct(&node->texture);
+      if(topology.dim.x > 0 && topology.dim.y > 0 && data.size >= (U64)topology.dim.x*(U64)topology.dim.y*(U64)r_tex2d_format_bytes_per_pixel_table[topology.fmt])
+      {
+        node->texture = r_tex2d_alloc(R_ResourceKind_Static, v2s32(dim.x, dim.y), topology.fmt, data.str);
+      }
+      texture = node->texture;
     }
   }
-  String8 data = c_data_from_hash(access, data_hash);
   
   //////////////////////////////
   //- rjf: equip loading info

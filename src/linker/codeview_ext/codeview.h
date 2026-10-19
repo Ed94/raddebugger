@@ -97,6 +97,7 @@ typedef struct CV_File
 
 typedef struct CV_C13LinesHeader
 {
+  U64 header_off;
   U64 sec_idx;
   U64 sec_off_lo;
   U64 sec_off_hi;
@@ -239,8 +240,10 @@ typedef struct CV_DebugT
   Rng1U64 ti_ranges     [CV_TypeIndexSource_COUNT];
 
   // PCH
-  Rng1U64 pch_ti_range[CV_TypeIndexSource_COUNT];
-  U32     pch_obj_idx;
+  B8             has_pch;
+  CV_PrecompInfo precomp;
+  Rng1U64        pch_ti_range[CV_TypeIndexSource_COUNT];
+  U32            pch_obj_idx;
 } CV_DebugT;
 
 ////////////////////////////////

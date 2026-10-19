@@ -483,6 +483,10 @@ di_rdi_from_key(Access *access, DI_Key key, B32 high_priority, U64 endt_us)
             rdi = &n->rdi;
             access_touch(access, &n->access_pt, stripe->cv);
           }
+          if(ins_atomic_u64_eval(&n->working_count) != 0)
+          {
+            rdi = &di_rdi_parsed_nil_waiting;
+          }
           break;
         }
       }
@@ -748,7 +752,7 @@ di_async_tick(void)
           }
           else
           {
-            rdi_path = str8f(scratch.arena, "%S.rdi", str8_chop_last_dot(og_path));
+            rdi_path = str8f(scratch.arena, "%S.rdi", og_path);
           }
         }
         
@@ -785,7 +789,7 @@ di_async_tick(void)
           make_directory(cache_folder);
           make_directory(raddbg_folder);
           make_directory(rdis_folder);
-          rdi_path = str8f(scratch.arena, "%S/%S.rdi", rdis_folder, str8_chop_last_dot(str8_skip_last_slash(og_path)));
+          rdi_path = str8f(scratch.arena, "%S/%S.rdi", rdis_folder, str8_skip_last_slash(og_path));
         }
         
         //- rjf: determine if RDI is stale
@@ -1699,20 +1703,21 @@ di_match_artifact_create(String8 key, B32 *cancel_signal, AC_Status *status_out,
         RDI_SectionKind_Procedures,
         RDI_SectionKind_TypeNodes,
       };
-      Rng1U64 range = lane_range(dbgi_keys.count);
-      for EachInRange(dbgi_idx, range)
+      for EachElement(name_map_kind_idx, name_map_kinds)
       {
-        DI_Key dbgi_key = dbgi_keys.v[dbgi_idx];
-        if(!allow_other_dbgis && !di_key_match(preferred_key, dbgi_key))
+        Rng1U64 range = lane_range(dbgi_keys.count);
+        for EachInRange(dbgi_idx, range)
         {
-          continue;
-        }
-        Access *access = access_open();
-        {
-          RDI_Parsed *rdi = di_rdi_from_key(access, dbgi_key, 0, 0);
-          RDI_Unit *unit = rdi_element_from_name_idx(rdi, Units, unit_idx);
-          for EachElement(name_map_kind_idx, name_map_kinds)
+          DI_Key dbgi_key = dbgi_keys.v[dbgi_idx];
+          if(!allow_other_dbgis && !di_key_match(preferred_key, dbgi_key))
           {
+            continue;
+          }
+          Access *access = access_open();
+          {
+            RDI_Parsed *rdi = di_rdi_from_key(access, dbgi_key, 0, 0);
+            RDI_Unit *unit = rdi_element_from_name_idx(rdi, Units, unit_idx);
+            
             // rjf: unpack name map
             RDI_NameMap *name_map = rdi_element_from_name_idx(rdi, NameMaps, name_map_kinds[name_map_kind_idx]);
             RDI_ParsedNameMap parsed_name_map = {0};
@@ -1817,8 +1822,8 @@ di_match_artifact_create(String8 key, B32 *cancel_signal, AC_Status *status_out,
               lane_matches[lane_idx()].count        = filtered_matches_count;
             }
           }
+          access_close(access);
         }
-        access_close(access);
       }
     }
   }

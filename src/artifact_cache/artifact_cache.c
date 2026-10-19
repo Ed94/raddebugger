@@ -681,6 +681,7 @@ ac_async_tick(void)
 internal void
 ac_cancel_thread_entry_point(void *p)
 {
+  ThreadNameF("ac_cancel_thread");
   for(;;)
   {
     sleep_ms(50);

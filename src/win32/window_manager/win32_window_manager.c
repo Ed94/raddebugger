@@ -506,7 +506,7 @@ w32_wm_wnd_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
       case WM_CHAR:
       {
         U32 character = wParam;
-        if((character >= 32 && character != 127) || character == '\n' || character == '\r')
+        if((character >= 32 && character != 127) || character == '\r')
         {
           WM_Event *event = w32_wm_push_event(WM_EventKind_Text, window);
           if(lParam & bit29)
@@ -1132,7 +1132,10 @@ internal void
 wm_window_close(WM_Window handle)
 {
   W32_WM_Window *window = w32_wm_window_from_handle(handle);
-  w32_wm_window_release(window);
+  if(window != 0)
+  {
+    w32_wm_window_release(window);
+  }
 }
 
 internal void
@@ -1140,8 +1143,11 @@ wm_window_set_title(WM_Window handle, String8 title)
 {
   Temp scratch = scratch_begin(0, 0);
   W32_WM_Window *window = w32_wm_window_from_handle(handle);
-  String16 title16 = str16_from_8(scratch.arena, title);
-  SetWindowTextW(window->hwnd, (WCHAR *)title16.str);
+  if(window != 0)
+  {
+    String16 title16 = str16_from_8(scratch.arena, title);
+    SetWindowTextW(window->hwnd, (WCHAR *)title16.str);
+  }
   scratch_end(scratch);
 }
 
@@ -1149,11 +1155,14 @@ internal void
 wm_window_first_paint(WM_Window window_handle)
 {
   W32_WM_Window *window = w32_wm_window_from_handle(window_handle);
-  window->first_paint_done = 1;
-  ShowWindow(window->hwnd, SW_SHOW);
-  if(window->maximized)
+  if(window != 0)
   {
-    ShowWindow(window->hwnd, SW_MAXIMIZE);
+    window->first_paint_done = 1;
+    ShowWindow(window->hwnd, SW_SHOW);
+    if(window->maximized)
+    {
+      ShowWindow(window->hwnd, SW_MAXIMIZE);
+    }
   }
 }
 
@@ -1161,57 +1170,73 @@ internal void
 wm_window_focus(WM_Window handle)
 {
   W32_WM_Window *window = w32_wm_window_from_handle(handle);
-  SetForegroundWindow(window->hwnd);
-  SetFocus(window->hwnd);
+  if(window != 0)
+  {
+    SetForegroundWindow(window->hwnd);
+    SetFocus(window->hwnd);
+  }
 }
 
 internal B32
 wm_window_is_focused(WM_Window handle)
 {
+  B32 result = 0;
   W32_WM_Window *window = w32_wm_window_from_handle(handle);
-  HWND active_hwnd = GetForegroundWindow();
-  return active_hwnd == window->hwnd;
+  if(window != 0)
+  {
+    HWND active_hwnd = GetForegroundWindow();
+    result = active_hwnd == window->hwnd;
+  }
+  return result;
 }
 
 internal B32
 wm_window_is_fullscreen(WM_Window handle)
 {
+  B32 result = 0;
   W32_WM_Window *window = w32_wm_window_from_handle(handle);
-  DWORD window_style = GetWindowLong(window->hwnd, GWL_STYLE);
-  return !(window_style & WS_OVERLAPPEDWINDOW);
+  if(window != 0)
+  {
+    DWORD window_style = GetWindowLong(window->hwnd, GWL_STYLE);
+    result = !(window_style & WS_OVERLAPPEDWINDOW);
+  }
+  return result;
 }
 
 internal void
 wm_window_set_fullscreen(WM_Window handle, B32 fullscreen)
 {
   W32_WM_Window *window = w32_wm_window_from_handle(handle);
-  DWORD window_style = GetWindowLong(window->hwnd, GWL_STYLE);
-  B32 is_fullscreen_already = wm_window_is_fullscreen(handle);
-  if(fullscreen)
+  if(window != 0)
   {
-    if(!is_fullscreen_already)
+    DWORD window_style = GetWindowLong(window->hwnd, GWL_STYLE);
+    B32 is_fullscreen_already = wm_window_is_fullscreen(handle);
+    if(fullscreen)
     {
-      GetWindowPlacement(window->hwnd, &window->last_window_placement);
+      if(!is_fullscreen_already)
+      {
+        GetWindowPlacement(window->hwnd, &window->last_window_placement);
+      }
+      MONITORINFO monitor_info = {sizeof(monitor_info)};
+      if(GetMonitorInfo(MonitorFromWindow(window->hwnd, MONITOR_DEFAULTTOPRIMARY), &monitor_info))
+      {
+        SetWindowLong(window->hwnd, GWL_STYLE, window_style & ~WS_OVERLAPPEDWINDOW);
+        SetWindowPos(window->hwnd, HWND_TOP,
+                     monitor_info.rcMonitor.left,
+                     monitor_info.rcMonitor.top,
+                     monitor_info.rcMonitor.right - monitor_info.rcMonitor.left,
+                     monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
+                     SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+      }
     }
-    MONITORINFO monitor_info = {sizeof(monitor_info)};
-    if(GetMonitorInfo(MonitorFromWindow(window->hwnd, MONITOR_DEFAULTTOPRIMARY), &monitor_info))
+    else
     {
-      SetWindowLong(window->hwnd, GWL_STYLE, window_style & ~WS_OVERLAPPEDWINDOW);
-      SetWindowPos(window->hwnd, HWND_TOP,
-                   monitor_info.rcMonitor.left,
-                   monitor_info.rcMonitor.top,
-                   monitor_info.rcMonitor.right - monitor_info.rcMonitor.left,
-                   monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
+      SetWindowLong(window->hwnd, GWL_STYLE, window_style | WS_OVERLAPPEDWINDOW);
+      SetWindowPlacement(window->hwnd, &window->last_window_placement);
+      SetWindowPos(window->hwnd, 0, 0, 0, 0, 0,
+                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
                    SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
     }
-  }
-  else
-  {
-    SetWindowLong(window->hwnd, GWL_STYLE, window_style | WS_OVERLAPPEDWINDOW);
-    SetWindowPlacement(window->hwnd, &window->last_window_placement);
-    SetWindowPos(window->hwnd, 0, 0, 0, 0, 0,
-                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
-                 SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
   }
 }
 
@@ -1290,8 +1315,9 @@ internal void
 wm_window_set_monitor(WM_Window window_handle, WM_Monitor monitor)
 {
   W32_WM_Window *window = w32_wm_window_from_handle(window_handle);
-  HMONITOR hmonitor = (HMONITOR)monitor.u64[0];
+  if(window != 0)
   {
+    HMONITOR hmonitor = (HMONITOR)monitor.u64[0];
     MONITORINFOEXW info;
     info.cbSize = sizeof(MONITORINFOEXW);
     if(GetMonitorInfoW(hmonitor, (MONITORINFO *)&info))
@@ -1311,7 +1337,7 @@ internal void
 wm_window_clear_custom_border_data(WM_Window handle)
 {
   W32_WM_Window *window = w32_wm_window_from_handle(handle);
-  if(window->custom_border)
+  if(window && window->custom_border)
   {
     arena_clear(window->paint_arena);
     window->first_title_bar_client_area = window->last_title_bar_client_area = 0;
@@ -1324,21 +1350,27 @@ internal void
 wm_window_push_custom_title_bar(WM_Window handle, F32 thickness)
 {
   W32_WM_Window *window = w32_wm_window_from_handle(handle);
-  window->custom_border_title_thickness = thickness;
+  if(window != 0)
+  {
+    window->custom_border_title_thickness = thickness;
+  }
 }
 
 internal void
 wm_window_push_custom_edges(WM_Window handle, F32 thickness)
 {
   W32_WM_Window *window = w32_wm_window_from_handle(handle);
-  window->custom_border_edge_thickness = thickness;
+  if(window != 0)
+  {
+    window->custom_border_edge_thickness = thickness;
+  }
 }
 
 internal void
 wm_window_push_custom_title_bar_client_area(WM_Window handle, Rng2F32 rect)
 {
   W32_WM_Window *window = w32_wm_window_from_handle(handle);
-  if(window->custom_border)
+  if(window && window->custom_border)
   {
     W32_WM_TitleBarClientArea *area = push_array(window->paint_arena, W32_WM_TitleBarClientArea, 1);
     if(area != 0)
@@ -1448,8 +1480,12 @@ internal WM_Monitor
 wm_monitor_from_window(WM_Window window)
 {
   W32_WM_Window *w = w32_wm_window_from_handle(window);
-  HMONITOR handle = MonitorFromWindow(w->hwnd, MONITOR_DEFAULTTOPRIMARY);
-  WM_Monitor result = {(U64)handle};
+  WM_Monitor result = {0};
+  if(w != 0)
+  {
+    HMONITOR handle = MonitorFromWindow(w->hwnd, MONITOR_DEFAULTTOPRIMARY);
+    result.u64[0] = (U64)handle;
+  }
   return result;
 }
 
@@ -1617,77 +1653,4 @@ hcursor = curs; }break;
     }
     w32_wm_state->hCursor = hcursor;
   }
-}
-
-////////////////////////////////
-//~ rjf: @per_os_impl Native User-Facing Graphical Messages (Implemented Per-OS)
-
-internal void
-wm_graphical_message(B32 error, String8 title, String8 message)
-{
-  Temp scratch = scratch_begin(0, 0);
-  String16 title16 = str16_from_8(scratch.arena, title);
-  String16 message16 = str16_from_8(scratch.arena, message);
-  MessageBoxW(0, (WCHAR *)message16.str, (WCHAR *)title16.str, MB_OK|(!!error*MB_ICONERROR));
-  scratch_end(scratch);
-}
-
-internal String8
-wm_graphical_pick_file(Arena *arena, String8 title, String8 initial_path)
-{
-  String8 result = {0};
-  {
-    Temp scratch = scratch_begin(&arena, 1);
-    U64 buffer_size = 4096;
-    U16 *buffer = push_array(scratch.arena, U16, buffer_size);
-    OPENFILENAMEW params = {sizeof(params)};
-    {
-      params.lpstrTitle = (WCHAR *)str16_from_8(scratch.arena, title).str;
-      params.lpstrFile = (WCHAR *)buffer;
-      params.nMaxFile = buffer_size;
-      params.lpstrInitialDir = (WCHAR *)str16_from_8(scratch.arena, initial_path).str;
-    }
-    if(GetOpenFileNameW(&params))
-    {
-      result = str8_from_16(arena, str16_cstring((U16 *)buffer));
-    }
-    scratch_end(scratch);
-  }
-  return result;
-}
-
-////////////////////////////////
-//~ rjf: @per_os_impl Shell Operations
-
-internal void
-wm_show_in_filesystem_ui(String8 path)
-{
-  Temp scratch = scratch_begin(0, 0);
-  String8 path_copy = push_str8_copy(scratch.arena, path);
-  for(U64 idx = 0; idx < path_copy.size; idx += 1)
-  {
-    if(path_copy.str[idx] == '/')
-    {
-      path_copy.str[idx] = '\\';
-    }
-  }
-  String16 path16 = str16_from_8(scratch.arena, path_copy);
-  SFGAOF flags = 0;
-  PIDLIST_ABSOLUTE list = 0;
-  if(path16.size != 0 && SUCCEEDED(SHParseDisplayName(path16.str, 0, &list, 0, &flags)))
-  {
-    HRESULT hr = SHOpenFolderAndSelectItems(list, 0, 0, 0);
-    CoTaskMemFree(list);
-    (void)hr;
-  }
-  scratch_end(scratch);
-}
-
-internal void
-wm_open_in_browser(String8 url)
-{
-  Temp scratch = scratch_begin(0, 0);
-  String16 url16 = str16_from_8(scratch.arena, url);
-  ShellExecuteW(0, L"open", (WCHAR *)url16.str, 0, 0, SW_SHOWNORMAL);
-  scratch_end(scratch);
 }

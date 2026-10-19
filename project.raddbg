@@ -1,75 +1,56 @@
-// raddbg 0.9.28 project file
+// raddbg 0.9.30 project file
 
 name: "The RAD Debugger"
 target:
 {
   executable: "build/raddbg.exe"
-  working_directory: "../raddebugger"
-  arguments: "--user:C:/devel/raddebugger/build/raddbg_test.user"
+  working_directory: build
+  arguments: "--user:raddbg_test.user"
   debug_subprocesses: 0
 }
 target:
 {
-  executable: "build/raddbg.exe"
-  working_directory: "../raddebugger"
-  arguments: "--user:test123"
-  debug_subprocesses: 0
-}
-target:
-{
-  executable: "build/mule_main.exe"
+  executable: "build/raddbg_server.exe"
   working_directory: build
-  output_label: output_a
-}
-target:
-{
-  executable: "build/torture.exe"
-  working_directory: build
-  arguments: "eval2/*"
+  debug_subprocesses: 1
 }
 target:
 {
   executable: "build/metagen.exe"
   working_directory: build
+  enabled: 1
 }
 target:
 {
-  executable: "build/radbin.exe"
+  executable: "build/mule_main.exe"
   working_directory: build
-  arguments: "--rdi raddbg"
 }
 target:
 {
-  executable: "build/release_version/raddbg.exe"
-  working_directory: "build/release_version"
-}
-target:
-{
-  executable: "build/radbin.exe"
+  executable: "build/torture.exe"
   working_directory: build
-  arguments: "--rdi fat.so --capture"
-}
-target:
-{
-  executable: "build/radbin.exe"
-  working_directory: build
-  arguments: "--rdi fat.debug --capture"
-}
-target:
-{
-  executable: "build/radbin.exe"
-  working_directory: build
-  arguments: "--rdi raddbg"
+  arguments: *
 }
 watch_pin: expression: tag_hash_slots
 target:
 {
   executable: "build/ryan_scratch.exe"
   working_directory: build
-  enabled: 1
 }
 target:
 {
-  executable: "../../Program Files/SuperTux/bin/supertux2.exe"
-  working_directory: "../../Program Files/SuperTux/bin"
+  executable: "build/raddbg"
+  working_directory: build
+  arguments: "--user:raddbg_test.user"
 }
+target:
+{
+  executable: "build/metagen"
+  working_directory: build
+}
+target:
+{
+  executable: "../jai/examples/invaders/invaders"
+  working_directory: "../jai/examples/invaders"
+}
+linux_sigpipe: 1

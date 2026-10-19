@@ -229,6 +229,7 @@ smsv_async_tick(void)
     }
   }
   lane_sync_u64(&request_tasks, 0);
+  lane_sync_u64(&request_task_count, 0);
   
   //- rjf: do all request tasks
   {
@@ -359,7 +360,15 @@ smsv_cache_path(void)
 }
 
 internal String8
-smsv_local_path_from_key(Arena *arena, String8 dbg_name, Guid guid, U64 age)
+smsv_local_module_path_from_key(Arena *arena, String8 module_name, U32 timestamp, U32 size_of_image)
+{
+  String8 symbol_cache_path = w32_smsv_state->symbol_cache_path;
+  String8 result = str8f(arena, "%S/%S/%08X%x/%S", symbol_cache_path, module_name, timestamp, size_of_image, module_name);
+  return result;
+}
+
+internal String8
+smsv_local_debug_info_path_from_key(Arena *arena, String8 dbg_name, Guid guid, U64 age)
 {
   String8 result = {0};
   Temp scratch = scratch_begin(&arena, 1);

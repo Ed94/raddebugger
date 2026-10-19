@@ -4,13 +4,13 @@
 #ifndef STAP_PARSE_H
 #define STAP_PARSE_H
 
-typedef enum STAP_ArgType
+typedef enum STAP_ArgKind
 {
-  STAP_ArgType_Null,
-  STAP_ArgType_Imm,
-  STAP_ArgType_Reg,
-  STAP_ArgType_MemoryRef,
-} STAP_ArgType;
+  STAP_ArgKind_Null,
+  STAP_ArgKind_Imm,
+  STAP_ArgKind_Reg,
+  STAP_ArgKind_MemoryRef,
+} STAP_ArgKind;
 
 typedef enum STAP_ArgValueType
 {
@@ -24,7 +24,7 @@ typedef struct STAP_Arg
 {
   STAP_ArgValueType value_type;
   U64               value_size;
-  STAP_ArgType      type;
+  STAP_ArgKind      kind;
   union {
     U64 imm;
     struct {
@@ -66,6 +66,10 @@ typedef struct STAP_ArgValueArray
 typedef STAP_MEMORY_READ(STAP_MemoryRead);
 
 ////////////////////////////////
+
+internal B32 stap_is_scale_valid(U64 scale);
+internal U64 stap_size_from_arg(String8 string);
+internal String8List stap_list_from_string(Arena *arena, String8 string);
 
 internal String8 stap_parse_args_x64(String8 string, STAP_Arg *arg_out);
 internal STAP_ArgArray stap_arg_array_from_string(Arena *arena, Arch arch, String8 string);

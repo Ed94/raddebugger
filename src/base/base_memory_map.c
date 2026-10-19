@@ -10,7 +10,7 @@ memory_map_push(Arena *arena, MemoryMap *map, Rng1U64 vaddr_range, void *data)
   MemoryMapRangeNode *n = push_array(arena, MemoryMapRangeNode, 1);
   n->v.vaddr_range = vaddr_range;
   n->v.base = data;
-  SLLQueuePush(map->first_range, map->last_range, n);
+  SLLQueuePushFront(map->first_range, map->last_range, n);
 }
 
 internal U64

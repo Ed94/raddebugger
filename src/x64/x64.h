@@ -37,18 +37,18 @@ enum
 typedef struct X64_FXSave X64_FXSave;
 struct AlignType(16) X64_FXSave
 {
-  U16  fcw;
-  U16  fsw;
-  U8   ftw;
-  U8   reserved1;
-  U16  fop;
-  U64  fip;
-  U64  fdp;
-  U32  mxcsr;
-  U32  mxcsr_mask;
+  U16 fcw;
+  U16 fsw;
+  U8 ftw;
+  U8 reserved1;
+  U16 fop;
+  U64 fip;
+  U64 fdp;
+  U32 mxcsr;
+  U32 mxcsr_mask;
   U128 st_space[8];
   U128 xmm_space[16];
-  U8   padding[96];
+  U8 padding[96];
 };
 StaticAssert(sizeof(X64_FXSave) == 512, g_x64_xsave_legacy_size_check);
 
@@ -57,14 +57,14 @@ struct X64_XSaveHeader
 {
   U64 xstate_bv;
   U64 xcomp_bv;
-  U8  reserved[48];
+  U8 reserved[48];
 };
 StaticAssert(sizeof(X64_XSaveHeader) == 64, g_x64_xsave_header_size_check);
 
 typedef struct X64_XSave X64_XSave;
 struct AlignType(64) X64_XSave
 {
-  X64_FXSave      fxsave;
+  X64_FXSave fxsave;
   X64_XSaveHeader header;
   // U8 ext_area[0];
 };
@@ -234,4 +234,4 @@ internal X64_XSaveLayout x64_get_xsave_layout(U64 xcr0);
 
 internal void x64_set_debug_break(U64 *drs, U64 trap_idx, U64 addr, U64 size, X64_BreakpointType bp_type, X64_DebugBreakType break_type);
 
-#endif // BASE_X64_H
+#endif // X64_H

@@ -3111,11 +3111,25 @@ E_TYPE_EXPAND_INFO_FUNCTION_DEF(folder)
         {
           if(info.props.flags & FilePropertyFlag_IsFolder)
           {
-            str8_list_push(scratch.arena, &folder_paths, str8_copy(arena, info.name));
+            if(str8_match(info.name, local_filter, 0))
+            {
+              str8_list_push_front(scratch.arena, &folder_paths, str8_copy(arena, info.name));
+            }
+            else
+            {
+              str8_list_push(scratch.arena, &folder_paths, str8_copy(arena, info.name));
+            }
           }
           else
           {
-            str8_list_push(scratch.arena, &file_paths, str8_copy(arena, info.name));
+            if(str8_match(info.name, local_filter, 0))
+            {
+              str8_list_push_front(scratch.arena, &file_paths, str8_copy(arena, info.name));
+            }
+            else
+            {
+              str8_list_push(scratch.arena, &file_paths, str8_copy(arena, info.name));
+            }
           }
         }
       }

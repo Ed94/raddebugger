@@ -1256,8 +1256,8 @@ ui_end_build(void)
     }
     else
     {
-      ui_state->tooltip_root->rect.x0 = 10000;
-      ui_state->tooltip_root->rect.y0 = 10000;
+      ui_state->tooltip_root->rect.x0 = ui_state->tooltip_root->rect.x1 = 10000;
+      ui_state->tooltip_root->rect.y0 = ui_state->tooltip_root->rect.y1 = 10000;
     }
   }
   
@@ -1951,8 +1951,8 @@ ui_tooltip_begin_base(void)
   ui_push_flags(0);
   ui_push_text_raster_flags(ui_bottom_text_raster_flags());
   ui_push_font_size(ui_bottom_font_size());
-  ui_push_tag(str8_lit("."));
-  ui_push_tag(str8_lit("floating"));
+  ui_push_tag(s("."));
+  ui_push_tag(s("floating"));
 }
 
 internal void
@@ -1973,7 +1973,7 @@ ui_tooltip_begin(void)
   ui_tooltip_begin_base();
   ui_set_next_squish(0.1f-ui_state->tooltip_open_t*0.1f);
   ui_set_next_transparency(1-ui_state->tooltip_open_t);
-  UI_Flags(UI_BoxFlag_Floating|UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBackgroundBlur|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_SquishAnchored)
+  UI_Flags(UI_BoxFlag_DrawBorder|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawBackgroundBlur|UI_BoxFlag_DrawDropShadow|UI_BoxFlag_SquishAnchored)
     UI_PrefWidth(ui_children_sum(1))
     UI_PrefHeight(ui_children_sum(1))
     UI_CornerRadius(ui_top_font_size()*0.25f)
@@ -2524,6 +2524,8 @@ ui_build_box_from_key(UI_BoxFlags flags, UI_Key key)
     box->corner_radii[Corner_01] = ui_state->corner_radius_01_stack.top->v;
     box->corner_radii[Corner_10] = ui_state->corner_radius_10_stack.top->v;
     box->corner_radii[Corner_11] = ui_state->corner_radius_11_stack.top->v;
+    box->visual_margin.x = ui_state->visual_margin_x_stack.top->v;
+    box->visual_margin.y = ui_state->visual_margin_y_stack.top->v;
     box->blur_size = ui_state->blur_size_stack.top->v;
     box->transparency = ui_state->transparency_stack.top->v;
     box->squish = ui_state->squish_stack.top->v;
@@ -2955,7 +2957,7 @@ ui_signal_from_box(UI_Box *box)
       {
         Swap(F32, delta.x, delta.y);
       }
-      Vec2S16 delta16 = v2s16((S16)(delta.x/30.f), (S16)(delta.y/30.f));
+      Vec2S16 delta16 = v2s16((S16)(delta.x/40.f), (S16)(delta.y/40.f));
       if(delta.x > 0 && delta16.x == 0) { delta16.x = +1; }
       if(delta.x < 0 && delta16.x == 0) { delta16.x = -1; }
       if(delta.y > 0 && delta16.y == 0) { delta16.y = +1; }

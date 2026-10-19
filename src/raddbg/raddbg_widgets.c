@@ -476,7 +476,7 @@ rd_title_fstrs_from_ctrl_entity(Arena *arena, D_Entity *entity, B32 include_extr
   switch(entity->kind)
   {
     default:{}break;
-    case D_EntityKind_Machine: {icon_kind = RD_IconKind_Machine;}break;
+    case D_EntityKind_Server: {icon_kind = RD_IconKind_Machine;}break;
     case D_EntityKind_Process: {icon_kind = RD_IconKind_Threads;}break;
     case D_EntityKind_Thread:  {icon_kind = RD_IconKind_Thread; name_is_code = 1;}break;
     case D_EntityKind_Module:  {icon_kind = RD_IconKind_Module;}break;
@@ -493,7 +493,7 @@ rd_title_fstrs_from_ctrl_entity(Arena *arena, D_Entity *entity, B32 include_extr
   }
   
   //- rjf: push frozen icon, if frozen
-  if((entity->kind == D_EntityKind_Machine ||
+  if((entity->kind == D_EntityKind_Server ||
       entity->kind == D_EntityKind_Process ||
       entity->kind == D_EntityKind_Thread) &&
      d_entity_tree_is_frozen(entity))
@@ -617,13 +617,46 @@ rd_title_fstrs_from_ctrl_entity(Arena *arena, D_Entity *entity, B32 include_extr
   //- rjf: modules get debug info status extras
   if(entity->kind == D_EntityKind_Module && include_extras)
   {
+    D_Entity *debug_info_path = d_entity_child_from_kind(entity, D_EntityKind_DebugInfoPath);
+    B32 need_debug_info_name = !str8_match(debug_info_path->string, entity->string, 0);
     Access *access = access_open();
-    DI_Key dbgi_key = d_dbgi_key_from_module(entity);
+    DI_Key dbgi_key = d_dbgi_key_from_debug_info_path(debug_info_path);
     RDI_Parsed *rdi = di_rdi_from_key(access, dbgi_key, 0, 0);
-    if(rdi->raw_data_size == 0)
+    if(rdi == &di_rdi_parsed_nil_waiting)
     {
-      dr_fstrs_push_new(arena, &result, &params, str8_lit(" "));
-      dr_fstrs_push_new(arena, &result, &params, str8_lit("(Debug info not loaded)"), .font = rd_font_from_slot(RD_FontSlot_Main), .raster_flags = rd_raster_flags_from_slot(RD_FontSlot_Main), .size = extras_size, .color = secondary_color);
+      UI_TagF("pop")
+      {
+        dr_fstrs_push_new(arena, &result, &params, s(" "));
+        dr_fstrs_push_new(arena, &result, &params, s("Loading debug info"), .font = rd_font_from_slot(RD_FontSlot_Main), .raster_flags = rd_raster_flags_from_slot(RD_FontSlot_Main), .size = extras_size, .color = secondary_color);
+        dr_fstrs_push_new(arena, &result, &params, s(" "));
+        dr_fstrs_push_new(arena, &result, &params, rd_icon_kind_text_table[RD_IconKind_CircleFilled], .font = rd_font_from_slot(RD_FontSlot_Icons), .raster_flags = rd_raster_flags_from_slot(RD_FontSlot_Icons), .size = extras_size, .color = ui_color_from_name(s("background")));
+        dr_fstrs_push_new(arena, &result, &params, s(" "), .font = rd_font_from_slot(RD_FontSlot_Main), .raster_flags = rd_raster_flags_from_slot(RD_FontSlot_Main));
+      }
+    }
+    else if(rdi->raw_data_size == 0)
+    {
+      UI_TagF("bad_pop")
+      {
+        dr_fstrs_push_new(arena, &result, &params, s(" "));
+        dr_fstrs_push_new(arena, &result, &params, s("Debug info not found"), .font = rd_font_from_slot(RD_FontSlot_Main), .raster_flags = rd_raster_flags_from_slot(RD_FontSlot_Main), .size = extras_size, .color = secondary_color);
+        dr_fstrs_push_new(arena, &result, &params, s(" "));
+        dr_fstrs_push_new(arena, &result, &params, rd_icon_kind_text_table[RD_IconKind_X], .font = rd_font_from_slot(RD_FontSlot_Icons), .raster_flags = rd_raster_flags_from_slot(RD_FontSlot_Icons), .size = extras_size, .color = ui_color_from_name(s("background")));
+        dr_fstrs_push_new(arena, &result, &params, s(" "), .font = rd_font_from_slot(RD_FontSlot_Main), .raster_flags = rd_raster_flags_from_slot(RD_FontSlot_Main));
+      }
+    }
+    else
+    {
+      UI_TagF("good_pop")
+      {
+        if(need_debug_info_name)
+        {
+          dr_fstrs_push_new(arena, &result, &params, s(" "));
+          dr_fstrs_push_new(arena, &result, &params, str8_skip_last_slash(debug_info_path->string), .font = rd_font_from_slot(RD_FontSlot_Main), .raster_flags = rd_raster_flags_from_slot(RD_FontSlot_Main), .size = extras_size, .color = secondary_color);
+        }
+        dr_fstrs_push_new(arena, &result, &params, s(" "));
+        dr_fstrs_push_new(arena, &result, &params, rd_icon_kind_text_table[RD_IconKind_Check], .font = rd_font_from_slot(RD_FontSlot_Icons), .raster_flags = rd_raster_flags_from_slot(RD_FontSlot_Icons), .size = extras_size, .color = ui_color_from_name(s("background")));
+        dr_fstrs_push_new(arena, &result, &params, s(" "), .font = rd_font_from_slot(RD_FontSlot_Main), .raster_flags = rd_raster_flags_from_slot(RD_FontSlot_Main));
+      }
     }
     access_close(access);
   }
@@ -1192,6 +1225,7 @@ struct RD_BreakpointBoxDrawExtData
   B32 do_glow;
   B32 is_disabled;
   B32 is_conditioned;
+  B32 is_global;
 };
 
 internal UI_BOX_CUSTOM_DRAW(rd_bp_box_draw_extensions)
@@ -1275,6 +1309,20 @@ internal UI_BOX_CUSTOM_DRAW(rd_bp_box_draw_extensions)
     scratch_end(scratch);
   }
   
+  // rjf: draw non-global marker
+  if(!u->is_global) UI_TagF(u->is_disabled ? "weak" : "")
+  {
+    Temp scratch = scratch_begin(0, 0);
+    Vec4F32 color = ui_color_from_name(s("text"));
+    FNT_Run run = fnt_run_from_string(rd_font_from_slot(RD_FontSlot_Icons), box->font_size*0.85f, 0, 0, FNT_RasterFlag_Smooth, rd_icon_kind_text_table[RD_IconKind_Thread]);
+    Vec2F32 box_dim = dim_2f32(box->rect);
+    Vec2F32 p = center_2f32(box->rect);
+    p.x += box_dim.x*0.1f;
+    p.y += box_dim.y*0.4f;
+    dr_text_run(p, color, run);
+    scratch_end(scratch);
+  }
+  
   // rjf: draw disabled marker
   if(u->is_disabled)
   {
@@ -1320,7 +1368,7 @@ rd_code_slice(RD_CodeSliceParams *params, U64 *cursor, U64 *mark, S64 *preferred
   B32 do_bp_glow = rd_setting_b32_from_name(s("breakpoint_glow"));
   B32 do_scope_lines = rd_setting_b32_from_name(s("cursor_scope_lines"));
   B32 do_scope_end_annotations = rd_setting_b32_from_name(s("cursor_scope_end_annotations"));
-  B32 do_cursor_trail = rd_setting_b32_from_name(s("cursor_trail"));
+  B32 do_cursor_trail = rd_setting_b32_from_name(s("animations")) && rd_setting_b32_from_name(s("cursor_trail"));
   B32 do_autos = rd_setting_b32_from_name(s("show_autos_in_src_and_disasm"));
   Vec4F32 pop_color = {0};
   UI_TagF("pop")
@@ -1442,6 +1490,7 @@ rd_code_slice(RD_CodeSliceParams *params, U64 *cursor, U64 *mark, S64 *preferred
     ui_set_next_child_layout_axis(Axis2_Y);
     priority_margin_container_box = ui_build_box_from_string(UI_BoxFlag_Clickable*!!(params->flags & RD_CodeSliceFlag_Clickable), s("priority_margin_container"));
     UI_Parent(priority_margin_container_box) UI_PrefHeight(ui_px(params->line_height_px, 1.f))
+      UI_TextAlignment(UI_TextAlign_Center)
     {
       U64 line_idx = 0;
       for(S64 line_num = params->line_num_range.min;
@@ -1449,7 +1498,8 @@ rd_code_slice(RD_CodeSliceParams *params, U64 *cursor, U64 *mark, S64 *preferred
           line_num += 1, line_idx += 1)
       {
         D_EntityList line_ips  = params->line_ips[line_idx];
-        UI_Box *line_margin_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable*!!(params->flags & RD_CodeSliceFlag_Clickable)|UI_BoxFlag_DrawActiveEffects, "line_margin_%I64x", line_num);
+        ui_set_next_background_color(v4f32(0, 0, 0, 0));
+        UI_Box *line_margin_box = ui_build_box_from_stringf(UI_BoxFlag_Clickable*!!(params->flags & RD_CodeSliceFlag_Clickable)|UI_BoxFlag_DrawActiveEffects|UI_BoxFlag_DrawBackground|UI_BoxFlag_DrawText, "###line_margin_%I64x", line_num);
         UI_Parent(line_margin_box)
         {
           //- rjf: build margin thread ip ui
@@ -1561,6 +1611,7 @@ rd_code_slice(RD_CodeSliceParams *params, U64 *cursor, U64 *mark, S64 *preferred
             }
             if(ui_right_clicked(thread_sig))
             {
+              rd_cmd(RD_CmdKind_CancelAllQueries);
               rd_cmd(RD_CmdKind_PushQuery,
                      .ui_key = thread_box->key,
                      .expr   = push_str8f(scratch.arena, "query:control.%S", d_string_from_handle(scratch.arena, thread->handle)));
@@ -1570,6 +1621,26 @@ rd_code_slice(RD_CodeSliceParams *params, U64 *cursor, U64 *mark, S64 *preferred
               RD_RegsScope(.thread = thread->handle) rd_drag_begin(RD_RegSlot_Thread);
             }
           }
+        }
+        
+        // rjf: empty priority margin interaction
+        UI_Signal line_margin_sig = ui_signal_from_box(line_margin_box);
+        if(ui_hovering(line_margin_sig) || line_num == params->run_to_line_num)
+        {
+          DR_FStrList fstrs = {0};
+          Vec4F32 color = ui_color_from_name(s("thread_0"));
+          color.w *= 0.2f;
+          DR_FStrParams p = {rd_font_from_slot(RD_FontSlot_Icons), rd_raster_flags_from_slot(RD_FontSlot_Icons), color, ui_top_font_size()};
+          dr_fstrs_push_new(scratch.arena, &fstrs, &p, rd_icon_kind_text_table[RD_IconKind_RightArrow]);
+          ui_box_equip_display_fstrs(line_margin_box, &fstrs);
+        }
+        if(ui_clicked(line_margin_sig))
+        {
+          rd_cmd(RD_CmdKind_RunToLine,
+                 .file_path  = params->line_vaddrs[line_idx] ? str8_zero() : rd_regs()->file_path,
+                 .line_num   = params->line_vaddrs[line_idx] ? 0 : line_num,
+                 .vaddr      = params->line_vaddrs[line_idx],
+                 .expr       = s(""));
         }
       }
     }
@@ -1715,6 +1786,7 @@ rd_code_slice(RD_CodeSliceParams *params, U64 *cursor, U64 *mark, S64 *preferred
             }
             if(ui_right_clicked(thread_sig))
             {
+              rd_cmd(RD_CmdKind_CancelAllQueries);
               rd_cmd(RD_CmdKind_PushQuery,
                      .ui_key = thread_box->key,
                      .expr   = push_str8f(scratch.arena, "query:control.%S", d_string_from_handle(scratch.arena, thread->handle)));
@@ -1744,6 +1816,7 @@ rd_code_slice(RD_CodeSliceParams *params, U64 *cursor, U64 *mark, S64 *preferred
             {
               bp_rgba = v4f32(bp_rgba.x*0.45f, bp_rgba.y*0.45f, bp_rgba.z*0.45f, bp_rgba.w*0.45f);
             }
+            B32 bp_is_global = !str8_match(cfg_node_child_from_string(bp, s("break_selected_thread_only"))->first->string, s("1"), 0);
             
             // rjf: prep custom rendering data
             RD_BreakpointBoxDrawExtData *bp_draw = push_array(ui_build_arena(), RD_BreakpointBoxDrawExtData, 1);
@@ -1757,6 +1830,7 @@ rd_code_slice(RD_CodeSliceParams *params, U64 *cursor, U64 *mark, S64 *preferred
               bp_draw->do_glow  = do_bp_glow;
               bp_draw->is_disabled = bp_is_disabled;
               bp_draw->is_conditioned = (cfg_node_child_from_string(bp, s("condition"))->first->string.size != 0);
+              bp_draw->is_global = bp_is_global;
               if(params->line_vaddrs[line_idx] == 0)
               {
                 D_LineList *lines = &params->line_infos[line_idx];
@@ -1796,6 +1870,7 @@ rd_code_slice(RD_CodeSliceParams *params, U64 *cursor, U64 *mark, S64 *preferred
             // rjf: bp right-click => open query
             if(ui_right_clicked(bp_sig))
             {
+              rd_cmd(RD_CmdKind_CancelAllQueries);
               rd_cmd(RD_CmdKind_PushQuery,
                      .ui_key = bp_box->key,
                      .expr = push_str8f(scratch.arena, "query:config.$%I64x", bp->id));
@@ -1853,6 +1928,7 @@ rd_code_slice(RD_CodeSliceParams *params, U64 *cursor, U64 *mark, S64 *preferred
             // rjf: pin right-click => open query
             if(ui_right_clicked(pin_sig))
             {
+              rd_cmd(RD_CmdKind_CancelAllQueries);
               rd_cmd(RD_CmdKind_PushQuery,
                      .ui_key = pin_box->key,
                      .expr = push_str8f(scratch.arena, "query:config.$%I64x", pin->id));
@@ -2096,10 +2172,12 @@ rd_code_slice(RD_CodeSliceParams *params, U64 *cursor, U64 *mark, S64 *preferred
         commands_expr = (*cursor == *mark) ? s("query:text_pt_commands") : s("query:text_range_commands");
       }
       rd_cmd(RD_CmdKind_FocusPanel);
+      rd_cmd(RD_CmdKind_CancelAllQueries);
       rd_cmd(RD_CmdKind_PushQuery,
-             .expr = commands_expr,
+             .expr = str8f(scratch.arena, "%S, query:config.$%I64x", commands_expr, rd_regs()->view),
              .do_implicit_root = 1,
              .do_lister = 1,
+             .small_size = 1,
              .activate_with_single_click = 1,
              .ui_key = ui_get_selected_state()->root->key,
              .off_px = ui_mouse(),
@@ -2863,9 +2941,9 @@ rd_code_slice(RD_CodeSliceParams *params, U64 *cursor, U64 *mark, S64 *preferred
         {
           Vec2F32 advance = fnt_dim_from_tag_size_string(line_box->font, line_box->font_size, 0, params->tab_size, str8_prefix(line_string, *cursor - line_range.min));
           F32 cursor_y = text_container_box->rect.y0 + line_idx*params->line_height_px - params->font_size*0.125f;
-          F32 cursor_y__animated = ui_anim(ui_key_from_stringf(text_container_box->key, "cursor_y_px"), cursor_y);
+          F32 cursor_y__animated = ui_anim(ui_key_from_stringf(text_container_box->key, "cursor_y_px"), cursor_y, .initial = cursor_y);
           F32 cursor_off_pixels = advance.x;
-          F32 cursor_off_pixels__animated = ui_anim(ui_key_from_stringf(text_container_box->key, "cursor_off_px"), cursor_off_pixels);
+          F32 cursor_off_pixels__animated = ui_anim(ui_key_from_stringf(text_container_box->key, "cursor_off_px"), cursor_off_pixels, .initial = cursor_off_pixels);
           F32 cursor_thickness = ClampBot(1.f, floor_f32(line_box->font_size/10.f));
           Rng2F32 cursor_rect =
           {
@@ -3307,7 +3385,7 @@ rd_cell(RD_CellParams *params, String8 string)
 {
   ProfBeginFunction();
   Temp scratch = scratch_begin(0, 0);
-  B32 do_cursor_trail = rd_setting_b32_from_name(str8_lit("cursor_trail"));
+  B32 do_cursor_trail = rd_setting_b32_from_name(s("animations")) && rd_setting_b32_from_name(str8_lit("cursor_trail"));
   
   //////////////////////////////
   //- rjf: unpack visual metrics
@@ -3510,6 +3588,7 @@ rd_cell(RD_CellParams *params, String8 string)
   //- rjf: build line edit container box
   //
   UI_Box *edit_box = &ui_nil_box;
+  F32 editable_edit_box_dim = dim_2f32(box->rect).x;
   if((is_focus_active || is_focus_active_disabled) || build_line_edit)
     UI_Parent(box)
   {
@@ -3519,7 +3598,8 @@ rd_cell(RD_CellParams *params, String8 string)
     {
       if(is_editing)
       {
-        edit_box_size = ui_px(floor_f32(dim_2f32(box->rect).x*0.5f), 1.f);
+        editable_edit_box_dim = floor_f32(dim_2f32(box->rect).x*0.5f);
+        edit_box_size = ui_px(editable_edit_box_dim, 1.f);
       }
       else
       {
@@ -3604,7 +3684,7 @@ rd_cell(RD_CellParams *params, String8 string)
   {
     UI_Parent(edit_box) UI_PrefWidth(ui_children_sum(0))
     {
-      scrollable_box = ui_build_box_from_stringf(is_focus_active*(UI_BoxFlag_AllowOverflowX), "scroll_box_%p", params->edit_buffer);
+      scrollable_box = ui_build_box_from_stringf(is_focus_active*(UI_BoxFlag_AllowOverflowX|UI_BoxFlag_Clip), "scroll_box_%p", params->edit_buffer);
     }
   }
   
@@ -3650,6 +3730,43 @@ rd_cell(RD_CellParams *params, String8 string)
       {
         ui_spacer(ui_em(1.f, 1.f));
       }
+    }
+  }
+  
+  //////////////////////////////
+  //- rjf: build browse button
+  //
+  if(params->flags & RD_CellFlag_BrowseButton && !is_focus_active && !is_focus_active_disabled)
+  {
+    UI_Parent(box)
+      UI_PrefWidth(ui_children_sum(1))
+      RD_Font(RD_FontSlot_Main)
+    {
+      UI_TagF(".")
+        UI_TagF("weak")
+        UI_Column
+        UI_Padding(ui_pct(1, 0))
+        UI_PrefHeight(ui_em(2.f, 1.f))
+        UI_CornerRadius(ui_top_font_size()*0.5f)
+        UI_TextAlignment(UI_TextAlign_Center)
+        UI_PrefWidth(ui_text_dim(10, 1))
+      {
+        UI_Box *revert_box = ui_build_box_from_stringf(UI_BoxFlag_DrawText|
+                                                       UI_BoxFlag_DrawHotEffects|
+                                                       UI_BoxFlag_DrawActiveEffects|
+                                                       UI_BoxFlag_DrawBorder|
+                                                       UI_BoxFlag_DrawBackground|
+                                                       UI_BoxFlag_DisableFocusOverlay|
+                                                       UI_BoxFlag_DisableFocusBorder|
+                                                       UI_BoxFlag_Clickable,
+                                                       "Browse...");
+        UI_Signal sig = ui_signal_from_box(revert_box);
+        if(ui_clicked(sig) && params->browse_out)
+        {
+          params->browse_out[0] = 1;
+        }
+      }
+      ui_spacer(ui_em(1, 1));
     }
   }
   
@@ -4171,7 +4288,8 @@ rd_cell(RD_CellParams *params, String8 string)
   //
   if(scrollable_box != &ui_nil_box)
   {
-    F32 visible_dim_px = dim_2f32(box->rect).x - expander_size_px - ui_top_font_size()*params->depth;
+    F32 edit_box_dim_px = editable_edit_box_dim;
+    F32 visible_dim_px = edit_box_dim_px - expander_size_px - ui_top_font_size()*params->depth;
     if(visible_dim_px > 0)
     {
       Rng1F32 cursor_range_px  = r1f32(cursor_off-ui_top_font_size()*2.f, cursor_off+ui_top_font_size()*1.f);

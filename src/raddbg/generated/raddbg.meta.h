@@ -9,7 +9,7 @@
 typedef enum RD_RegSlot
 {
 RD_RegSlot_Null,
-RD_RegSlot_Machine,
+RD_RegSlot_Server,
 RD_RegSlot_Module,
 RD_RegSlot_Process,
 RD_RegSlot_Thread,
@@ -58,6 +58,8 @@ RD_RegSlot_PreferNewTab,
 RD_RegSlot_ActivateWithSingleClick,
 RD_RegSlot_DisableAddresses,
 RD_RegSlot_SmallSize,
+RD_RegSlot_AutoUnwind,
+RD_RegSlot_CreateNew,
 RD_RegSlot_Dir2,
 RD_RegSlot_String,
 RD_RegSlot_CmdName,
@@ -93,10 +95,10 @@ RD_CmdKind_FreezeThread,
 RD_CmdKind_ThawThread,
 RD_CmdKind_FreezeProcess,
 RD_CmdKind_ThawProcess,
-RD_CmdKind_FreezeMachine,
-RD_CmdKind_ThawMachine,
-RD_CmdKind_FreezeLocalMachine,
-RD_CmdKind_ThawLocalMachine,
+RD_CmdKind_FreezeServer,
+RD_CmdKind_ThawServer,
+RD_CmdKind_FreezeLocalServer,
+RD_CmdKind_ThawLocalServer,
 RD_CmdKind_FreezeEntity,
 RD_CmdKind_ThawEntity,
 RD_CmdKind_SetEntityColor,
@@ -104,6 +106,8 @@ RD_CmdKind_SetEntityName,
 RD_CmdKind_DownloadModuleDebugInfo,
 RD_CmdKind_Attach,
 RD_CmdKind_OpenCrashDump,
+RD_CmdKind_OpenRemoteServer,
+RD_CmdKind_CloseRemoteServer,
 RD_CmdKind_Exit,
 RD_CmdKind_OpenPalette,
 RD_CmdKind_RunCommand,
@@ -111,6 +115,8 @@ RD_CmdKind_RunExternalDriverTextCommand,
 RD_CmdKind_State,
 RD_CmdKind_Eval,
 RD_CmdKind_LineFromVAddr,
+RD_CmdKind_HideUI,
+RD_CmdKind_ShowUI,
 RD_CmdKind_WMEvent,
 RD_CmdKind_SelectThread,
 RD_CmdKind_SelectUnwind,
@@ -131,8 +137,6 @@ RD_CmdKind_PopupAccept,
 RD_CmdKind_PopupCancel,
 RD_CmdKind_ResetToDefaultBindings,
 RD_CmdKind_ResetToDefaultPanels,
-RD_CmdKind_ResetToCompactPanels,
-RD_CmdKind_ResetToSimplePanels,
 RD_CmdKind_NewPanelLeft,
 RD_CmdKind_NewPanelUp,
 RD_CmdKind_NewPanelRight,
@@ -141,11 +145,15 @@ RD_CmdKind_SplitPanel,
 RD_CmdKind_RotatePanelColumns,
 RD_CmdKind_NextPanel,
 RD_CmdKind_PrevPanel,
+RD_CmdKind_ParentPanel,
 RD_CmdKind_FocusPanel,
 RD_CmdKind_FocusPanelRight,
 RD_CmdKind_FocusPanelLeft,
 RD_CmdKind_FocusPanelUp,
 RD_CmdKind_FocusPanelDown,
+RD_CmdKind_ZoomPanel,
+RD_CmdKind_UnzoomPanel,
+RD_CmdKind_ToggleZoomPanel,
 RD_CmdKind_Undo,
 RD_CmdKind_Redo,
 RD_CmdKind_GoBack,
@@ -290,12 +298,12 @@ RD_CmdKind_GoToMemory,
 RD_CmdKind_BreakWhenValueChanges,
 RD_CmdKind_Search,
 RD_CmdKind_SearchBackwards,
-RD_CmdKind_PickFile,
-RD_CmdKind_PickFolder,
-RD_CmdKind_PickFileOrFolder,
+RD_CmdKind_PickFileReplacement,
+RD_CmdKind_PickFilePath,
 RD_CmdKind_PushQuery,
 RD_CmdKind_CompleteQuery,
 RD_CmdKind_CancelQuery,
+RD_CmdKind_CancelAllQueries,
 RD_CmdKind_UpdateQuery,
 RD_CmdKind_OpenEventBuffer,
 RD_CmdKind_CloseEventBuffer,
@@ -315,7 +323,7 @@ RD_CmdKind_OpenWatchPins,
 RD_CmdKind_OpenDebugInfos,
 RD_CmdKind_OpenThreads,
 RD_CmdKind_OpenProcesses,
-RD_CmdKind_OpenMachines,
+RD_CmdKind_OpenServers,
 RD_CmdKind_OpenModules,
 RD_CmdKind_OpenFilePathMaps,
 RD_CmdKind_OpenTypeViews,
@@ -466,7 +474,7 @@ String8 schema;
 typedef struct RD_Regs RD_Regs;
 struct RD_Regs
 {
-D_Handle machine;
+D_Handle server;
 D_Handle module;
 D_Handle process;
 D_Handle thread;
@@ -515,6 +523,8 @@ B32 prefer_new_tab;
 B32 activate_with_single_click;
 B32 disable_addresses;
 B32 small_size;
+B32 auto_unwind;
+B32 create_new;
 Dir2 dir2;
 String8 string;
 String8 cmd_name;
@@ -555,7 +565,7 @@ X(watch_pins) \
 X(debug_infos) \
 X(threads) \
 X(processes) \
-X(machines) \
+X(servers) \
 X(modules) \
 X(file_path_maps) \
 X(type_views) \
@@ -569,7 +579,7 @@ Y(geo3d, geo3d, "")\
 Z(getting_started)\
 
 #define rd_regs_lit_init_top \
-.machine = rd_regs()->machine,\
+.server = rd_regs()->server,\
 .module = rd_regs()->module,\
 .process = rd_regs()->process,\
 .thread = rd_regs()->thread,\
@@ -618,6 +628,8 @@ Z(getting_started)\
 .activate_with_single_click = rd_regs()->activate_with_single_click,\
 .disable_addresses = rd_regs()->disable_addresses,\
 .small_size = rd_regs()->small_size,\
+.auto_unwind = rd_regs()->auto_unwind,\
+.create_new = rd_regs()->create_new,\
 .dir2 = rd_regs()->dir2,\
 .string = rd_regs()->string,\
 .cmd_name = rd_regs()->cmd_name,\
@@ -626,10 +638,10 @@ Z(getting_started)\
 C_LINKAGE_BEGIN
 extern String8 rd_tab_fast_path_view_name_table[25];
 extern String8 rd_tab_fast_path_query_name_table[25];
-extern RD_VocabInfo rd_vocab_info_table[372];
+extern RD_VocabInfo rd_vocab_info_table[379];
 extern RD_NameSchemaInfo rd_name_schema_info_table[39];
-extern String8 rd_reg_slot_code_name_table[54];
-extern Rng1U64 rd_reg_slot_range_table[54];
+extern String8 rd_reg_slot_code_name_table[56];
+extern Rng1U64 rd_reg_slot_range_table[56];
 extern String8 rd_binding_version_remap_old_name_table[9];
 extern String8 rd_binding_version_remap_new_name_table[9];
 extern String8 rd_icon_kind_text_table[75];

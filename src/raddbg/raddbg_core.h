@@ -264,7 +264,16 @@ struct RD_DropCompletionTask
   B32 exe;
   B32 dbg;
   B32 cfg;
+  B32 dmp;
   String8List paths;
+};
+
+typedef struct RD_QueryView RD_QueryView;
+struct RD_QueryView
+{
+  RD_QueryView *next;
+  RD_Regs *regs;
+  U64 q_arena_pos;
 };
 
 typedef struct RD_WindowState RD_WindowState;
@@ -310,12 +319,13 @@ struct RD_WindowState
   CFG_ID drop_completion_panel;
   RD_DropCompletionTask *top_drop_completion_task;
   
-  // rjf: query state
-  B32 query_is_active;
+  // rjf: query stack state
   Arena *query_arena;
-  RD_Regs *query_regs;
-  CFG_ID query_view_id;
-  CFG_ID query_last_view_id;
+  CFG_ID query_last_bottom_view_id;
+  RD_QueryView *query_top;
+  
+  // rjf: panel 'hoisting' state - bring-to-front
+  CFG_ID panel_hoist_cfg_id;
   
   // rjf: hover eval state
   B32 hover_eval_focused;
@@ -353,6 +363,31 @@ struct RD_WindowStateSlot
 ////////////////////////////////
 //~ rjf: Main Per-Process Graphical State
 
+typedef struct RD_BitmapTopology RD_BitmapTopology;
+struct RD_BitmapTopology
+{
+  Vec2S16 dim;
+  R_Tex2DFormat fmt;
+};
+
+typedef struct RD_BitmapCacheNode RD_BitmapCacheNode;
+struct RD_BitmapCacheNode
+{
+  RD_BitmapCacheNode *next;
+  RD_BitmapCacheNode *prev;
+  U64 last_touched_frame_idx;
+  U128 hash;
+  RD_BitmapTopology top;
+  R_Handle texture;
+};
+
+typedef struct RD_BitmapCacheSlot RD_BitmapCacheSlot;
+struct RD_BitmapCacheSlot
+{
+  RD_BitmapCacheNode *first;
+  RD_BitmapCacheNode *last;
+};
+
 typedef struct RD_LoadedDbgInfoNode RD_LoadedDbgInfoNode;
 struct RD_LoadedDbgInfoNode
 {
@@ -389,6 +424,10 @@ struct RD_State
   B32 override_focus_on_stop;
   S32 frame_depth;
   U64 frame_eval_memread_endt_us;
+  SOCK_Endpoint ipc_sock_endpoint;
+  
+  // rjf: installation setting state
+  B32 installed;
   
   // rjf: update checker
   B32 sent_update_check;
@@ -397,6 +436,9 @@ struct RD_State
   Arena *update_check_arena;
   String8List update_check_response_body_pieces;
   GuardedRing *update_check_http_ring;
+  
+  // rjf: hidden mode
+  B32 hidden_mode;
   
   // rjf: config bucket paths
   Arena *user_path_arena;
@@ -418,6 +460,7 @@ struct RD_State
   F32 catchall_animation_rate;
   F32 menu_animation_rate;
   F32 menu_animation_rate__slow;
+  F32 menu_animation_rate__very_slow;
   F32 entity_alive_animation_rate;
   F32 rich_hover_animation_rate;
   F32 scrolling_animation_rate;
@@ -519,6 +562,11 @@ struct RD_State
   
   // rjf: icon texture
   R_Handle icon_texture;
+  
+  // rjf: bitmap cache
+  RD_BitmapCacheSlot *bitmap_cache_slots;
+  U64 bitmap_cache_slots_count;
+  RD_BitmapCacheNode *bitmap_cache_free_node;
   
   // rjf: fixed ui keys
   UI_Key drop_completion_key;
